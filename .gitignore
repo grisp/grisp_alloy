@@ -1,0 +1,5 @@
+*.log
+.vagrant
+artefacts
+_cache
+_build

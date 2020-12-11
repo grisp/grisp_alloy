@@ -1,0 +1,5 @@
+config BR2_PACKAGE_ERLANG_REBAR3
+	bool "erlang-rebar3"
+	depends on BR2_PACKAGE_ERLANG
+	help
+	  https://github.com/erlang/rebar3
