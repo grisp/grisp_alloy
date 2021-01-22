@@ -1,36 +1,58 @@
 #!/usr/bin/env bash
 
-# Usage: build-system.sh [-d] TARGET
-# e.g.   build-system.sh grisp2
-
 set -e
+
+ARGS=( "$@" )
 
 BR_VERSION="2020.08"
 
-source "$( dirname "$0" )/scripts/common.sh"
-
 show_usage()
 {
-    echo "USAGE: build-system.sh [-d] [-c] TARGET"
-    echo "  e.g. build-system.sh grisp2"
+    echo "USAGE: build-sdk.sh [-h] [-d] [-r] [-c] [-V] [-P] [-K] TARGET"
+    echo "OPTIONS:"
+    echo " -h Show this"
+    echo " -d Print scripts debug information"
+    echo " -r Re-run buildroot only if possible"
+    echo " -c Cleanup the curent state and start building from scratch"
+    echo " -V Using the Vagrant VM even on Linux"
+    echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
+    echo " -K Keep the vagrant VM running after exiting"
+    echo
+    echo "e.g. build-sdk.sh grisp2"
 }
 
 # Parse script's arguments
 OPTIND=1
-TARGET=""
-DEBUG="${DEBUG:-0}"
-CLEAN="false"
-while getopts "hdc" opt; do
+ARG_TARGET=""
+ARG_DEBUG="${DEBUG:-0}"
+ARG_REBUILD="false"
+ARG_CLEAN="false"
+ARG_FORCE_VAGRANT=false
+ARG_PROVISION_VAGRANT=false
+ARG_KEEP_VAGRANT=false
+while getopts "hdrcVPK" opt; do
     case "$opt" in
-    h)
-        show_usage
-        exit 0
-        ;;
     d)
-        DEBUG=1
+        ARG_DEBUG=1
+        ;;
+    r)
+        ARG_REBUILD=true
         ;;
     c)
-        CLEAN="true"
+        ARG_CLEAN="true"
+        ;;
+    V)
+        ARG_FORCE_VAGRANT=true
+        ;;
+    P)
+        ARG_PROVISION_VAGRANT=true
+        ;;
+    K)
+        ARG_KEEP_VAGRANT=true
+        ;;
+    *)
+        show_usage
+        exit 0
         ;;
     esac
 done
@@ -41,7 +63,7 @@ if [[ $# -eq 0 ]]; then
     show_usage
     exit 1
 fi
-TARGET="$1"
+ARG_TARGET="$1"
 shift
 if [[ $# > 0 ]]; then
     echo "ERROR: Too many arguments"
@@ -49,7 +71,32 @@ if [[ $# > 0 ]]; then
     exit 1
 fi
 
-set_debug_level $DEBUG
+source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
+set_debug_level "$ARG_DEBUG"
+
+if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
+    cd "$GLB_TOP_DIR"
+    VAGRANT_EXPERIMENTAL="disks" vagrant up
+    if [[ $ARG_PROVISION_VAGRANT == true ]]; then
+        vagrant provision
+    fi
+    NEW_ARGS=( )
+    if [[ $ARG_DEBUG -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-d" )
+    fi
+    if [[ $ARG_REBUILD == true ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-r" )
+    fi
+    if [[ $ARG_CLEAN == true ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
+    fi
+    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
+    if [[ $ARG_KEEP_VAGRANT == false ]]; then
+        trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
+    fi
+    vagrant exec /home/vagrant/build-sdk.sh "${NEW_ARGS[@]}"
+    exit $?
+fi
 
 if [[ $HOST_OS != "linux" ]]; then
     error 1 "${HOST_OS} is not support, only linux"
@@ -59,16 +106,11 @@ if [[ $HOST_ARCH != "x86_64" ]]; then
     error 1 "$HOST_ARCH is not supported, only x86_64"
 fi
 
-COMMON_SYSTEM_DIR="$GLB_TOP_DIR/system_common"
-TARGET_SYSTEM_DIR="$GLB_TOP_DIR/system_${TARGET}"
-COMMON_SYSTEM_DEFCONFIG="${COMMON_SYSTEM_DIR}/defconfig"
-TARGET_SYSTEM_DEFCONFIG="${TARGET_SYSTEM_DIR}/defconfig"
-COMMON_SYSTEM_VER="$( cat "${COMMON_SYSTEM_DIR}/VERSION" )"
-TARGET_SYSTEM_VER="$( cat "${TARGET_SYSTEM_DIR}/VERSION" )"
-HOST_DIR="${GLB_SDK_BASE_DIR}/${COMMON_SYSTEM_VER}/${TARGET}/${TARGET_SYSTEM_VER}/host"
+COMMON_SYSTEM_DEFCONFIG="${GLB_COMMON_SYSTEM_DIR}/defconfig"
+TARGET_SYSTEM_DEFCONFIG="${GLB_TARGET_SYSTEM_DIR}/defconfig"
 
-if [ ! -d "$TARGET_SYSTEM_DIR" ]; then
-    error 1 "Target ${TARGET} not supported, directory not found: ${TARGET_SYSTEM_DIR}"
+if [ ! -d "$GLB_TARGET_SYSTEM_DIR" ]; then
+    error 1 "Target ${GLB_TARGET_NAME} not supported, directory not found: ${GLB_TARGET_SYSTEM_DIR}"
 fi
 
 if [ ! -f "$COMMON_SYSTEM_DEFCONFIG" ]; then
@@ -87,20 +129,24 @@ CHECKPOINTS_DIR="${GLB_SYSTEM_BUILD_DIR}/checkpoints"
 BUILDROOT_MAKE_PARAMS=(
     -C "$BUILDROOT_PATH" \
     O="$BUILD_DIR" \
-    BR2_EXTERNAL="$COMMON_SYSTEM_DIR" \
+    BR2_EXTERNAL="$GLB_COMMON_SYSTEM_DIR" \
     BR2_DEFCONFIG="$FINAL_DEFCONFIG" \
     GRISP_TOP_DIR="$GLB_TOP_DIR" \
-    GRISP_COMMON_SYSTEM_DIR="$COMMON_SYSTEM_DIR" \
-    GRISP_TARGET_SYSTEM_DIR="$TARGET_SYSTEM_DIR" \
-    GRISP_TARGET_NAME="$TARGET" \
+    GRISP_COMMON_SYSTEM_DIR="$GLB_COMMON_SYSTEM_DIR" \
+    GRISP_TARGET_SYSTEM_DIR="$GLB_TARGET_SYSTEM_DIR" \
+    GRISP_TARGET_NAME="$GLB_TARGET_NAME" \
     GLB_DEBUG="$GLB_DEBUG"
-    # BR2_INSTRUMENTATION_SCRIPTS="$COMMON_SYSTEM_DIR/scripts/debug.sh"
+    # BR2_INSTRUMENTATION_SCRIPTS="$GLB_COMMON_SYSTEM_DIR/scripts/debug.sh"
 )
 
-    # DEFCONFIG="$TARGET_SYSTEM_DEFCONFIG" \
 
-if [[ $CLEAN == "true" ]]; then
+if [[ $ARG_CLEAN == "true" ]]; then
     rm -rf "$CHECKPOINTS_DIR"
+fi
+
+if [[ $ARG_REBUILD == "true" ]]; then
+    # Only remove the run_buildroot checkpoint so nothing is actually removed
+    rm -f "${CHECKPOINTS_DIR}/run_buildroot"
 fi
 
 prepare_environment()
@@ -114,16 +160,17 @@ prepare_environment()
     mkdir -p "$CHECKPOINTS_DIR"
     mkdir -p "$BUILD_DIR"
     sudo mkdir -p "$GLB_SDK_BASE_DIR"
-    sudo chown -R $USER:$USER "$GLB_SDK_BASE_DIR"
+    sudo chgrp $USER "$GLB_SDK_BASE_DIR"
+    sudo chmod 775 "$GLB_SDK_BASE_DIR"
 
     cat > "$FINAL_DEFCONFIG" << EOF
 ########## GENERATED BY BUILDING SCRIPT
-BR2_HOST_DIR="${HOST_DIR}"
+BR2_HOST_DIR="${GLB_SDK_HOST_DIR}"
 
-########## FROM COMMON SYSTEM ${COMMON_SYSTEM_VER}
+########## FROM COMMON SYSTEM ${GLB_COMMON_SYSTEM_VER}
 $( cat "$COMMON_SYSTEM_DEFCONFIG" )
 
-########## FROM ${TARGET} TARGET SYSTEM ${TARGET_SYSTEM_VER}
+########## FROM ${GLB_TARGET_NAME} TARGET SYSTEM ${GLB_TARGET_SYSTEM_VER}
 $( cat "$TARGET_SYSTEM_DEFCONFIG" )
 EOF
 }
@@ -170,39 +217,39 @@ checkout_source_code()
     ln -s "$extracted_dir" "$BUILDROOT_PATH"
 
     echo "Applying buildroot ${BR_VERSION} patches..."
-    "${BUILDROOT_PATH}/support/scripts/apply-patches.sh" "${BUILDROOT_PATH}" "$COMMON_SYSTEM_DIR/patches/buildroot"
+    "${BUILDROOT_PATH}/support/scripts/apply-patches.sh" "${BUILDROOT_PATH}" "$GLB_COMMON_SYSTEM_DIR/patches/buildroot"
 
     ln -sf "$GLB_SYSTEM_CACHE_DIR" "${BUILDROOT_PATH}/dl"
 }
 
 prepare_buildroot()
 {
-    echo "Configuring buildroot for $TARGET..."
+    echo "Configuring buildroot for $GLB_TARGET_NAME..."
     make "${BUILDROOT_MAKE_PARAMS[@]}" defconfig
 }
 
 configure_buildroot()
 {
-    echo "Configuring buildroot for $TARGET..."
+    echo "Configuring buildroot for $GLB_TARGET_NAME..."
     make "${BUILDROOT_MAKE_PARAMS[@]}" menuconfig
 }
 
 run_buildroot()
 {
-    echo "Run buildroot for $TARGET..."
+    echo "Run buildroot for $GLB_TARGET_NAME..."
     make "${BUILDROOT_MAKE_PARAMS[@]}"
 }
 
-make_system()
+make_sdk()
 {
-    echo "Run buildroot for $TARGET..."
-    make "${BUILDROOT_MAKE_PARAMS[@]}" system
+    echo "Run buildroot for $GLB_TARGET_NAME..."
+    make "${BUILDROOT_MAKE_PARAMS[@]}" grisp-sdk
 }
 
 checkpoint prepare_environment "$CHECKPOINTS_DIR"
 checkpoint checkout_source_code "$CHECKPOINTS_DIR"
 checkpoint prepare_buildroot "$CHECKPOINTS_DIR"
 checkpoint run_buildroot "$CHECKPOINTS_DIR"
-make_system
+make_sdk
 
 echo "Done"

@@ -12,7 +12,7 @@ VM_CORES=1
 
 Vagrant.configure('2') do |config|
 
-	required_plugins = %w( vagrant-disksize vagrant-scp vagrant-exec )
+	required_plugins = %w( vagrant-scp vagrant-exec )
     _retry = false
     required_plugins.each do |plugin|
         unless Vagrant.has_plugin? plugin
@@ -26,8 +26,7 @@ Vagrant.configure('2') do |config|
     end
 
 	config.vm.box = 'ubuntu/bionic64'
-	config.vm.disk :disk, size: "50GB", primary: true
-
+	config.vm.disk :disk, size: "30GB", primary: true
 	config.vm.provider :vmware_fusion do |v, override|
 		v.vmx['memsize'] = VM_MEMORY
 		v.vmx['numvcpus'] = VM_CORES
@@ -41,6 +40,7 @@ Vagrant.configure('2') do |config|
 		required_plugins.each do |plugin|
 		  system "vagrant plugin install #{plugin}" unless Vagrant.has_plugin? plugin
 		end
+
 	end
 
 	config.vm.provision 'shell' do |s|
@@ -70,6 +70,7 @@ Vagrant.configure('2') do |config|
 
 	config.vm.provision 'file', source: "build-toolchain.sh", destination: "/home/vagrant/build-toolchain.sh"
 	config.vm.provision 'file', source: "build-sdk.sh", destination: "/home/vagrant/build-sdk.sh"
+	config.vm.provision 'file', source: "build-firmware.sh", destination: "/home/vagrant/build-firmware.sh"
 	config.vm.provision 'file', source: "scripts", destination: "/home/vagrant/scripts"
 	config.vm.provision 'file', source: "toolchain", destination: "/home/vagrant/toolchain"
 	config.vm.provision 'file', source: "system_common", destination: "/home/vagrant/system_common"

@@ -6,23 +6,28 @@
 # Inspired by Nerves' Crosstool-NG build script:
 #   https://github.com/nerves-project/toolchains/blob/main/nerves_toolchain_ctng/build.sh
 
-# Usage: build-crosstool-ng.sh DEFCONFIG
-# e.g.   build-crosstool-ng.sh ../configs/grisp2_linux_x86_64_defconfig
+# Usage: build-crosstool-ng.sh TARGET_NAME DEFCONFIG
+# e.g.   build-crosstool-ng.sh grisp2 ../configs/grisp2_linux_x86_64_defconfig
 
 set -e
 
-source "${GLB_TOP_DIR:-$( dirname "$0" )/../..}/scripts/common.sh"
+TARGET="$1"
+SOURCE_DEFCONFIG="$2"
 
-SOURCE_DEFCONFIG="$1"
-
-if [[ -z $SOURCE_DEFCONFIG ]]; then
-    echo "USAGE: build-crosstool-ng.sh DEFCONFIG"
+usage()
+{
+    echo "USAGE: build-crosstool-ng.sh TARGET_NAME DEFCONFIG_FILE"
     exit 1
-fi
+}
+
+[[ -z $TARGET ]] && usage
+[[ -z $SOURCE_DEFCONFIG ]] && usage
 
 if [[ ! -e $SOURCE_DEFCONFIG ]]; then
     error 1 "Cannot find toolchain configuration $SOURCE_DEFCONFIG"
 fi
+
+source "${GLB_TOP_DIR:-$( dirname "$0" )/../..}/scripts/common.sh" "$TARGET"
 
 # Read our custom configuration from the defconfig file
 TOOLCHAIN_VERSION="$( read_defconfig_key "$SOURCE_DEFCONFIG" GLB_TOOLCHAIN_VERSION )"
@@ -47,7 +52,7 @@ CTNG_ARCHIVE_NAME="crosstool-ng-$CTNG_TAG.tar.xz"
 CTNG_ARCHIVE_FILE="${GLB_ARTEFACTS_DIR}/${CTNG_ARCHIVE_NAME}"
 WORK_DIR_IS_GLOBAL="false"
 CHECKPOINTS_DIR="${ROOT_DIR}/checkpoints"
-CLEAN="${CLEAN:-0}"
+CLEAN="${CLEAN:-false}"
 
 #### Environment preparation and validation ####
 
@@ -410,6 +415,6 @@ checkpoint prepare_toolchain_build "$CHECKPOINTS_DIR"
 checkpoint build_toolchain "$CHECKPOINTS_DIR"
 checkpoint save_build_info "$CHECKPOINTS_DIR"
 checkpoint cleanup_toolchain "$CHECKPOINTS_DIR"
-checkpoint finalize_toolchain "$CHECKPOINTS_DIR"
+finalize_toolchain
 
 echo "Done"

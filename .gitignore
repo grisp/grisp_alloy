@@ -1,5 +1,8 @@
 *.log
-.vagrant
+.vagrant*
 artefacts
 _cache
 _build
+samples/hello_grisp/c_src/*.o
+samples/hello_grisp/priv
+samples/hello_grisp/rebar.lock

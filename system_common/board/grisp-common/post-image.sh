@@ -2,9 +2,9 @@
 
 set -e
 
-source "$( dirname "$0" )/../../../scripts/common.sh"
+source "$( dirname "$0" )/../../../scripts/common.sh" "$GRISP_TARGET_NAME"
 
-FWUP_CONFIG="$GRISP_TARGET_SYSTEM_DIR/fwup.conf"
+FWUP_CONFIG="$GLB_TARGET_SYSTEM_DIR/fwup.conf"
 if [[ ! -f $FWUP_CONFIG ]]; then
     echo "ERROR: fwup config not found: $FWUP_CONFIG"
     exit 1
