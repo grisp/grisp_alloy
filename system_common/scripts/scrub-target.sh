@@ -19,6 +19,14 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
+# Some files need to be writable, we replace them by links to /tmp
+cd "${TARGET_DIR}/etc"
+rm resolv.conf
+ln -s ../tmp/resolve.conf resolv.conf
+cd "${TARGET_DIR}/dev"
+rm log
+ln -s ../tmp/log log
+
 # Removes dummy symlink targets, they were there just so vagrant do not
 # complains about broken links when provisioning the VM
 rm -rf "$TARGET_DIR"/tmp/resolv.conf
