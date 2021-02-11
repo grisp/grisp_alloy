@@ -220,3 +220,21 @@ drwxr-xr-x  9 root   root      97 sep  1 22:26 var
 $ sudo umount /tmp/hello_grisp_disk
 ```
 
+
+### Troubleshooting
+
+#### VMware errors
+
+If you get this error when starting a VM:
+
+```
+An error was encountered while generating the current list of
+available VMware adapters in use on this system.
+  Get http://localhost:49191/api/vmnet: GET http://localhost:49191/api/vmnet giving up after 5 attempts
+```
+
+you need to restart the vagrant-vmware-utility service:
+```sh
+$ sudo launchctl stop com.vagrant.vagrant-vmware-utility
+$ sudo launchctl start com.vagrant.vagrant-vmware-utility
+```
