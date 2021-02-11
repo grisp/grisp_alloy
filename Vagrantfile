@@ -7,8 +7,8 @@
 #VAGRANT_EXPERIMENTAL="disks"
 
 ### Change here for more memory/cores ###
-VM_MEMORY=2048
-VM_CORES=1
+VM_MEMORY=32768
+VM_CORES=4
 
 Vagrant.configure('2') do |config|
 
@@ -25,8 +25,9 @@ Vagrant.configure('2') do |config|
         exec "vagrant " + ARGV.join(' ')
     end
 
-	config.vm.box = 'ubuntu/bionic64'
+	config.vm.box = "hashicorp/bionic64"
 	config.vm.disk :disk, size: "30GB", primary: true
+
 	config.vm.provider :vmware_fusion do |v, override|
 		v.vmx['memsize'] = VM_MEMORY
 		v.vmx['numvcpus'] = VM_CORES
@@ -40,7 +41,6 @@ Vagrant.configure('2') do |config|
 		required_plugins.each do |plugin|
 		  system "vagrant plugin install #{plugin}" unless Vagrant.has_plugin? plugin
 		end
-
 	end
 
 	config.vm.provision 'shell' do |s|

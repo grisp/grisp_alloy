@@ -136,6 +136,7 @@ checkout_source_code()
 {
     echo "Retrieving Crosstool-NG source code..."
 
+    mkdir -p "$WORK_DIR" # In case it is in /tmp and the VM restarted
     cd "$WORK_DIR"
 
     rm -rf "$SOURCE_DIR_NAME"

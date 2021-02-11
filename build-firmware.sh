@@ -198,7 +198,8 @@ if [[ -f "$VCS_TAG_FILE" ]]; then
     PROJECT_VCS_TAG="$( cat "$VCS_TAG_FILE" )"
 fi
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
-rebar3 as prod release
+rm -rf "_build/"
+rebar3 as prod release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
 cd "_build/prod/rel"/*
 RELEASE_DIR="$( pwd )"
 
@@ -230,8 +231,10 @@ EOF
 echo "Updating base firmware image with Erlang release..."
 
 # Construct the proper path for the Erlang/OTP release
-mkdir -p "${FIRMWARE_DIR}/rootfs_overlay/srv/erlang"
-cp -R "${RELEASE_DIR}/." "${FIRMWARE_DIR}/rootfs_overlay/srv/erlang"
+ERLANG_OVERLAY_DIR="${FIRMWARE_DIR}/rootfs_overlay/srv/erlang"
+rm -rf "$ERLANG_OVERLAY_DIR"
+mkdir -p "$ERLANG_OVERLAY_DIR"
+cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
 
 # Clean up the Erlang release of all the files that we don't need.
 "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" \
