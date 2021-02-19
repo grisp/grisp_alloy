@@ -1,0 +1,4 @@
+config BR2_PACKAGE_CRYPTOAUTHLIB
+	bool "cryptoauthlib"
+	help
+	  https://github.com/MicrochipTech/cryptoauthlib
