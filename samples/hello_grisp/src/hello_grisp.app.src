@@ -5,7 +5,8 @@
   {mod, {hello_grisp_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    crypto
    ]},
   {env,[]},
   {modules, []},
