@@ -221,8 +221,10 @@ IMAGE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_FILENAME}"
 # Create a base priority file
 SQUASHFS_PRIORITIES="$FIRMWARE_DIR/squashfs.priority"
 cat > "$SQUASHFS_PRIORITIES" <<EOF
-sbin/init 32764
-etc/erlinit.config 32763
+boot/zImage 32764
+boot/oftree 32763
+sbin/init 32762
+etc/erlinit.config 32761
 EOF
 
 # TODO: Allows for custom project-defined priorities

@@ -14,6 +14,7 @@
 	compatible = "embeddedbrains,grisp2", "phytec,imx6ul-pcl063-emmc", "fsl,imx6ull";
 
 	aliases {
+		state = &state;
 #ifdef GRISP_IMX6ULL_Y0
 		/delete-property/ serial4;
 		/delete-property/ serial5;
@@ -23,6 +24,73 @@
 		/delete-property/ ethernet1;
 #endif /* GRISP_IMX6ULL_Y0 */
 	};
+
+	state: state {
+		magic = <0x4d433230>;
+		compatible = "barebox,state";
+		backend-type = "raw";
+		//backend = <&backend_state_sdhost>;
+		//backend-storage-type = "circular";
+		backend-stridesize = <0x800>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		bootstate {
+			#address-cells = <1>;
+			#size-cells = <1>;
+			a {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				remaining_attempts@0 {
+					reg = <0x0 0x4>;
+					type = "uint32";
+					default = <3>;
+				};
+				priority@4 {
+					reg = <0x4 0x4>;
+					type = "uint32";
+					default = <21>;
+				};
+			};
+
+			b {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				remaining_attempts@8 {
+					reg = <0x8 0x4>;
+					type = "uint32";
+					default = <3>;
+				};
+				priority@c {
+					reg = <0xc 0x4>;
+					type = "uint32";
+					default = <20>;
+				};
+			};
+			last_chosen@10 {
+				reg = <0x10 0x4>;
+				type = "uint32";
+			};
+		};
+	};
+
+/*
+	&sdhost {
+		pinctrl-names = "default";
+		pinctrl-0 = <&sdhost_gpio48>;
+		bus-width = <4>;
+		status = "okay";
+		partitions {
+			compatible = "fixed-partitions";
+			#size-cells = <1>;
+			#address-cells = <1>;
+			backend_state_sdhost: part@200000 {
+				label = "state_sdhost";
+				reg = <0x200000 0x200000>;
+			}
+		}
+	};
+*/
 
 	gpio_leds_grisp2: leds {
 		pinctrl-names = "default";
