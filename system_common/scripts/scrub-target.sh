@@ -23,14 +23,32 @@ fi
 cd "${TARGET_DIR}/etc"
 rm resolv.conf
 ln -s ../tmp/resolve.conf resolv.conf
+
 cd "${TARGET_DIR}/dev"
 rm log
 ln -s ../tmp/log log
 
-# Removes dummy symlink targets, they were there just so vagrant do not
-# complains about broken links when provisioning the VM
-rm -rf "$TARGET_DIR"/tmp/resolv.conf
-rm -rf "$TARGET_DIR"/tmp/log
+cd "${TARGET_DIR}/var"
+rm cache
+ln -s ../tmp cache
+rm lock
+ln -s ../tmp lock
+rm log
+ln -s ../tmp log
+rm run
+ln -s ../run run
+rm spool
+ln -s ../tmp spool
+rm tmp
+ln -s ../tmp tmp
+
+cd "${TARGET_DIR}/var/lib"
+rm -f misc
+ln -s ../../tmp misc
+
+cd "${TARGET_DIR}/"
+rm -f data
+ln -s root data
 
 # All of the Erlang libraries get included from the release (/srv/erlang) and
 # we only support starting releases. The following lines trim out the default
