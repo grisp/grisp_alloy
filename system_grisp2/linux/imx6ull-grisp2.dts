@@ -90,24 +90,6 @@
 		device-path-1 = &uboot_env_1;
 	};
 
-	&usdhc2 {
-		partitions {
-			compatible = "fixed-partitions";
-			#address-cells = <1>;
-			#size-cells = <1>;
-
-			uboot_env_0: partition@900000 {
-				label = "uboot-environment-0";
-				reg = <0x900000 0x10000>;
-			};
-
-			uboot_env_1: partition@910000 {
-				label = "uboot-environment-0";
-				reg = <0x910000 0x10000>;
-			};
-		  };
-	};
-
 	gpio_leds_grisp2: leds {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_gpioleds_grisp2>;
@@ -179,6 +161,24 @@
 		backend_update_eeprom: state@0 {
 			reg = <0x0 0x100>;
 			label = "update-eeprom";
+		};
+	};
+};
+
+&usdhc2 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		uboot_env_0: partition@900000 {
+			label = "uboot-environment-0";
+			reg = <0x900000 0x10000>;
+		};
+
+		uboot_env_1: partition@910000 {
+			label = "uboot-environment-0";
+			reg = <0x910000 0x10000>;
 		};
 	};
 };
