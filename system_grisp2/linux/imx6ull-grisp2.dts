@@ -23,17 +23,17 @@
 		/delete-property/ usbphy1;
 		/delete-property/ ethernet1;
 #endif /* GRISP_IMX6ULL_Y0 */
+		state = &state;
 	};
 
 	state: imx6ul_phytec_boot_state {
 		magic = <0x883b86a6>;
 		compatible = "barebox,state";
 		backend-type = "raw";
-		//backend = <&backend_update_eeprom>;
-		backend = <&barebox_env>;
+		backend = <&barebox_state_backend>;
 		backend-storage-type = "direct";
 		backend-stridesize = <54>;
-		status = "disabled";
+		status = "okay";
 
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -154,28 +154,42 @@
 /delete-node/ &fec2;
 #endif /* GRISP_IMX6ULL_Y0 */
 
+&i2c1 {
+	eeprom@52 {
+		partitions {
+			compatible = "fixed-partitions";
+			#size-cells = <1>;
+			#address-cells = <1>;
+			barebox_state_backend: state@0 {
+				reg = <0x0 0x100>;
+				label = "barebox-state-backend";
+			};
+		};
+	};
+};
+
 // &eeprom {
 // 	partitions {
 // 		compatible = "fixed-partitions";
 // 		#size-cells = <1>;
 // 		#address-cells = <1>;
-// 		backend_update_eeprom: state@0 {
+// 		barebox_state_backend: state@0 {
 // 			reg = <0x0 0x100>;
 // 			label = "update-eeprom";
 // 		};
 // 	};
 // };
 
-&mmc1 {
+&usdhc2 {
 	partitions {
 		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		barebox_env: partition@900000 {
-			label = "uboot-environment-0";
-			reg = <0x900000 0x10000>;
-		};
+		// barebox_state_backend: state@900000 {
+		// 	label = "barebox-environment";
+		// 	reg = <0x900000 0x10000>;
+		// };
 
 		uboot_env_0: partition@910000 {
 			label = "uboot-environment-0";
