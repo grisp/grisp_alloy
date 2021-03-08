@@ -29,7 +29,8 @@
 		magic = <0x883b86a6>;
 		compatible = "barebox,state";
 		backend-type = "raw";
-		backend = <&backend_update_eeprom>;
+		//backend = <&backend_update_eeprom>;
+		backend = <&barebox_env>;
 		backend-storage-type = "direct";
 		backend-stridesize = <54>;
 		status = "disabled";
@@ -153,32 +154,37 @@
 /delete-node/ &fec2;
 #endif /* GRISP_IMX6ULL_Y0 */
 
-&eeprom {
+// &eeprom {
+// 	partitions {
+// 		compatible = "fixed-partitions";
+// 		#size-cells = <1>;
+// 		#address-cells = <1>;
+// 		backend_update_eeprom: state@0 {
+// 			reg = <0x0 0x100>;
+// 			label = "update-eeprom";
+// 		};
+// 	};
+// };
+
+&mmc1 {
 	partitions {
 		compatible = "fixed-partitions";
-		#size-cells = <1>;
-		#address-cells = <1>;
-		backend_update_eeprom: state@0 {
-			reg = <0x0 0x100>;
-			label = "update-eeprom";
-		};
-	};
-};
-
-&usdhc2 {
-	partitions {
-		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		uboot_env_0: partition@900000 {
+		barebox_env: partition@900000 {
 			label = "uboot-environment-0";
 			reg = <0x900000 0x10000>;
 		};
 
-		uboot_env_1: partition@910000 {
+		uboot_env_0: partition@910000 {
 			label = "uboot-environment-0";
 			reg = <0x910000 0x10000>;
+		};
+
+		uboot_env_1: partition@920000 {
+			label = "uboot-environment-0";
+			reg = <0x920000 0x10000>;
 		};
 	};
 };
