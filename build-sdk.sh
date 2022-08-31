@@ -8,7 +8,7 @@ BR_VERSION="2020.08"
 
 show_usage()
 {
-    echo "USAGE: build-sdk.sh [-h] [-d] [-r] [-c] [-V] [-P] [-K] TARGET"
+    echo "USAGE: build-sdk.sh [-h] [-d] [-r] [-c] [-V] [-P] [-K] [-p PAKAGE_PREFIX] TARGET"
     echo "OPTIONS:"
     echo " -h Show this."
     echo " -d Print scripts debug information."
@@ -18,6 +18,7 @@ show_usage()
     echo " -V Using the Vagrant VM even on Linux."
     echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM."
     echo " -K Keep the vagrant VM running after exiting."
+    echo " -p Clean given package prefix, can be used with -r to rebuild a given package"
     echo
     echo "e.g. build-sdk.sh grisp2"
 }
@@ -31,7 +32,9 @@ ARG_CLEAN="false"
 ARG_FORCE_VAGRANT=false
 ARG_PROVISION_VAGRANT=false
 ARG_KEEP_VAGRANT=false
-while getopts "hdrcVPK" opt; do
+ARG_CLEAN_PACKAGES=(  )
+
+while getopts "hdrcVPKp:" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
@@ -51,6 +54,10 @@ while getopts "hdrcVPK" opt; do
     K)
         ARG_KEEP_VAGRANT=true
         ;;
+    p)
+        ARG_CLEAN_PACKAGES+=( ${OPTARG} )
+        ;;
+
     *)
         show_usage
         exit 0
@@ -91,6 +98,9 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_CLEAN == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
     fi
+    for p in ${ARG_CLEAN_PACKAGES[@]}; do
+        NEW_ARGS=( ${NEW_ARGS[@]} "-p" "$p" )
+    done
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
@@ -151,6 +161,11 @@ if [[ $ARG_REBUILD == "true" ]]; then
     rm -f "${CHECKPOINTS_DIR}/prepare_buildroot"
     rm -f "${CHECKPOINTS_DIR}/run_buildroot"
 fi
+
+for p in ${ARG_CLEAN_PACKAGES[@]}; do
+    echo rm -rf ${BUILD_DIR}/build/$p*
+    rm -rf ${BUILD_DIR}/build/$p*
+done
 
 prepare_environment()
 {
