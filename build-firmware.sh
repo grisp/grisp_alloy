@@ -251,6 +251,20 @@ cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
 
 # TODO: Allows for custom project-defined overlay
 
+# Update the os-release file
+OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
+mkdir -p $( dirname $OS_RELEASE_FILE )
+cat << EOF > "$OS_RELEASE_FILE"
+NAME="GRISP2-${PROJECT_NAME}"
+PRETTY_NAME="GRISP2-${PROJECT_NAME}"
+ID=grisp2
+GRISP2_APP_NAME=${PROJECT_NAME}
+GRISP2_APP_VERSION=${PROJECT_VCS_TAG}
+GRISP2_BUILDER_VERSION=${GLB_VCS_TAG}
+EOF
+
+cat $OS_RELEASE_FILE
+
 # Merge the Erlang/OTP release onto the base image
 "${GLB_COMMON_SYSTEM_DIR}/scripts/merge-squashfs.sh" \
     "$SDK_ROOTFS" "${FIRMWARE_DIR}/combined.squashfs" \
