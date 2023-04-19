@@ -6,7 +6,7 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET ERLANG_PROJECT_DIR"
+    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET ERLANG_PROJECT_DIR [REBAR3_PROFILE]"
     echo "OPTIONS:"
     echo " -h Show this"
     echo " -d Print scripts debug information"
@@ -68,6 +68,12 @@ if [[ $# -eq 0 ]]; then
 fi
 ARG_PROJECT="$1"
 shift
+if [[ $# > 0 ]]; then
+    ARG_PROJECT_PROFILE="$1"
+    shift
+else
+    ARG_PROJECT_PROFILE="default"
+fi
 if [[ $# > 0 ]]; then
     echo "ERROR: Too many arguments"
     show_usage
@@ -138,6 +144,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
     NEW_ARGS=( ${NEW_ARGS[@]} "$VAGRANT_PROJECT_DIR" )
+    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_PROJECT_PROFILE" )
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
@@ -199,8 +206,8 @@ if [[ -f "$VCS_TAG_FILE" ]]; then
 fi
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
 rm -rf "_build/"
-rebar3 as prod release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
-cd "_build/prod/rel"/*
+rebar3 as "$ARG_PROJECT_PROFILE" release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
+cd "_build/${ARG_PROJECT_PROFILE}/rel"/*
 RELEASE_DIR="$( pwd )"
 
 APP_NAME="$( basename "$RELEASE_DIR" )"
