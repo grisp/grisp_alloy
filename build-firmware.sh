@@ -76,8 +76,8 @@ fi
 
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
 
-if [[ $HOST_ARCH != "x86_64" ]]; then
-    error 1 "$HOST_ARCH is not supported, only x86_64"
+if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64" ]]; then
+    error 1 "$HOST_ARCH is not supported, only x86_64, aarch64 or arm64"
 fi
 
 if [[ ! -d $ARG_PROJECT ]]; then

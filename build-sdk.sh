@@ -113,8 +113,8 @@ if [[ $HOST_OS != "linux" ]]; then
     error 1 "${HOST_OS} is not support, only linux"
 fi
 
-if [[ $HOST_ARCH != "x86_64" ]]; then
-    error 1 "$HOST_ARCH is not supported, only x86_64"
+if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" ]]; then
+    error 1 "$HOST_ARCH is not supported, only x86_64 or aarch64"
 fi
 
 COMMON_SYSTEM_DEFCONFIG="${GLB_COMMON_SYSTEM_DIR}/defconfig"
