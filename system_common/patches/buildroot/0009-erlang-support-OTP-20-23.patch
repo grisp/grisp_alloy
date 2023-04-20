@@ -1004,7 +1004,7 @@ index 3c2f039496..00ffe5ec9d 100644
 -md5 b2b48dad6e69c1e882843edbf2abcfd3  otp_src_22.2.tar.gz
 -sha256 89c2480cdac566065577c82704a48e10f89cf2e6ca5ab99e1cf80027784c678f  otp_src_22.2.tar.gz
 +# sha256 locally computed
-+sha256 8094484d94bce21d76f3a6c6137098839e7bc121e170c08b472f980296684ac9  OTP-23.1.1.tar.gz
++sha256 5f0284b79e398b98a8b7e0c080e97bb88f23cb25fcd7c1879489809d79b2ccd8  OTP-23.3.4.10.tar.gz
 +sha256 12d628c2d0bdc0cf1f1ec56bd3c4da697510b25ab744d45872f63fefdd1a7680  OTP-22.3.4.1.tar.gz
 +sha256 a5d558cb189e026cd45114ffa9bb52752945e7e450c6e7e396b2e626e5fffcc8  OTP-21.3.8.4.tar.gz
 +sha256 897dd8b66c901bfbce09ed64e0245256aca9e6e9bdf78c36954b9b7117192519  OTP-20.3.8.9.tar.gz
@@ -1027,7 +1027,7 @@ index 836edf9bce..0fef4e48c3 100644
 +ifeq ($(BR2_PACKAGE_ERLANG_22),y)
 +ERLANG_VERSION = 22.3.4.1
 +else
-+ERLANG_VERSION = 23.1.1
++ERLANG_VERSION = 23.3.4.10
 +endif
 +endif
 +endif
@@ -1049,7 +1049,7 @@ index 836edf9bce..0fef4e48c3 100644
 +ifeq ($(BR2_PACKAGE_ERLANG_21),y)
 +ERLANG_EI_VSN = 3.13.2
 +else
-+ERLANG_EI_VSN = 4.0.1
++ERLANG_EI_VSN = 4.0.3.1
 +endif
 +endif
 +endif
