@@ -25,8 +25,18 @@ Vagrant.configure('2') do |config|
         exec "vagrant " + ARGV.join(' ')
     end
 
-	config.vm.box = "uwbbi/bionic-arm64"
 	config.vm.disk :disk, size: "64GB", primary: true
+
+	if `uname -m`.strip == "arm64"
+		config.vm.box = "uwbbi/bionic-arm64"
+		libc = "libc6:arm64"
+		repos = "dpkg --add-architecture arm64
+				 dpkg --add-architecture x86-64"
+	else
+		config.vm.box = "hashicorp/bionic64"
+		libc = "libc6:i386"
+		repos = "dpkg --add-architecture i386"
+	end
 
 	config.vm.provider :vmware_fusion do |v, override|
 		v.gui = true
@@ -61,12 +71,11 @@ Vagrant.configure('2') do |config|
 
 	config.vm.provision 'shell', privileged: true, inline:
 		"sed -i 's|deb http://us.archive.ubuntu.com/ubuntu/|deb mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list
-		dpkg --add-architecture arm64
-		dpkg --add-architecture x86-64
+		#{repos}
 		apt-get -q update
 		apt-get purge -q -y snapd lxcfs lxd ubuntu-core-launcher snap-confine
 		apt-get -q -y install mc pv build-essential libncurses5-dev \
-			git bzr cvs mercurial subversion libc6:arm64 unzip bc \
+			git bzr cvs mercurial subversion #{libc} unzip bc \
 			bison flex gperf libncurses5-dev texinfo help2man \
 			libssl-dev gawk libtool-bin automake lzip python3
 		apt-get -q -y autoremove
