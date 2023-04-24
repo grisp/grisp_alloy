@@ -10,6 +10,12 @@
 VM_MEMORY=16384
 VM_CORES=8
 
+# Tells us if the host system is an Apple Silicon Mac running Rosetta
+def is_arm64()
+  `uname -m` == "arm64" || `/usr/bin/arch -64 sh -c "sysctl -in sysctl.proc_translated"`.strip() == "0"
+end
+
+
 Vagrant.configure('2') do |config|
 
     required_plugins = %w( vagrant-scp vagrant-exec )
@@ -27,7 +33,7 @@ Vagrant.configure('2') do |config|
 
     config.vm.disk :disk, size: "64GB", primary: true
 
-    if `uname -m`.strip == "arm64"
+    if is_arm64()
         config.vm.box = "uwbbi/bionic-arm64"
         libc = "libc6:arm64"
         repos = "dpkg --add-architecture arm64
