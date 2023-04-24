@@ -58,7 +58,7 @@ $ ./build-sdk.sh grisp2
 Both the toolchain and the SDK must have been built previously.
 
 ```sh
-$ ./build-firmware.sh TARGET_NAME ERLANG_PROJECT_DIRECTORY
+$ ./build-firmware.sh TARGET_NAME ERLANG_PROJECT_DIRECTORY [REBAR3_PROFILE]
 ```
 
 e.g.
@@ -70,7 +70,7 @@ $ ./build-firmware.sh grisp2 samples/hello_grisp
 In addition to the firmware, an image file can be generated:
 
 ```sh
-$ ./build-firmware.sh -i TARGET_NAME ERLANG_PROJECT_DIRECTORY
+$ ./build-firmware.sh -i TARGET_NAME ERLANG_PROJECT_DIRECTORY [REBAR3_PROFILE]
 ```
 
 e.g.

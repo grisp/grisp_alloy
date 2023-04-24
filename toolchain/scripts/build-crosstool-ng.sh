@@ -149,6 +149,7 @@ checkout_source_code()
             git checkout "$CTNG_TAG"
             cd ..
             $TAR -c -J --exclude=.git -f "$CTNG_ARCHIVE_FILE" "$SOURCE_DIR_NAME"
+            cd "$SOURCE_DIR_NAME"
         else
             curl -L -o "$CTNG_ARCHIVE_FILE" "http://crosstool-ng.org/download/crosstool-ng/$CTNG_ARCHIVE_NAME"
             $TAR xf "$CTNG_ARCHIVE_FILE"

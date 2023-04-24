@@ -6,7 +6,7 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET ERLANG_PROJECT_DIR"
+    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET ERLANG_PROJECT_DIR [REBAR3_PROFILE]"
     echo "OPTIONS:"
     echo " -h Show this"
     echo " -d Print scripts debug information"
@@ -69,6 +69,12 @@ fi
 ARG_PROJECT="$1"
 shift
 if [[ $# > 0 ]]; then
+    ARG_PROJECT_PROFILE="$1"
+    shift
+else
+    ARG_PROJECT_PROFILE="default"
+fi
+if [[ $# > 0 ]]; then
     echo "ERROR: Too many arguments"
     show_usage
     exit 1
@@ -76,8 +82,8 @@ fi
 
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
 
-if [[ $HOST_ARCH != "x86_64" ]]; then
-    error 1 "$HOST_ARCH is not supported, only x86_64"
+if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64" ]]; then
+    error 1 "$HOST_ARCH is not supported, only x86_64, aarch64 or arm64"
 fi
 
 if [[ ! -d $ARG_PROJECT ]]; then
@@ -138,6 +144,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
     NEW_ARGS=( ${NEW_ARGS[@]} "$VAGRANT_PROJECT_DIR" )
+    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_PROJECT_PROFILE" )
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
@@ -199,8 +206,8 @@ if [[ -f "$VCS_TAG_FILE" ]]; then
 fi
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
 rm -rf "_build/"
-rebar3 as prod release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
-cd "_build/prod/rel"/*
+rebar3 as "$ARG_PROJECT_PROFILE" release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
+cd "_build/${ARG_PROJECT_PROFILE}/rel"/*
 RELEASE_DIR="$( pwd )"
 
 APP_NAME="$( basename "$RELEASE_DIR" )"
@@ -243,6 +250,20 @@ cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
     "$FIRMWARE_DIR/rootfs_overlay/srv/erlang"
 
 # TODO: Allows for custom project-defined overlay
+
+# Update the os-release file
+OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
+mkdir -p $( dirname $OS_RELEASE_FILE )
+cat << EOF > "$OS_RELEASE_FILE"
+NAME="GRISP2-${PROJECT_NAME}"
+PRETTY_NAME="GRISP2-${PROJECT_NAME}"
+ID=grisp2
+GRISP2_APP_NAME=${PROJECT_NAME}
+GRISP2_APP_VERSION=${PROJECT_VCS_TAG}
+GRISP2_BUILDER_VERSION=${GLB_VCS_TAG}
+EOF
+
+cat $OS_RELEASE_FILE
 
 # Merge the Erlang/OTP release onto the base image
 "${GLB_COMMON_SYSTEM_DIR}/scripts/merge-squashfs.sh" \

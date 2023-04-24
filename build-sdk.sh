@@ -113,8 +113,8 @@ if [[ $HOST_OS != "linux" ]]; then
     error 1 "${HOST_OS} is not support, only linux"
 fi
 
-if [[ $HOST_ARCH != "x86_64" ]]; then
-    error 1 "$HOST_ARCH is not supported, only x86_64"
+if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" ]]; then
+    error 1 "$HOST_ARCH is not supported, only x86_64 or aarch64"
 fi
 
 COMMON_SYSTEM_DEFCONFIG="${GLB_COMMON_SYSTEM_DIR}/defconfig"
@@ -146,6 +146,7 @@ BUILDROOT_MAKE_PARAMS=(
     GRISP_COMMON_SYSTEM_DIR="$GLB_COMMON_SYSTEM_DIR" \
     GRISP_TARGET_SYSTEM_DIR="$GLB_TARGET_SYSTEM_DIR" \
     GRISP_TARGET_NAME="$GLB_TARGET_NAME" \
+    GRISP_BUILD_HOST_ARCH="$HOST_ARCH" \
     GLB_DEBUG="$GLB_DEBUG"
     # BR2_INSTRUMENTATION_SCRIPTS="$GLB_COMMON_SYSTEM_DIR/scripts/debug.sh"
 )
