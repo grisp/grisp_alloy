@@ -1,3 +1,5 @@
+.pki-key
+.DS_Store
 *.log
 .vagrant*
 artefacts
