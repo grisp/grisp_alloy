@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2016 Frank Hunleth
+# SPDX-FileCopyrightText: 2017 Justin Schneck
+# SPDX-FileCopyrightText: 2017 rradu
+# SPDX-FileCopyrightText: 2024 Ben Youngblood
+# SPDX-FileCopyrightText: 2024 Rockwell Schrock
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
 # Merge an overlay directory into a squashfs
 #
@@ -10,6 +18,10 @@ set -e
 LC_ALL=C
 LANG=C
 export LC_ALL LANG
+
+# Cache the location of sed due to very slow path searches on OSX if anything
+# under /home is in the path.
+SED="$(command -v sed)"
 
 # Account for Mac differences
 if [[ "$(uname)" = "Darwin" ]]; then
@@ -23,7 +35,7 @@ if [[ "$(uname)" = "Darwin" ]]; then
         exit 1
     fi
 else
-    STAT=stat
+    STAT="$(command -v stat)"
 fi
 
 # This implementation might be slow
@@ -52,12 +64,12 @@ perm_to_num() {
 }
 
 owner_to_uid_gid() {
-    echo "$1" | sed -e "s/\// /g"
+    echo "$1" | "$SED" -e "s/\// /g"
 }
 
 get_path() {
     # trim the squashfs-root and escape any spaces
-    echo "$*" | sed -e 's/squashfs-root//' -e 's/ /\\ /g'
+    echo "$*" | "$SED" -e 's/squashfs-root//' -e 's/ /\\ /g'
 }
 
 device_file() {
@@ -68,10 +80,10 @@ device_file() {
     # major,minor or major, minor. Remove the comma and account
     # for the optional space.
     if [[ $3 =~ ,.+ ]]; then
-        major_minor=$(echo "$3" | sed -e 's/,/ /')
+        major_minor=$(echo "$3" | "$SED" -e 's/,/ /')
         filename=$6
     else
-        major_minor="$(echo "$3" | sed -e 's/,/ /') $4"
+        major_minor="$(echo "$3" | "$SED" -e 's/,/ /') $4"
         filename=$7
     fi
 
@@ -84,16 +96,23 @@ symlink_file() {
 }
 
 directory_file() {
-    pathname=$(get_path "$6")
+    perm="$1"
+    owner="$2"
+    shift 5
+    pathname="$(get_path "$@")"
     # mksquashfs doesn't support setting permissions and ownership
     # on the root directory
-    if [[ ! -z $pathname ]]; then
-        echo "$pathname m $(perm_to_num "$1") $(owner_to_uid_gid "$2")"
+    if [[ ! -z "$pathname" ]]; then
+        echo "$pathname m $(perm_to_num "$perm") $(owner_to_uid_gid "$owner")"
     fi
 }
 
 regular_file() {
-    echo "$(get_path "$6") m $(perm_to_num "$1") $(owner_to_uid_gid "$2")"
+    perm="$1"
+    owner="$2"
+    shift 5
+    pathname="$(get_path "$@")"
+    echo "$pathname m $(perm_to_num "$perm") $(owner_to_uid_gid "$owner")"
 }
 
 unsquash_to_pseudofile() {
@@ -125,11 +144,11 @@ unsquash_to_pseudofile() {
 find_to_pseudofile() {
     inputdir=$1
     while read -r mode path; do
-        path=$(echo "$path" | sed -e "s^$inputdir^^" -e "s/ /\\\\ /g")
+        path=$(echo "$path" | "$SED" -e "s^$inputdir^^" -e "s/ /\\\\ /g")
         if [[ ! -z $path ]]; then
             echo "$path m $mode 0 0"
         fi
-    done < <(find "$inputdir" -exec $STAT -c "%a %n" "{}" ";")
+    done < <(find "$inputdir" -exec "$STAT" -c "%a %n" "{}" ";")
 }
 
 
@@ -164,7 +183,13 @@ if [[ ! -d $overlay_dir ]]; then
     exit 1
 fi
 
-workdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'merge-squashfs-tmp')
+# Use $TMPDIR if it's set
+if [[ -e "$TMPDIR" ]]; then
+    workdir=$(mktemp -d "$TMPDIR/merge-squashfs-tmp.XXXXXXXXXX")
+else
+    workdir=$(mktemp -d)
+fi
+
 pushd "$workdir" >/dev/null
 
 unsquash_to_pseudofile "$input_squashfs" >pseudofile.in
@@ -173,7 +198,7 @@ find_to_pseudofile "$overlay_dir" >>pseudofile.in
 # remove repeated entries to avoid warnings from mksquashfs
 awk '!x[$1]++' pseudofile.in > pseudofile
 
-unsquashfs "$input_squashfs" >/dev/null 2>/dev/null
+unsquashfs -f "$input_squashfs" >/dev/null
 cp -Rf "$overlay_dir/." "$workdir/squashfs-root"
 mksquashfs squashfs-root "$output_squashfs" -pf pseudofile -sort "$squashfs_priorities" -noappend -no-recovery -no-progress $NERVES_MKSQUASHFS_FLAGS
 

@@ -6,7 +6,7 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET ERLANG_PROJECT_DIR [REBAR3_PROFILE]"
+    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET ERLANG_PROJECT_DIR [REBAR3_PROFILE] [SERIAL_NUMBER]"
     echo "OPTIONS:"
     echo " -h Show this"
     echo " -d Print scripts debug information"
@@ -26,7 +26,7 @@ ARG_CLEAN=false
 ARG_GEN_IMAGE=false
 ARG_FORCE_VAGRANT=false
 ARG_KEEP_VAGRANT=false
-while getopts "hdciVPK" opt; do
+while getopts "hdcistVPK" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
@@ -73,6 +73,14 @@ if [[ $# > 0 ]]; then
     shift
 else
     ARG_PROJECT_PROFILE="default"
+fi
+if [[ $# > 0 ]]; then
+    ARG_SERIAL_DEFINED=true
+    ARG_SERIAL="$1"
+    shift
+else
+    ARG_SERIAL_DEFINED=false
+    ARG_SERIAL="00000000"
 fi
 if [[ $# > 0 ]]; then
     echo "ERROR: Too many arguments"
@@ -145,6 +153,11 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
     NEW_ARGS=( ${NEW_ARGS[@]} "$VAGRANT_PROJECT_DIR" )
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_PROJECT_PROFILE" )
+
+    if [[ $ARG_SERIAL_DEFINED == true ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_SERIAL" )
+    fi
+
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
@@ -163,9 +176,9 @@ if [[ ! -d $GLB_SDK_DIR ]]; then
         error 1 "SDK ${GLB_SDK_FILENAME} not found in ${GLB_ARTEFACTS_DIR}"
     fi
     if [[ ! -d $GLB_SDK_BASE_DIR ]]; then
-        sudo mkdir -p "$GLB_SDK_BASE_DIR"
-        sudo chgrp "$USER" "$GLB_SDK_BASE_DIR"
-        sudo chmod 775 "$GLB_SDK_BASE_DIR"
+        mkdir -p "$GLB_SDK_BASE_DIR"
+        chgrp "$USER" "$GLB_SDK_BASE_DIR"
+        chmod 775 "$GLB_SDK_BASE_DIR"
     fi
     tar -C "$GLB_SDK_BASE_DIR" --strip-components=1 -xzf \
         "${GLB_ARTEFACTS_DIR}/${GLB_SDK_FILENAME}"
@@ -227,14 +240,12 @@ IMAGE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_FILENAME}"
 
 # Create a base priority file
 SQUASHFS_PRIORITIES="$FIRMWARE_DIR/squashfs.priority"
-cat > "$SQUASHFS_PRIORITIES" <<EOF
+cat >    "$SQUASHFS_PRIORITIES" <<EOF
 boot/zImage 32764
 boot/oftree 32763
 sbin/init 32762
 etc/erlinit.config 32761
 EOF
-
-# TODO: Allows for custom project-defined priorities
 
 # Update the file system bundle
 echo "Updating base firmware image with Erlang release..."
@@ -249,15 +260,13 @@ cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
 "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" \
     "$FIRMWARE_DIR/rootfs_overlay/srv/erlang"
 
-# TODO: Allows for custom project-defined overlay
-
 # Update the os-release file
 OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
 mkdir -p $( dirname $OS_RELEASE_FILE )
 cat << EOF > "$OS_RELEASE_FILE"
-NAME="GRISP2-${PROJECT_NAME}"
-PRETTY_NAME="GRISP2-${PROJECT_NAME}"
-ID=grisp2
+NAME=${OS_RELEASE_NAME:="${GLB_TARGET_NAME}-${PROJECT_NAME}"}
+PRETTY_NAME=${OS_RELEASE_PRETTY_NAME:="${GLB_TARGET_NAME}-${PROJECT_NAME}"}
+ID=${OS_RELEASE_ID:=${GLB_TARGET_NAME}}
 GRISP2_APP_NAME=${PROJECT_NAME}
 GRISP2_APP_VERSION=${PROJECT_VCS_TAG}
 GRISP2_BUILDER_VERSION=${GLB_VCS_TAG}
@@ -273,6 +282,7 @@ cat $OS_RELEASE_FILE
 # Build the firmware image
 echo "Building firmware $FIRMWARE_FILENAME..."
 mkdir -p "$( dirname "$FIRMWARE_FILE" )"
+
 GRISP_FW_DESCRIPTION="$APP_NAME" \
 GRISP_FW_VERSION="${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_SYSTEM_VER}-${APP_VER}" \
 GRISP_FW_PLATFORM="$GLB_TARGET_NAME" \

@@ -1,7 +1,16 @@
-#!/bin/sh
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2016 Arjan Scherpenisse
+# SPDX-FileCopyrightText: 2016 Frank Hunleth
+# SPDX-FileCopyrightText: 2017 Justin Schneck
+# SPDX-FileCopyrightText: 2021 Connor Rigby
+# SPDX-FileCopyrightText: 2021 mayl
+# SPDX-FileCopyrightText: 2024 Jon Carstens
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
 # Remove or minimize files in an Erlang/OTP release directory
-# in preparation for use packaging in a Grisp firmware image.
+# in preparation for use packaging in a Nerves firmware image.
 #
 # scrub-otp-release.sh <Erlang/OTP release directory>
 
@@ -25,18 +34,17 @@ fi
 STRIP="$CROSSCOMPILE-strip"
 READELF="$CROSSCOMPILE-readelf"
 if [ ! -e "$STRIP" ] || [ ! -e "$READELF" ]; then
-    echo "$SCRIPT_NAME: ERROR: can't find strip and readelf commands for cross-compilation"
-    echo "  Expecting \$CROSSCOMPILE to be set. Did you source grisp-env.sh ?"
+    echo "$SCRIPT_NAME: ERROR: Expecting \$CROSSCOMPILE to be set. Did you source nerves-env.sh?"
+    echo "  \"mix firmware\" should do this for you. Please file an issue is using \"mix\"."
+    echo "  Additional information:"
     echo "    strip=$STRIP"
     echo "    readelf=$READELF"
-    echo
-  exit 1
+    exit 1
 fi
 
 # Clean up the Erlang release of all the files that we don't need.
 # The user should create their releases without source code
 # unless they want really big images..
-rm -fr "${RELEASE_DIR:?}/bin" "$RELEASE_DIR"/erts-*
 
 # Delete empty directories
 find "$RELEASE_DIR" -type d -empty -delete
@@ -50,8 +58,6 @@ find "$RELEASE_DIR/releases" \( -name "*.sh" \
                                  -o -name "*.bat" \
                                  -o -name "*.ps1" \
                                  -o -name "*gz" \
-                                 -o -name "start.boot" \
-                                 -o -name "start_clean.boot" \
                                  -o -name "*.script" \
                                  \) -delete
 
@@ -71,6 +77,8 @@ executable_type()
 
         if [ -z "$ELF_MACHINE" ]; then
             echo "$SCRIPT_NAME: ERROR: Didn't expect empty machine field in ELF header in $FILE." 1>&2
+            echo "   Try running '$READELF -h $FILE' and" 1>&2
+            echo "   and create an issue at https://github.com/nerves-project/nerves_system_br/issues." 1>&2
             exit 1
         fi
         echo "readelf:$ELF_MACHINE;$ELF_FLAGS"
@@ -103,14 +111,40 @@ get_expected_executable_type()
     rm "$tmpfile"
 }
 
+# searches for a file named `.noscrub`. If found
+# filter that folder out of the `EXECUTABLES` list later
+NOSCRUBS=$(find "$RELEASE_DIR" -name ".noscrub" -exec dirname {} \;)
+
+noscrub()
+{
+    # Using `find` across various MacOS systems differs which may
+    # cause errors. So we manually cycling throught the noscrub
+    # list until finding a match which may be less performant
+    # than `find`, but reduces errors. The noscrub list should
+    # generally be small and is only called at the last moment
+    # after we've determined the file type is different
+    for noscrub in $NOSCRUBS; do
+        if [[ "$1" == "$noscrub"* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 EXECUTABLES=$(find "$RELEASE_DIR" -type f -perm -100)
 EXPECTED_TYPE=$(get_expected_executable_type)
 
 for EXECUTABLE in $EXECUTABLES; do
     TYPE=$(executable_type "$EXECUTABLE")
+
     if [ "$TYPE" != "portable" ]; then
         # Verify that the executable was compiled for the target
         if [ "$TYPE" != "$EXPECTED_TYPE" ]; then
+            if noscrub "$EXECUTABLE"; then
+                # Skip any errors or attempts to strip
+                continue
+            fi
             echo "$SCRIPT_NAME: ERROR: Unexpected executable format for '$EXECUTABLE'"
             echo
             echo "Got:"
@@ -122,11 +156,37 @@ for EXECUTABLE in $EXECUTABLES; do
             echo "This file was compiled for the host or a different target and probably"
             echo "will not work."
             echo
+            echo "Check the following:"
+            echo
+            echo "1. If this file comes from a library, that library may be compiling to"
+            echo "   its source directory under \`deps\`. Manually clean up the source"
+            echo "   directory and try building again."
+            echo
+            echo "2. Are you using a path dependency in your mix deps? If so, run"
+            echo "   'mix clean' in that directory to avoid pulling in any of its"
+            echo "   build products."
+            echo
+            echo "3. Did you recently upgrade or change your Nerves system? If so,"
+            echo "   try cleaning and rebuilding this project and its deps."
+            echo
+            echo "4. Are you building outside of Nerves' mix integration? If so,"
+            echo "   make sure that you've sourced 'nerves-env.sh'."
+            echo
+            echo "If you are very sure you know what you are doing, you may place an empty"
+            echo "file in the same directory as the offending file(s) called '.noscrub'."
+            echo "This will explicitly disable scrubbing for that directory."
+            echo
+            echo "If you're still having trouble, please file an issue on Github"
+            echo "at https://github.com/nerves-project/nerves_system_br/issues."
+            echo
             exit 1
         fi
 
         # Strip debug information from ELF binaries
         # Symbols are still available to the user in the release directory.
-        $STRIP "$EXECUTABLE"
+        chmod +w "$EXECUTABLE"
+        if ! $STRIP "$EXECUTABLE"; then
+            echo "WARNING: Can't remove debug symbols from $EXECUTABLE. This is expected for precompiled Rust."
+        fi
     fi
 done

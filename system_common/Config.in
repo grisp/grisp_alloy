@@ -20,9 +20,9 @@ config GRISP_TARGET_NAME
 source "$BR2_EXTERNAL_GRISP_PATH/package/erlinit/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/nbtty/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/grisp-config/Config.in"
-source "$BR2_EXTERNAL_GRISP_PATH/package/ply/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/erlang-rebar3/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/cryptoauthlib/Config.in"
+source "$BR2_EXTERNAL_GRISP_PATH/package/grisp-updater-tools/Config.in.host"
 
 # Load user options
 menu "User-provided options"

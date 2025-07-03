@@ -4,47 +4,29 @@
 #
 ################################################################################
 
-#VAGRANT_EXPERIMENTAL="disks"
+VM_MEMORY = ENV.fetch('VM_MEMORY', 16 * 1024)   # MB
+VM_CORES  = ENV.fetch('VM_CORES', 8).to_i
 
-### Change here for more memory/cores ###
-VM_MEMORY=16384
-VM_CORES=8
-
-# Tells us if the host system is an Apple Silicon Mac running Rosetta
-def is_arm64()
-  `uname -m` == "arm64" || `/usr/bin/arch -64 sh -c "sysctl -in sysctl.proc_translated"`.strip() == "0"
-end
-
+def is_arm64?; RbConfig::CONFIG['host_cpu'] == 'arm64'; end
 
 Vagrant.configure('2') do |config|
 
-    required_plugins = %w( vagrant-scp vagrant-exec )
-    _retry = false
-    required_plugins.each do |plugin|
-        unless Vagrant.has_plugin? plugin
-            system "vagrant plugin install #{plugin}"
-            _retry=true
-        end
-    end
+    required_plugins = %w( vagrant-scp vagrant-exec vagrant-reload)
+    config.vm.box = "bento/ubuntu-24.04"
+    config.vm.disk :disk, size: 64 * 1024, primary: true
 
-    if (_retry)
-        exec "vagrant " + ARGV.join(' ')
-    end
-
-    config.vm.disk :disk, size: "64GB", primary: true
-
-    if is_arm64()
-        config.vm.box = "uwbbi/bionic-arm64"
-        libc = "libc6:arm64"
-        repos = "dpkg --add-architecture arm64
-                 dpkg --add-architecture x86-64"
+    if is_arm64?()
+        libc_package = "libc6:arm64"
+        arch_commands = "dpkg --add-architecture arm64
+                         dpkg --add-architecture amd64"
+        gcc_package = "gcc-x86-64-linux-gnu"
     else
-        config.vm.box = "hashicorp/bionic64"
-        libc = "libc6:i386"
-        repos = "dpkg --add-architecture i386"
+        libc_package = ""
+        arch_commands = "dpkg --add-architecture amd64"
+        gcc_package = "gcc-x86-64-linux-gnu"
     end
 
-    config.vm.provider :vmware_fusion do |v, override|
+    config.vm.provider :vmware_desktop do |v, override|
         v.gui = true
         v.vmx["ethernet0.virtualDev"] = "vmxnet3"
         v.vmx["ethernet0.pcislotnumber"] = "160"
@@ -56,17 +38,13 @@ Vagrant.configure('2') do |config|
     config.vm.provider :virtualbox do |v, override|
         v.memory = VM_MEMORY
         v.cpus = VM_CORES
-
         required_plugins = %w( vagrant-vbguest )
-        required_plugins.each do |plugin|
-            system "vagrant plugin install #{plugin}" unless Vagrant.has_plugin? plugin
-        end
     end
 
     config.vm.provision 'shell' do |s|
         s.inline = 'echo Setting up machine name'
 
-        config.vm.provider :vmware_fusion do |v, override|
+        config.vm.provider :vmware_desktop do |v, override|
             v.vmx['displayname'] = "Grisp2 Buildroot"
         end
 
@@ -75,18 +53,47 @@ Vagrant.configure('2') do |config|
         end
     end
 
-    config.vm.provision 'shell', privileged: true, inline:
-        "sed -i 's|deb http://us.archive.ubuntu.com/ubuntu/|deb mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list
-        #{repos}
-        apt-get -q update
-        apt-get purge -q -y snapd lxcfs lxd ubuntu-core-launcher snap-confine
-        apt-get -q -y install mc pv build-essential libncurses5-dev \
-            git bzr cvs mercurial subversion #{libc} unzip bc \
-            bison flex gperf libncurses5-dev texinfo help2man \
-            libssl-dev gawk libtool-bin automake lzip python3
+    config.vm.provision 'shell', privileged: true, inline: <<-SHELL
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        rm -f /var/run/reboot-required
+
+        echo 'Acquire::ForceIPv4 "true";' | tee /etc/apt/apt.conf.d/99force-ipv4
+        sed -i 's|http://|https://|g' /etc/apt/sources.list
+
+        #{arch_commands}
+
+        apt-get -o Acquire::Retries=3 update
+        apt-get -y -q \
+          -o Dpkg::Options::="--force-confdef" \
+          -o Dpkg::Options::="--force-confold" \
+          full-upgrade
+
+        apt-get autoremove -yq --purge
+        apt-get clean
+    SHELL
+
+    config.vm.provision :reload, if: "test -f /var/run/reboot-required"
+
+    config.vm.provision 'shell', privileged: true, inline: <<-SHELL
+        apt-get purge -q -y snapd lxd
+        apt-get -o APT::Frontend=noninteractive \
+                -o Dpkg::Options::="--force-confdef" \
+                -o Dpkg::Options::="--force-confold" \
+                -y -q install  \
+            mc pv libncurses5-dev squashfs-tools \
+            git bzr cvs mercurial subversion #{libc_package} unzip bc \
+            build-essential bison flex gperf libncurses5-dev texinfo help2man \
+            libssl-dev gawk libtool-bin automake lzip python3 wget curl \
+            ca-certificates mtools u-boot-tools git-lfs keyutils qemu-user \
+            qemu-user-static #{gcc_package} binutils-x86-64-linux-gnu \
+            binutils-x86-64-linux-gnu-dbg
         apt-get -q -y autoremove
         apt-get -q -y clean
-        update-locale LC_ALL=C"
+        update-locale LC_ALL=C
+        mkdir -p /opt/grisp_linux_sdk
+        chown -R vagrant:vagrant /opt/grisp_linux_sdk
+    SHELL
 
     config.vm.provision 'file', source: "build-toolchain.sh", destination: "/home/vagrant/build-toolchain.sh"
     config.vm.provision 'file', source: "build-sdk.sh", destination: "/home/vagrant/build-sdk.sh"
@@ -95,9 +102,17 @@ Vagrant.configure('2') do |config|
     config.vm.provision 'file', source: "toolchain", destination: "/home/vagrant/toolchain"
     config.vm.provision 'file', source: "system_common", destination: "/home/vagrant/system_common"
     config.vm.provision 'file', source: "system_grisp2", destination: "/home/vagrant/system_grisp2"
-    config.vm.synced_folder "artefacts/", "/home/vagrant/artefacts", create: true, type: "nfs"
-    config.vm.synced_folder "_cache/", "/home/vagrant/_cache", create: true, type: "nfs"
+
+    config.vm.provider :vmware_desktop do |v, override|
+        # On MacOS, NFS sometimes freezes, use vmware GHFS instead.
+        override.vm.synced_folder "artefacts/", "/home/vagrant/artefacts", create: true
+        override.vm.synced_folder "_cache/", "/home/vagrant/_cache", create: true
+    end
+
+    config.vm.provider :virtualbox do |v, override|
+        override.vm.synced_folder "artefacts/", "/home/vagrant/artefacts", create: true, type: "nfs", nfs_version: 3, nfs_udp: false, mount_options: ['vers=3,tcp']
+        override.vm.synced_folder "_cache/", "/home/vagrant/_cache", create: true, type: "nfs", nfs_version: 3, nfs_udp: false, mount_options: ['vers=3,tcp']
+    end
 
     config.ssh.forward_agent = true
-
 end

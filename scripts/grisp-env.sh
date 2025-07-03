@@ -1,12 +1,13 @@
 # Script that should be sourced to setup your environment to cross-compile
 # and build Erlang apps for this Grisp build.
 
-if [[ $SHELL == "/bin/bash" ]]; then
-    if [[ $0 == $BASH_SOURCE ]]; then
+if [[ $SHELL == "/bin/bash" ]] || [[ $SHELL == "/bin/zsh" ]]; then
+    SCRIPT_SOURCE="${BASH_SOURCE[0]:-${(%):-%x}}"
+    if [[ $0 == $SCRIPT_SOURCE ]]; then
         echo "ERROR: the script grisp-env.sh must be sourced"
         exit 1
     fi
-    SCRIPT_DIR="$( dirname $BASH_SOURCE )"
+    SCRIPT_DIR="$( dirname $SCRIPT_SOURCE )"
 fi
 
 # From there we know we are sourced, so we shouldn't call exit (or error)
@@ -53,6 +54,7 @@ export REBAR_TARGET_ARCH="$CROSSCOMPILE_ARCH"
 export CROSSCOMPILE="$CROSSCOMPILE_PREFIX"
 export HOST_ERLANG="${GRISP_SDK_HOST}/usr/lib/erlang"
 export TARGET_ERLANG="${GRISP_SDK_SYSROOT}/usr/lib/erlang"
+export ERL_LIBS="${TARGET_ERLANG}/lib"
 export REBAR_PLT_DIR="${TARGET_ERLANG}"
 export CC="${CROSSCOMPILE}-gcc"
 export CXX="${CROSSCOMPILE}-g++"

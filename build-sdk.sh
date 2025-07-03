@@ -4,14 +4,15 @@ set -e
 
 ARGS=( "$@" )
 
-BR_VERSION="2020.08"
+BR_VERSION="2025.05"
 
 show_usage()
 {
-    echo "USAGE: build-sdk.sh [-h] [-d] [-r] [-c] [-V] [-P] [-K] [-p PAKAGE_PREFIX] TARGET"
+    echo "USAGE: build-sdk.sh [-h] [-d] [-b] [-r] [-c] [-V] [-P] [-K] [-p PAKAGE_PREFIX] TARGET"
     echo "OPTIONS:"
     echo " -h Show this."
     echo " -d Print scripts debug information."
+    echo " -b Print the buildroot environment variables."
     echo " -r Try running buildroot only, if possible; may be enough if there"
     echo "    has been only very small changes made to the SDK files."
     echo " -c Cleanup the curent state and start building from scratch."
@@ -27,6 +28,7 @@ show_usage()
 OPTIND=1
 ARG_TARGET=""
 ARG_DEBUG="${DEBUG:-0}"
+ARG_BRCMD="false"
 ARG_REBUILD="false"
 ARG_CLEAN="false"
 ARG_FORCE_VAGRANT=false
@@ -34,10 +36,13 @@ ARG_PROVISION_VAGRANT=false
 ARG_KEEP_VAGRANT=false
 ARG_CLEAN_PACKAGES=(  )
 
-while getopts "hdrcVPKp:" opt; do
+while getopts "hdbrcVPKp:" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
+        ;;
+    b)
+        ARG_BRCMD=true
         ;;
     r)
         ARG_REBUILD=true
@@ -91,6 +96,9 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     NEW_ARGS=( )
     if [[ $ARG_DEBUG -gt 0 ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-d" )
+    fi
+    if [[ $ARG_BRCMD == true ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-e" )
     fi
     if [[ $ARG_REBUILD == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-r" )
@@ -151,15 +159,19 @@ BUILDROOT_MAKE_PARAMS=(
     # BR2_INSTRUMENTATION_SCRIPTS="$GLB_COMMON_SYSTEM_DIR/scripts/debug.sh"
 )
 
+if [[ $ARG_BRCMD == "true" ]]; then
+    echo "Buildroot command:"
+    echo "make ${BUILDROOT_MAKE_PARAMS[@]}"
+    exit 0
+fi
 
 if [[ $ARG_CLEAN == "true" ]]; then
     rm -rf "$CHECKPOINTS_DIR"
 fi
 
 if [[ $ARG_REBUILD == "true" ]]; then
-    # Removes the prepare_buildroot and run_buildroot checkpoints,
+    # Removes the run_buildroot checkpoints,
     # it should be enough for small changes, but there is no guarantee
-    rm -f "${CHECKPOINTS_DIR}/prepare_buildroot"
     rm -f "${CHECKPOINTS_DIR}/run_buildroot"
 fi
 
@@ -178,9 +190,9 @@ prepare_environment()
     mkdir -p "$GLB_SYSTEM_CACHE_DIR"
     mkdir -p "$CHECKPOINTS_DIR"
     mkdir -p "$BUILD_DIR"
-    sudo mkdir -p "$GLB_SDK_BASE_DIR"
-    sudo chgrp $USER "$GLB_SDK_BASE_DIR"
-    sudo chmod 775 "$GLB_SDK_BASE_DIR"
+    mkdir -p "$GLB_SDK_BASE_DIR"
+    chgrp $USER "$GLB_SDK_BASE_DIR"
+    chmod 775 "$GLB_SDK_BASE_DIR"
 }
 
 checkout_source_code()
@@ -188,6 +200,9 @@ checkout_source_code()
     local extracted_dir="${GLB_SYSTEM_BUILD_DIR}/buildroot-${BR_VERSION}"
     local tarball_name="buildroot-${BR_VERSION}.tar.gz"
     local tarball_path="${GLB_ARTEFACTS_DIR}/${tarball_name}"
+
+    # Fetch git lfs files if present.
+    git lfs checkout || (echo "Error: please install git lfs!" && exit 1)
 
     # Clean up in case previous extraction failed.
     rm -fr "$extracted_dir" "$BUILDROOT_PATH"

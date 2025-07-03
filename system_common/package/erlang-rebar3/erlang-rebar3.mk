@@ -4,7 +4,7 @@
 #
 #############################################################
 
-ERLANG_REBAR3_VERSION = 3.13.2
+ERLANG_REBAR3_VERSION = 3.25.0
 ERLANG_REBAR3_SITE = $(call github,erlang,rebar3,$(ERLANG_REBAR3_VERSION))
 ERLANG_REBAR3_LICENSE = Apache-2.0
 ERLANG_REBAR3_LICENSE_FILES = LICENSE

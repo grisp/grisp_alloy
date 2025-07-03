@@ -1,0 +1,5 @@
+config BR2_PACKAGE_HOST_GRISP_UPDATER_TOOLS
+	bool "host grisp-updater-tools"
+	depends on BR2_PACKAGE_ERLANG
+	help
+		GRiSP Software Update Tools

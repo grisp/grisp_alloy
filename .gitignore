@@ -8,3 +8,5 @@ _build
 samples/hello_grisp/c_src/*.o
 samples/hello_grisp/priv
 samples/hello_grisp/rebar.lock
+.DS_Store
+.pki-key

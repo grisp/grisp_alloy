@@ -1,0 +1,41 @@
+stages:
+  - toolchain
+  - sdk
+
+variables:
+  GIT_DEPTH: "1"
+  CACHE_REQUEST_TIMEOUT: 30
+  CACHE_COMPRESSION_LEVEL: "fastest"
+  FF_ENABLE_JOB_CLEANUP: "true"
+
+toolchain:
+  stage: toolchain
+  tags: [build]
+  when: manual
+  artifacts:
+    paths:
+      - log.txt
+      - ./_build/toolchain/crosstool-ng/build/build.log
+    expire_in: 1 week
+  script:
+    - ./build-toolchain.sh dab > log.txt 2>&1 || (tail -n50 log.txt && exit 1)
+    - ls -l artefacts
+    - "${GRISP2_CURL_BASE_CMD} -T ${GRISP2_TOOLCHAIN_PATH} ${GRISP2_TOOLCHAIN_URL}"
+
+sdk:
+  stage: sdk
+  tags: [build]
+  when: manual
+  artifacts:
+    paths:
+      - log.txt
+    expire_in: 1 week
+  before_script:
+    - rm -rf /opt/grisp_linux_sdk/*
+    - "${GRISP2_CURL_BASE_CMD} -o ${GRISP2_TOOLCHAIN_PATH} --create-dirs ${GRISP2_TOOLCHAIN_URL}"
+  script:
+    - ./build-sdk.sh grisp2 > log.txt 2>&1 || (tail -n50 log.txt && exit 1)
+    - ls -l artefacts
+    - "${GRISP2_CURL_BASE_CMD} -T ${GRISP2_SDK_PATH} ${GRISP2_SDK_URL}"
+  after_script:
+    - rm -rf /opt/grisp_linux_sdk/*
