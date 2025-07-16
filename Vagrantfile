@@ -17,8 +17,7 @@ Vagrant.configure('2') do |config|
 
     if is_arm64?()
         libc_package = "libc6:arm64"
-        arch_commands = "dpkg --add-architecture arm64
-                         dpkg --add-architecture amd64"
+        arch_commands = "dpkg --add-architecture arm64"
         gcc_package = "gcc-x86-64-linux-gnu"
     else
         libc_package = ""
