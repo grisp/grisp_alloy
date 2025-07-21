@@ -98,7 +98,7 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-d" )
     fi
     if [[ $ARG_BRCMD == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-e" )
+        NEW_ARGS=( ${NEW_ARGS[@]} "-b" )
     fi
     if [[ $ARG_REBUILD == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-r" )
