@@ -11,7 +11,7 @@ def is_arm64?; RbConfig::CONFIG['host_cpu'] == 'arm64'; end
 
 Vagrant.configure('2') do |config|
 
-    required_plugins = %w( vagrant-scp vagrant-exec vagrant-reload)
+    required_plugins = %w( vagrant-scp vagrant-exec )
     config.vm.box = "bento/ubuntu-24.04"
     config.vm.disk :disk, size: 64 * 1024, primary: true
 
@@ -52,10 +52,14 @@ Vagrant.configure('2') do |config|
         end
     end
 
-    config.vm.provision 'shell', privileged: true, inline: <<-SHELL
+    config.vm.provision 'shell',
+      name: 'upgrade_system',
+      privileged:  true,
+      run: 'once',
+      privileged: true,
+      inline: <<-SHELL
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
-        rm -f /var/run/reboot-required
 
         echo 'Acquire::ForceIPv4 "true";' | tee /etc/apt/apt.conf.d/99force-ipv4
         sed -i 's|http://|https://|g' /etc/apt/sources.list
@@ -72,9 +76,10 @@ Vagrant.configure('2') do |config|
         apt-get clean
     SHELL
 
-    config.vm.provision :reload, if: "test -f /var/run/reboot-required"
-
-    config.vm.provision 'shell', privileged: true, inline: <<-SHELL
+    config.vm.provision 'shell',
+      name: 'install_packages',
+      privileged: true,
+      inline: <<-SHELL
         apt-get purge -q -y snapd lxd
         apt-get -o APT::Frontend=noninteractive \
                 -o Dpkg::Options::="--force-confdef" \
@@ -101,6 +106,7 @@ Vagrant.configure('2') do |config|
     config.vm.provision 'file', source: "toolchain", destination: "/home/vagrant/toolchain"
     config.vm.provision 'file', source: "system_common", destination: "/home/vagrant/system_common"
     config.vm.provision 'file', source: "system_grisp2", destination: "/home/vagrant/system_grisp2"
+    config.vm.provision 'file', source: "system_kontron-albl-imx8mm", destination: "/home/vagrant/system_kontron-albl-imx8mm"
 
     config.vm.provider :vmware_desktop do |v, override|
         # On MacOS, NFS sometimes freezes, use vmware GHFS instead.
