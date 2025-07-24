@@ -111,7 +111,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     cd "$GLB_TOP_DIR"
     VAGRANT_TOP_DIR="/home/vagrant"
     VAGRANT_PROJECT_DIR="${VAGRANT_TOP_DIR}/projects/${PROJECT_NAME}"
-    VAGRANT_EXPERIMENTAL="disks" vagrant up
+    vagrant up
     if [[ $ARG_PROVISION_VAGRANT == true ]]; then
         vagrant provision
     fi

@@ -36,7 +36,13 @@ sudo apt install build-essential libncurses5-dev \
 
 ### OSX
 
-OSX is not supported natively, a Vagrant VM is used.
+OSX is not supported natively, a Vagrant VM is used as well as qemu to create
+the cache disk in vmdk format:
+
+```sh
+brew install vagrant qemu
+```
+
 The scripts should handle the setup and startup of the vagrant VM,
 but if anything goes wrong you can try to manually delete the vagrant image:
 

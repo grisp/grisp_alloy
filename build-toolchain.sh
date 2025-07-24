@@ -69,7 +69,7 @@ set_debug_level "$ARG_DEBUG"
 
 if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     cd "$GLB_TOP_DIR"
-    VAGRANT_EXPERIMENTAL="disks" vagrant up
+    vagrant up
     if [[ $ARG_PROVISION_VAGRANT == true ]]; then
         vagrant provision
     fi
