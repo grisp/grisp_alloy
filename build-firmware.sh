@@ -11,7 +11,7 @@ show_usage()
     echo " -h Show this"
     echo " -d Print scripts debug information"
     echo " -c Cleanup the curent state and start from scratch"
-    echo " -i Generate an image in addition of the firmware"
+    echo " -i Generate raw images in addition of the firmware"
     echo " -V Using the Vagrant VM even on Linux"
     echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
     echo " -K Keep the vagrant VM running after exiting"
@@ -23,7 +23,7 @@ show_usage()
 OPTIND=1
 ARG_DEBUG="${DEBUG:-0}"
 ARG_CLEAN=false
-ARG_GEN_IMAGE=false
+ARG_GEN_IMAGES=false
 ARG_FORCE_VAGRANT=false
 ARG_KEEP_VAGRANT=false
 while getopts "hdcistVPK" opt; do
@@ -35,7 +35,7 @@ while getopts "hdcistVPK" opt; do
         ARG_CLEAN=true
         ;;
     i)
-        ARG_GEN_IMAGE=true
+        ARG_GEN_IMAGES=true
         ;;
     V)
         ARG_FORCE_VAGRANT=true
@@ -147,7 +147,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_CLEAN == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
     fi
-    if [[ $ARG_GEN_IMAGE == true ]]; then
+    if [[ $ARG_GEN_IMAGES == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-i" )
     fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
@@ -187,6 +187,24 @@ if [[ ! -d $GLB_SDK_DIR ]]; then
     fi
 fi
 
+BOOTSCHEME=NONE
+BOOTSCHEME_KERNEL_RAMFS=false
+SQUASHFS_PRIORITIES=()
+FWUP_IMAGE_TARGETS=()
+
+CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
+if [[ ! -f "$CRUCIBLE_FILE" ]]; then
+    error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
+fi
+source "$CRUCIBLE_FILE"
+
+# Bootscheme plugin
+BOOTSCHEME_FILE="${GLB_SCRIPT_DIR}/plugins/bootscheme_$(echo ${BOOTSCHEME} | tr '[:upper:]' '[:lower:]').sh"
+if [[ ! -f "$BOOTSCHEME_FILE" ]]; then
+    error 1 "Boot scheme ${BOOTSCHEME} not found at ${BOOTSCHEME_FILE}"
+fi
+source "$BOOTSCHEME_FILE"
+
 PROJECT_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects/${PROJECT_NAME}"
 FIRMWARE_DIR="${GLB_FIRMWARE_BUILD_DIR}/firmware"
 SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
@@ -203,6 +221,7 @@ if [[ $ARG_CLEAN == true ]]; then
     rm -rf "$FIRMWARE_DIR"
 fi
 
+echo "Building project..."
 mkdir -p "$PROJECT_DIR"
 ${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
 if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
@@ -235,20 +254,19 @@ fi
 
 FIRMWARE_FILENAME="${BASE_FILENAME}.fw"
 FIRMWARE_FILE="${GLB_ARTEFACTS_DIR}/${FIRMWARE_FILENAME}"
-IMAGE_FILENAME="${BASE_FILENAME}.img"
-IMAGE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_FILENAME}"
+IMAGE_BASE_FILENAME="${BASE_FILENAME}"
+IMAGE_BASE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_BASE_FILENAME}"
+IMAGE_FILE_EXTENSION=".img"
 
-# Create a base priority file
-SQUASHFS_PRIORITIES="$FIRMWARE_DIR/squashfs.priority"
-cat >    "$SQUASHFS_PRIORITIES" <<EOF
-boot/zImage 32764
-boot/oftree 32763
-sbin/init 32762
-etc/erlinit.config 32761
-EOF
+# Create a priority file
+SQUASHFS_PRIORITIES_FILE="$FIRMWARE_DIR/squashfs.priority"
+rm -f "$SQUASHFS_PRIORITIES_FILE"
+for ((i = 0; i < ${#SQUASHFS_PRIORITIES[@]}; i += 2 )); do
+    echo "${SQUASHFS_PRIORITIES[i]} ${SQUASHFS_PRIORITIES[i + 1]}" >> "$SQUASHFS_PRIORITIES_FILE"
+done
 
 # Update the file system bundle
-echo "Updating base firmware image with Erlang release..."
+echo "Updating base firmware image with project release..."
 
 # Construct the proper path for the Erlang/OTP release
 ERLANG_OVERLAY_DIR="${FIRMWARE_DIR}/rootfs_overlay/srv/erlang"
@@ -264,12 +282,12 @@ cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
 OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
 mkdir -p $( dirname $OS_RELEASE_FILE )
 cat << EOF > "$OS_RELEASE_FILE"
-NAME=${OS_RELEASE_NAME:="${GLB_TARGET_NAME}-${PROJECT_NAME}"}
-PRETTY_NAME=${OS_RELEASE_PRETTY_NAME:="${GLB_TARGET_NAME}-${PROJECT_NAME}"}
-ID=${OS_RELEASE_ID:=${GLB_TARGET_NAME}}
-GRISP2_APP_NAME=${PROJECT_NAME}
-GRISP2_APP_VERSION=${PROJECT_VCS_TAG}
-GRISP2_BUILDER_VERSION=${GLB_VCS_TAG}
+NAME="${OS_RELEASE_NAME:="${GLB_TARGET_NAME}-${PROJECT_NAME}"}"
+PRETTY_NAME="${OS_RELEASE_PRETTY_NAME:="${GLB_TARGET_NAME}-${PROJECT_NAME}"}"
+ID="${OS_RELEASE_ID:=${GLB_TARGET_NAME}}"
+APP_NAME="${PROJECT_NAME}"
+APP_VERSION="${PROJECT_VCS_TAG}"
+GRISP_ALLOY_VERSION="${GLB_VCS_TAG}"
 EOF
 
 cat $OS_RELEASE_FILE
@@ -277,33 +295,40 @@ cat $OS_RELEASE_FILE
 # Merge the Erlang/OTP release onto the base image
 "${GLB_COMMON_SYSTEM_DIR}/scripts/merge-squashfs.sh" \
     "$SDK_ROOTFS" "${FIRMWARE_DIR}/combined.squashfs" \
-    "${FIRMWARE_DIR}/rootfs_overlay" "$SQUASHFS_PRIORITIES"
+    "${FIRMWARE_DIR}/rootfs_overlay" "$SQUASHFS_PRIORITIES_FILE"
+
+# Package bootloader
+bootscheme_package_bootloader
+
+# Package kernel
+bootscheme_package_kernel
 
 # Build the firmware image
 echo "Building firmware $FIRMWARE_FILENAME..."
 mkdir -p "$( dirname "$FIRMWARE_FILE" )"
 
-GRISP_FW_DESCRIPTION="$APP_NAME" \
-GRISP_FW_VERSION="${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_SYSTEM_VER}-${APP_VER}" \
-GRISP_FW_PLATFORM="$GLB_TARGET_NAME" \
-GRISP_FW_ARCHITECTURE="$CROSSCOMPILE_ARCH" \
-GRISP_FW_VCS_IDENTIFIER="$GLB_VCS_TAG/$PROJECT_VCS_TAG" \
-GRISP_SYSTEM="$GLB_SDK_DIR" \
-ROOTFS="${FIRMWARE_DIR}/combined.squashfs" \
-    fwup -c -f "$SDK_FWUP_CONFIG" -o "$FIRMWARE_FILE"
+bootscheme_package_firmware
 
-if [[ $ARG_GEN_IMAGE == true ]]; then
-    echo "Building image $IMAGE_FILENAME..."
-    mkdir -p "$( dirname "$IMAGE_FILE" )"
+if [[ $ARG_GEN_IMAGES == true ]]; then
+    FWUP="${GLB_SDK_HOST_DIR}/bin/fwup"
+    for ((i = 0; i < ${#FWUP_IMAGE_TARGETS[@]}; i += 2 )); do
+        IMAGE_TARGET="${FWUP_IMAGE_TARGETS[i]}"
+        IMAGE_POSTFIX="${FWUP_IMAGE_TARGETS[i + 1]}"
+        IMAGE_FILENAME="${IMAGE_BASE_FILENAME}${IMAGE_POSTFIX}${IMAGE_FILE_EXTENSION}"
+        IMAGE_FILE="${IMAGE_BASE_FILE}${IMAGE_POSTFIX}${IMAGE_FILE_EXTENSION}"
 
-    # Erase the image file in case it exists from a previous build.
-    # We use fwup in "programming" mode to create the raw image so it expects there
-    # the destination to exist (like an MMC device). This provides the minimum sized image.
-    rm -f "$IMAGE_FILE"
-    touch "$IMAGE_FILE"
+        echo "Building $IMAGE_TARGET image $IMAGE_FILENAME..."
+        mkdir -p "$( dirname "$IMAGE_FILE" )"
 
-    # Build the raw image for the bulk programmer
-    fwup -a -d "$IMAGE_FILE" -t complete -i "$FIRMWARE_FILE"
+        # Erase the image file in case it exists from a previous build.
+        # We use fwup in "programming" mode to create the raw image so it expects there
+        # the destination to exist (like an MMC device). This provides the minimum sized image.
+        rm -f "$IMAGE_FILE"
+        touch "$IMAGE_FILE"
+
+        # Build the raw image for the bulk programmer
+        "${FWUP}" -a -d "${IMAGE_FILE}" -t "${IMAGE_TARGET}" -i "$FIRMWARE_FILE"
+    done
 fi
 
 echo "Done"
