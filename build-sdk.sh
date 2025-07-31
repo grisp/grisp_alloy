@@ -174,8 +174,9 @@ if [[ $ARG_CLEAN == "true" ]]; then
 fi
 
 if [[ $ARG_REBUILD == "true" ]]; then
-    # Removes the run_buildroot checkpoints,
+    # Removes the prepare_buildroot and run_buildroot checkpoints,
     # it should be enough for small changes, but there is no guarantee
+    rm -f "${CHECKPOINTS_DIR}/prepare_buildroot"
     rm -f "${CHECKPOINTS_DIR}/run_buildroot"
 fi
 
