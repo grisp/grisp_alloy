@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 
+# build-toolchain.sh - GRiSP Alloy Toolchain Builder
+#
+# DEVELOPER OVERVIEW:
+# Builds cross-compilation toolchain for embedded targets using crosstool-NG.
+# The toolchain includes GCC, binutils, glibc/musl, and other essential tools
+# needed to compile software for the target architecture.
+#
+# HIGH-LEVEL FLOW:
+# 1. Parse arguments and handle Vagrant VM execution if needed
+# 2. Load target-specific toolchain configuration (defconfig)
+# 3. Delegate to appropriate toolchain build script (e.g., build-crosstool-ng.sh)
+#
+# OUTPUT:
+# - Cross-compilation toolchain in GLB_TOOLCHAIN_DIR
+# - Compressed toolchain archive in artefacts/
+
 set -e
 
 ARGS=( "$@" )
@@ -64,9 +80,12 @@ if [[ $# > 0 ]]; then
     exit 1
 fi
 
+# Load common variables and functions
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
 set_debug_level "$ARG_DEBUG"
 
+# VAGRANT VM EXECUTION BLOCK
+# Toolchain builds require Linux, so non-Linux hosts use VM
 if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     cd "$GLB_TOP_DIR"
     vagrant up
@@ -88,17 +107,22 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     exit $?
 fi
 
+# NATIVE LINUX EXECUTION STARTS HERE
+# Load target-specific toolchain configuration
 TOOLCHAIN_DEFCONFIG="$GLB_TOOLCHAIN_DIR/configs/${GLB_TARGET_NAME}_${BUILD_OS}_${BUILD_ARCH}_defconfig"
 
 if [[ ! -e $TOOLCHAIN_DEFCONFIG ]]; then
     error 1 "Cannot find toolchain configuration $TOOLCHAIN_DEFCONFIG"
 fi
 
+# Extract toolchain type from config (e.g., "crosstool-ng")
 TOOLCHAIN=$( read_defconfig_key $TOOLCHAIN_DEFCONFIG GLB_TOOLCHAIN_TYPE )
 
+# Find and execute appropriate toolchain build script
 TOOLCHAIN_BUILD_SCRIPT="${GLB_TOOLCHAIN_SCRIPT_DIR}/build-${TOOLCHAIN}.sh"
 if [[ ! -x $TOOLCHAIN_BUILD_SCRIPT ]]; then
     error 1 "Cannot find toolchain build script $TOOLCHAIN_BUILD_SCRIPT"
 fi
 
+# Execute toolchain-specific build script with configuration
 CLEAN=$ARG_CLEAN GLB_TOP_DIR="${GLB_TOP_DIR}" $TOOLCHAIN_BUILD_SCRIPT "$GLB_TARGET_NAME" "$TOOLCHAIN_DEFCONFIG"

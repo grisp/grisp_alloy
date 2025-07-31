@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
 
+# build-firmware.sh - GRiSP Alloy Firmware Builder
+#
+# DEVELOPER OVERVIEW:
+# This script builds firmware images from Erlang projects for embedded GRiSP targets.
+#
+# HIGH-LEVEL FLOW:
+# 1. Parse arguments and validate inputs
+# 2. Handle Vagrant VM execution on non-Linux hosts or when forced
+# 3. Install SDK if not present
+# 4. Load target-specific configuration (crucible.sh) and boot scheme plugin
+# 5. Build Erlang project using rebar3
+# 6. Create firmware filesystem by merging SDK rootfs with project release
+# 7. Package bootloader, kernel, and firmware using boot scheme
+# 8. Optionally generate raw disk images
+#
+# KEY COMPONENTS:
+# - SDK: Pre-built root filesystem and toolchain
+# - Crucible: Target-specific build configuration
+# - Boot scheme: Platform-specific packaging (e.g., AHAB for i.MX8)
+# - FWUP: Firmware update packaging system
+
 set -e
 
 ARGS=( "$@" )
@@ -88,8 +109,10 @@ if [[ $# > 0 ]]; then
     exit 1
 fi
 
+# Load common variables and functions (GLB_* globals, error handling, etc.)
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
 
+# Validate host architecture - only modern 64-bit architectures supported
 if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64" ]]; then
     error 1 "$HOST_ARCH is not supported, only x86_64, aarch64 or arm64"
 fi
@@ -107,6 +130,9 @@ RSYNC_CMD=( rsync -avH --delete --exclude='.git/' --exclude='.hg/'
 
 set_debug_level "$ARG_DEBUG"
 
+# VAGRANT VM EXECUTION BLOCK
+# Non-Linux hosts (macOS, etc.) or forced Vagrant mode require VM execution
+# This entire block sets up VM, syncs project files, and re-executes script inside VM
 if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     cd "$GLB_TOP_DIR"
     VAGRANT_TOP_DIR="/home/vagrant"
@@ -166,10 +192,15 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     exit $?
 fi
 
+# NATIVE LINUX EXECUTION STARTS HERE
+# Clean SDK if requested (forces full rebuild)
 if [[ $ARG_CLEAN == true ]]; then
     rm -rf "$GLB_SDK_BASE_DIR/*"
 fi
 
+# SDK INSTALLATION
+# SDK contains pre-built root filesystem, toolchain, and base packages
+# If missing, extract from cached tarball in artefacts/
 if [[ ! -d $GLB_SDK_DIR ]]; then
     echo "SDK not installed, trying to install it from artefacts..."
     if [[ ! -f "${GLB_ARTEFACTS_DIR}/${GLB_SDK_FILENAME}" ]]; then
@@ -187,18 +218,24 @@ if [[ ! -d $GLB_SDK_DIR ]]; then
     fi
 fi
 
+# BUILD CONFIGURATION SETUP
+# Initialize variables that will be set by crucible.sh and boot scheme plugin
 BOOTSCHEME=NONE
 BOOTSCHEME_KERNEL_RAMFS=false
 SQUASHFS_PRIORITIES=()
 FWUP_IMAGE_TARGETS=()
 
+# CRUCIBLE: Target-specific build configuration
+# Contains target-specific settings like boot scheme, kernel config, etc.
 CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
 if [[ ! -f "$CRUCIBLE_FILE" ]]; then
     error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
 fi
 source "$CRUCIBLE_FILE"
 
-# Bootscheme plugin
+# BOOT SCHEME PLUGIN: Platform-specific packaging logic
+# Each target uses different boot methods (AHAB for i.MX8, etc.)
+# Plugin provides functions: bootscheme_package_bootloader, bootscheme_package_kernel, bootscheme_package_firmware
 BOOTSCHEME_FILE="${GLB_SCRIPT_DIR}/plugins/bootscheme_$(echo ${BOOTSCHEME} | tr '[:upper:]' '[:lower:]').sh"
 if [[ ! -f "$BOOTSCHEME_FILE" ]]; then
     error 1 "Boot scheme ${BOOTSCHEME} not found at ${BOOTSCHEME_FILE}"
@@ -216,11 +253,14 @@ elif [[ -f "${GLB_TOP_DIR}/${VCS_TAG_FILE}" ]]; then
     GLB_VCS_TAG="$( cat "${GLB_TOP_DIR}/${VCS_TAG_FILE}" )"
 fi
 
+# Clean previous builds if requested
 if [[ $ARG_CLEAN == true ]]; then
     rm -rf "$PROJECT_DIR"
     rm -rf "$FIRMWARE_DIR"
 fi
 
+# ERLANG PROJECT BUILD PREPARATION
+# Copy source project to build directory and prepare for compilation
 echo "Building project..."
 mkdir -p "$PROJECT_DIR"
 ${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
@@ -231,13 +271,17 @@ if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
 fi
 mkdir -p "$FIRMWARE_DIR"
 
+# ERLANG PROJECT COMPILATION
+# Use rebar3 to build Erlang release with cross-compiled ERTS and system libs
 cd "$PROJECT_DIR"
 PROJECT_VCS_TAG="unknown"
 if [[ -f "$VCS_TAG_FILE" ]]; then
     PROJECT_VCS_TAG="$( cat "$VCS_TAG_FILE" )"
 fi
+# Set up cross-compilation environment (TARGET_ERLANG, etc.)
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
 rm -rf "_build/"
+# Build release with embedded Erlang runtime for target architecture
 rebar3 as "$ARG_PROJECT_PROFILE" release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
 cd "_build/${ARG_PROJECT_PROFILE}/rel"/*
 RELEASE_DIR="$( pwd )"
@@ -265,16 +309,17 @@ for ((i = 0; i < ${#SQUASHFS_PRIORITIES[@]}; i += 2 )); do
     echo "${SQUASHFS_PRIORITIES[i]} ${SQUASHFS_PRIORITIES[i + 1]}" >> "$SQUASHFS_PRIORITIES_FILE"
 done
 
-# Update the file system bundle
+# FILESYSTEM OVERLAY PREPARATION
+# Create overlay containing Erlang release that will be merged with SDK rootfs
 echo "Updating base firmware image with project release..."
 
-# Construct the proper path for the Erlang/OTP release
+# Place Erlang release in standard location (/srv/erlang in target filesystem)
 ERLANG_OVERLAY_DIR="${FIRMWARE_DIR}/rootfs_overlay/srv/erlang"
 rm -rf "$ERLANG_OVERLAY_DIR"
 mkdir -p "$ERLANG_OVERLAY_DIR"
 cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
 
-# Clean up the Erlang release of all the files that we don't need.
+# Remove unnecessary files from release (docs, sources, etc.) to reduce size
 "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" \
     "$FIRMWARE_DIR/rootfs_overlay/srv/erlang"
 
@@ -292,25 +337,34 @@ EOF
 
 cat $OS_RELEASE_FILE
 
-# Merge the Erlang/OTP release onto the base image
+# FILESYSTEM MERGING
+# Combine SDK base rootfs with project overlay into single SquashFS
 "${GLB_COMMON_SYSTEM_DIR}/scripts/merge-squashfs.sh" \
     "$SDK_ROOTFS" "${FIRMWARE_DIR}/combined.squashfs" \
     "${FIRMWARE_DIR}/rootfs_overlay" "$SQUASHFS_PRIORITIES_FILE"
 
-# Package bootloader
+# BOOT SCHEME PACKAGING
+# These functions are provided by the boot scheme plugin loaded earlier
+# Each boot scheme handles bootloader/kernel packaging differently
+
+# Package bootloader (U-Boot, AHAB container, etc.)
 bootscheme_package_bootloader
 
-# Package kernel
+# Package kernel (with or without initramfs)
 bootscheme_package_kernel
 
-# Build the firmware image
+# FIRMWARE IMAGE CREATION
+# Create final .fw file using FWUP configuration and boot scheme logic
 echo "Building firmware $FIRMWARE_FILENAME..."
 mkdir -p "$( dirname "$FIRMWARE_FILE" )"
 
 bootscheme_package_firmware
 
+# OPTIONAL RAW IMAGE GENERATION (-i flag)
+# Convert .fw file to raw disk images for direct writing to SD cards/eMMC
 if [[ $ARG_GEN_IMAGES == true ]]; then
     FWUP="${GLB_SDK_HOST_DIR}/bin/fwup"
+    # FWUP_IMAGE_TARGETS is set by boot scheme plugin (target_name, postfix pairs)
     for ((i = 0; i < ${#FWUP_IMAGE_TARGETS[@]}; i += 2 )); do
         IMAGE_TARGET="${FWUP_IMAGE_TARGETS[i]}"
         IMAGE_POSTFIX="${FWUP_IMAGE_TARGETS[i + 1]}"
@@ -320,13 +374,11 @@ if [[ $ARG_GEN_IMAGES == true ]]; then
         echo "Building $IMAGE_TARGET image $IMAGE_FILENAME..."
         mkdir -p "$( dirname "$IMAGE_FILE" )"
 
-        # Erase the image file in case it exists from a previous build.
-        # We use fwup in "programming" mode to create the raw image so it expects there
-        # the destination to exist (like an MMC device). This provides the minimum sized image.
+        # FWUP requires empty target file (simulates MMC device)
         rm -f "$IMAGE_FILE"
         touch "$IMAGE_FILE"
 
-        # Build the raw image for the bulk programmer
+        # Convert firmware to raw image using FWUP programming mode
         "${FWUP}" -a -d "${IMAGE_FILE}" -t "${IMAGE_TARGET}" -i "$FIRMWARE_FILE"
     done
 fi
