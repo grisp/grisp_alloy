@@ -159,6 +159,10 @@ BUILDROOT_MAKE_PARAMS=(
     # BR2_INSTRUMENTATION_SCRIPTS="$GLB_COMMON_SYSTEM_DIR/scripts/debug.sh"
 )
 
+if [[ $ARG_DEBUG -gt 0 ]]; then
+    BUILDROOT_MAKE_PARAMS=( ${BUILDROOT_MAKE_PARAMS[@]} "V=1" )
+fi
+
 if [[ $ARG_BRCMD == "true" ]]; then
     echo "Buildroot command:"
     echo "make ${BUILDROOT_MAKE_PARAMS[@]}"
