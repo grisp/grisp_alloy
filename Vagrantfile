@@ -159,8 +159,10 @@ Vagrant.configure('2') do |config|
       run: 'once',
       privileged: true,
       inline: <<-SHELL
+        trap 'printf "\\e[r\\e[?25h"' EXIT
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
+
         CACHE_MOUNTPOINT="/home/vagrant/_cache"
         CACHE_DISK_LABEL="#{CACHE_DISK_LABEL}"
         CACHE_DISK_DUMMY_LABEL="#{CACHE_DISK_DUMMY_LABEL}"
@@ -199,11 +201,13 @@ Vagrant.configure('2') do |config|
 
         apt-get -o Acquire::Retries=3 update
         apt-get -y -q \
-          -o Dpkg::Options::="--force-confdef" \
-          -o Dpkg::Options::="--force-confold" \
-          full-upgrade
-
-        apt-get autoremove -yq --purge
+            -o Dpkg::Progress-Fancy=0 \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            full-upgrade
+        apt-get -y -q \
+            -o Dpkg::Progress-Fancy=0 \
+            autoremove --purge
         apt-get clean
     SHELL
 
@@ -211,11 +215,18 @@ Vagrant.configure('2') do |config|
       name: 'install_packages',
       privileged: true,
       inline: <<-SHELL
-        apt-get purge -q -y snapd lxd
-        apt-get -o APT::Frontend=noninteractive \
-                -o Dpkg::Options::="--force-confdef" \
-                -o Dpkg::Options::="--force-confold" \
-                -y -q install  \
+        trap 'printf "\\e[r\\e[?25h"' EXIT
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+
+        apt-get -y -q \
+            -o Dpkg::Progress-Fancy=0 \
+            purge snapd lxd
+        apt-get -y -q \
+            -o Dpkg::Progress-Fancy=0 \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            install \
             mc pv libncurses5-dev squashfs-tools \
             git bzr cvs mercurial subversion #{libc_package} unzip bc \
             build-essential bison flex gperf libncurses5-dev texinfo help2man \
@@ -223,8 +234,10 @@ Vagrant.configure('2') do |config|
             ca-certificates mtools u-boot-tools git-lfs keyutils qemu-user \
             qemu-user-static #{gcc_package} binutils-x86-64-linux-gnu \
             binutils-x86-64-linux-gnu-dbg
-        apt-get -q -y autoremove
-        apt-get -q -y clean
+        apt-get -y -q \
+            -o Dpkg::Progress-Fancy=0 \
+            autoremove
+        apt-get clean
         update-locale LC_ALL=C
         mkdir -p /opt/grisp_alloy_sdk
         chown -R vagrant:vagrant /opt/grisp_alloy_sdk
