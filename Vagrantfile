@@ -110,20 +110,28 @@ Vagrant.configure('2') do |config|
     end
 
     config.vm.provider :vmware_desktop do |v, override|
-        v.gui = true
-        v.vmx["ethernet0.virtualDev"] = "vmxnet3"
-        v.vmx["ethernet0.pcislotnumber"] = "160"
-        v.vmx["scsi0.virtualDev"] = "pvscsi"
-        v.vmx['memsize'] = VM_MEMORY
+        v.gui  = true
+        v.vmx["ethernet0.virtualDev"]     = "vmxnet3"
+        v.vmx["ethernet0.pcislotnumber"]  = "160"
+        v.vmx['memsize']  = VM_MEMORY
         v.vmx['numvcpus'] = VM_CORES
 
-        # Attach the cache disk (SCSI1:0)
-        v.vmx["scsi1.present"] = "TRUE"
-        v.vmx["scsi1.virtualDev"] = "pvscsi"
-        v.vmx["scsi1:0.present"] = "TRUE"
-        v.vmx["scsi1:0.fileName"] = CACHE_DISK_PATH
-        v.vmx["scsi1:0.mode"] = "persistent"
-    end
+        if is_arm64?
+          # Use NVMe for every Arm guest OS.
+          v.vmx["nvme0.present"]       = "TRUE"
+          v.vmx["nvme0:0.present"]     = "TRUE"
+          v.vmx["nvme0:0.fileName"]    = CACHE_DISK_PATH
+          v.vmx["nvme0:0.mode"]        = "persistent"
+        else
+          # Keep high-performance PVSCSI controllers on Intel hosts.
+          v.vmx["scsi0.virtualDev"]    = "pvscsi"
+          v.vmx["scsi1.virtualDev"]    = "pvscsi"
+          v.vmx["scsi1.present"]       = "TRUE"
+          v.vmx["scsi1:0.present"]     = "TRUE"
+          v.vmx["scsi1:0.fileName"]    = CACHE_DISK_PATH
+          v.vmx["scsi1:0.mode"]        = "persistent"
+        end
+      end
 
     config.vm.provider :virtualbox do |v, override|
         v.memory = VM_MEMORY
