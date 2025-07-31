@@ -122,7 +122,7 @@ esac
 
 GLB_SCRIPT_DIR="$(readlink_f "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" )"
 GLB_TOP_DIR="$( cd "$GLB_SCRIPT_DIR" && cd .. && pwd )"
-GLB_SDK_NAME="grisp_linux_sdk"
+GLB_SDK_NAME="grisp_alloy_sdk"
 GLB_SDK_PARENT_DIR="/opt"
 GLB_SDK_BASE_DIR="${GLB_SDK_PARENT_DIR}/${GLB_SDK_NAME}"
 

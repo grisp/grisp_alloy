@@ -52,10 +52,10 @@ scp  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null /tmp/core.*  US
 ```sh
 CORE=/home/vagrant/artefacts/core.beam.smp
 EXE=/home/vagrant/_build/firmware/projects/hello_grisp/_build/default/rel/hello_grisp/erts-16.0.1/bin/beam.smp
-GDB=/opt/grisp_linux_sdk/0.2.0/grisp2/0.2.0/host/bin/armv7-unknown-linux-gnueabihf-gdb
+GDB=/opt/grisp_alloy_sdk/0.2.0/grisp2/0.2.0/host/bin/armv7-unknown-linux-gnueabihf-gdb
 $GDB $EXE $CORE
-(gdb) set sysroot /opt/grisp_linux_sdk/0.2.0/grisp2/0.2.0/host/arm-buildroot-linux-gnueabihf/sysroot
-(gdb) set solib-absolute-prefix /opt/grisp_linux_sdk/0.2.0/grisp2/0.2.0/host/arm-buildroot-linux-gnueabihf/sysroot
+(gdb) set sysroot /opt/grisp_alloy_sdk/0.2.0/grisp2/0.2.0/host/arm-buildroot-linux-gnueabihf/sysroot
+(gdb) set solib-absolute-prefix /opt/grisp_alloy_sdk/0.2.0/grisp2/0.2.0/host/arm-buildroot-linux-gnueabihf/sysroot
 (gdb) info sharedlibrary
 (gdb) info registers
 (gdb) x/i $pc

@@ -31,11 +31,11 @@ sdk:
       - log.txt
     expire_in: 1 week
   before_script:
-    - rm -rf /opt/grisp_linux_sdk/*
+    - rm -rf /opt/grisp_alloy_sdk/*
     - "${GRISP2_CURL_BASE_CMD} -o ${GRISP2_TOOLCHAIN_PATH} --create-dirs ${GRISP2_TOOLCHAIN_URL}"
   script:
     - ./build-sdk.sh grisp2 > log.txt 2>&1 || (tail -n50 log.txt && exit 1)
     - ls -l artefacts
     - "${GRISP2_CURL_BASE_CMD} -T ${GRISP2_SDK_PATH} ${GRISP2_SDK_URL}"
   after_script:
-    - rm -rf /opt/grisp_linux_sdk/*
+    - rm -rf /opt/grisp_alloy_sdk/*

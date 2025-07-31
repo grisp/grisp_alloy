@@ -226,8 +226,8 @@ Vagrant.configure('2') do |config|
         apt-get -q -y autoremove
         apt-get -q -y clean
         update-locale LC_ALL=C
-        mkdir -p /opt/grisp_linux_sdk
-        chown -R vagrant:vagrant /opt/grisp_linux_sdk
+        mkdir -p /opt/grisp_alloy_sdk
+        chown -R vagrant:vagrant /opt/grisp_alloy_sdk
     SHELL
 
     config.vm.provision 'file', source: "build-toolchain.sh", destination: "/home/vagrant/build-toolchain.sh"
