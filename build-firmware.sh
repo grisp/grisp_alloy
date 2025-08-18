@@ -27,7 +27,7 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] [-s SERIAL] [-n NAME] [-o OVERLAY_DIR] TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
+    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] [-s SERIAL] [-n NAME] [-v VERSION] [-o OVERLAY_DIR] TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
     echo "OPTIONS:"
     echo " -h Show this"
     echo " -d Print scripts debug information"
@@ -38,6 +38,7 @@ show_usage()
     echo " -K Keep the vagrant VM running after exiting"
     echo " -s Device serial number"
     echo " -n Firmware name (defaults to first artefact's base name)"
+    echo " -n Firmware version (defaults to first artefact's version)"
     echo " -o Overlay directory to merge into rootfs before packaging"
     echo
     echo "Examples:"
@@ -55,6 +56,7 @@ ARG_KEEP_VAGRANT=false
 ARG_SERIAL_DEFINED=false
 ARG_SERIAL="00000000"
 ARG_FIRMWARE_NAME=""
+ARG_FIRMWARE_VER=""
 while getopts "hdciVs:n:o:PK" opt; do
     case "$opt" in
     d)
@@ -72,6 +74,9 @@ while getopts "hdciVs:n:o:PK" opt; do
         ;;
     n)
         ARG_FIRMWARE_NAME="$OPTARG"
+        ;;
+    v)
+        ARG_FIRMWARE_VER="$OPTARG"
         ;;
     o)
         ARG_OVERLAY_DIR="$OPTARG"
@@ -272,6 +277,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-n" "$ARG_FIRMWARE_NAME" )
     fi
+    if [[ -n "$ARG_FIRMWARE_VER" ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-v" "$ARG_FIRMWARE_VER" )
+    fi
     if [[ -n "$ARG_OVERLAY_DIR" ]]; then
         # Sync overlay dir to VM uploads/overlay and pass translated path
         vagrant exec rm -rf "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/overlay"
@@ -458,7 +466,14 @@ if [[ ${#RELEASE_DIRS[@]} -eq 0 ]]; then
     error 1 "Missing project artefact (tarball path or artefact name prefix)"
 fi
 
-BASE_FILENAME="${FIRMWARE_NAME}-${GLB_TARGET_NAME}"
+# Determine firmware version
+if [[ -n "$ARG_FIRMWARE_VER" ]]; then
+    FIRMWARE_VER="$ARG_FIRMWARE_VER"
+else
+    FIRMWARE_VER="${REL_VERS[0]}"
+fi
+
+BASE_FILENAME="${FIRMWARE_NAME}-${FIRMWARE_VER}-${GLB_TARGET_NAME}"
 FIRMWARE_FILENAME="${BASE_FILENAME}.fw"
 FIRMWARE_FILE="${GLB_ARTEFACTS_DIR}/${FIRMWARE_FILENAME}"
 IMAGE_BASE_FILENAME="${BASE_FILENAME}"
@@ -534,7 +549,7 @@ cat << EOF > "$OS_RELEASE_FILE"
 NAME="${OS_RELEASE_NAME:="${GLB_TARGET_NAME}-${PROJECT_APP_NAME}"}"
 PRETTY_NAME="${OS_RELEASE_PRETTY_NAME:="${GLB_TARGET_NAME}-${PROJECT_APP_NAME}"}"
 ID="${OS_RELEASE_ID:=${GLB_TARGET_NAME}}"
-VERSION="${GLB_COMMON_SYSTEM_VER}-${GLB_COMMON_SYSTEM_VER}"
+VERSION="${GLB_COMMON_SYSTEM_VER}-${GLB_COMMON_SYSTEM_VER}-${FIRMWARE_VER}"
 EOF
 
 # Generate alloy manifest
@@ -549,6 +564,8 @@ mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
     echo "    \"system_common_vcs\": \"${GLB_VCS_TAG}\",";
     echo "    \"system_target_version\": \"${GLB_TARGET_SYSTEM_VER}\",";
     echo "    \"system_target_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"firmware_name\": \"${FIRMWARE_NAME}\",";
+    echo "    \"firmware_ver\": \"${FIRMWARE_VER}\",";
     echo "    \"projects\": {";
     for pi in "${!APP_NAMES[@]}"; do
         echo "        \"${APP_NAMES[$pi]}\": {";

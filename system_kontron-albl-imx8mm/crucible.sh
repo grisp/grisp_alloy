@@ -12,6 +12,6 @@ SQUASHFS_PRIORITIES=(
 )
 
 FWUP_IMAGE_TARGETS=(
-    "complete" ".emmc"
+    "emmc" ".emmc"
     "sdcard" ".sdcard"
 )
