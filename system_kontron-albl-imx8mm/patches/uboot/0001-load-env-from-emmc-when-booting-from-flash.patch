@@ -1,0 +1,64 @@
+--- a/board/kontron/sl-mx8mm/sl-mx8mm.c	2025-10-03 17:31:35.656240929 +0000
++++ b/board/kontron/sl-mx8mm/sl-mx8mm.c	2025-10-03 17:33:18.267260979 +0000
+@@ -234,6 +234,14 @@
+ 	     boot_dev == MMC1_BOOT || boot_dev == MMC2_BOOT))
+ 		return ENVL_MMC;
+
++	/*
++	 * Make sure that the environment is loaded from
++	 * the eMMC even when booting from SPI flash.
++	 */
++	if (CONFIG_IS_ENABLED(ENV_IS_IN_MMC) &&
++	    (boot_dev == QSPI_BOOT || boot_dev == FLEXSPI_BOOT || boot_dev == SPI_NOR_BOOT))
++		return ENVL_MMC;
++
+ 	if (CONFIG_IS_ENABLED(ENV_IS_IN_SPI_FLASH))
+ 		return ENVL_SPI_FLASH;
+
+@@ -246,32 +254,31 @@
+ #if defined(CONFIG_ENV_IS_IN_MMC)
+ int board_mmc_get_env_dev(int devno)
+ {
+-	return devno;
++	/* Use eMMC0 when booting from SPI flash */
++	switch (get_boot_device()) {
++		case FLEXSPI_BOOT:
++		case QSPI_BOOT:
++		case SPI_NOR_BOOT:
++			return 0;
++		default:
++			return devno;
++	}
+ }
+
+ uint mmc_get_env_part(struct mmc *mmc)
+ {
+-	/* part 1 (boot0) for eMMC, part 0 (user) for SD card */
+-	return (mmc_get_env_dev() == 0) ? 1 : 0;
++	/* Allways use the eMMC normal partition */
++	return 0;
+ }
+
+ int mmc_get_env_addr(struct mmc *mmc, int copy, u32 *env_addr)
+ {
+-	/* use normal offset for SD card */
+-	*env_addr = CONFIG_ENV_OFFSET;
+-
+-	/* use end of boot partition for eMMC */
+-	if (mmc_get_env_dev() == 0)
+-		*env_addr = mmc->capacity - CONFIG_ENV_SIZE - CONFIG_ENV_SIZE;
+-
+-	/* same for the redundant copy */
++	/* Use the same offsets for SD cards and eMMC */
+ 	if (copy) {
+ 		*env_addr = CONFIG_ENV_OFFSET_REDUND;
+-
+-		if (mmc_get_env_dev() == 0)
+-			*env_addr = mmc->capacity - CONFIG_ENV_SIZE;
++	} else {
++		*env_addr = CONFIG_ENV_OFFSET;
+ 	}
+-
+ 	return 0;
+ }
+ #endif
