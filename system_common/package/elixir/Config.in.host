@@ -1,0 +1,4 @@
+config BR2_PACKAGE_HOST_ELIXIR
+	bool "host elixir"
+	help
+	  Elixir tooling for the host (provides elixir and mix in the SDK).

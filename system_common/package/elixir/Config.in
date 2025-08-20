@@ -1,0 +1,11 @@
+config BR2_PACKAGE_ELIXIR
+	bool "elixir"
+	depends on BR2_PACKAGE_ERLANG
+	help
+	  Elixir programming language and tooling (runs on the Erlang VM).
+
+	  NOTE: GRiSP ALLoy does not deploy Elixir binaries to the target by
+	  default. This package is primarily used to produce Elixir tooling
+	  in the SDK (host-elixir) and to stage Elixir stdlib when needed
+	  for release assembly. Target install step is intentionally empty
+	  unless explicitly enabled.

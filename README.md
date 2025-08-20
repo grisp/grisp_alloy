@@ -207,6 +207,16 @@ Common parameters for all scripts:
           scratch.
 
 
+#### Vagrant Options
+
+Vagrant VM can be tweaked by setting some environment variables:
+
+ - `VM_PRIMARY_DISK_SIZE`: Size of the primary disk, if not specified Vagrant will use its internally defined default.
+ - `VM_MEMORY`: Memory allocated to the VM in MiB as an integer, default is 16384
+ - `VM_CORES`: Numbers of cores allocated to the VM, defauklt is 8
+ - `VM_CACHE_DISK_SIZE`: Size of the cache disk in MiB as an integer, default is 10240.
+
+
 #### Inspecting a firmware image
 
 ##### Inspect Image Partitions
@@ -326,4 +336,37 @@ you need to restart the vagrant-vmware-utility service:
 ```sh
 $ sudo launchctl stop com.vagrant.vagrant-vmware-utility
 $ sudo launchctl start com.vagrant.vagrant-vmware-utility
+```
+
+If you get a disk resize error during the first VM setup like:
+
+```sh
+$ vagrant up
+Bringing machine 'default' up with 'vmware_desktop' provider...
+==> default: Cloning VMware VM: 'bento/ubuntu-24.04'. This can take some time...
+==> default: Checking if box 'bento/ubuntu-24.04' version '202502.21.0' is up to date...
+==> default: Verifying vmnet devices are healthy...
+==> default: Preparing network adapters...
+Disk not resized because snapshots are present! Vagrant can
+not resize a disk if snapshots exist for a VM. If you wish to resize
+disk please remove snapshots associated with the VM.
+
+Path: .../grisp_alloy/.vagrant/machines/default/vmware_desktop/a3a60172-8195-4235-a1e9-f0011657068a/disk-000055.vmdk
+```
+
+You need to cleanup the snapshots and reload, then resize the disk in the gest.
+
+On the host:
+
+```sh
+vagrant halt -f
+vagrant cap provider delete_all_snapshots --target default
+vagrant reload
+vagrant ssh
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINT   # sdb should now be ~96G
+sudo growpart /dev/sdb 3
+sudo pvresize /dev/sdb3
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+df -h /
 ```

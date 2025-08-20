@@ -6,13 +6,17 @@
 
 require 'rbconfig'
 
+VM_PRIMARY_DISK_SIZE = (ENV['VM_PRIMARY_DISK_SIZE']&.strip)
+VALID_DISK_SIZE = /\A\d+\s*(KB|MB|GB|TB)\z/i
+if VM_PRIMARY_DISK_SIZE && VM_PRIMARY_DISK_SIZE !~ VALID_DISK_SIZE
+  abort "VM_PRIMARY_DISK_SIZE must look like '96GB' or '98304MB' (got: #{VM_PRIMARY_DISK_SIZE.inspect})"
+end
 VM_MEMORY = ENV.fetch('VM_MEMORY', 16 * 1024)   # MB
 VM_CORES  = ENV.fetch('VM_CORES', 8).to_i
-CACHE_DISK_SIZE = ENV.fetch('CACHE_DISK_SIZE', '10240').to_i
+CACHE_DISK_SIZE = ENV.fetch('VM_CACHE_DISK_SIZE', '10240').to_i
 CACHE_DISK_BASENAME = ".vagrant.cache"
 CACHE_DISK_LABEL = "VAGRANT_CACHE"
 CACHE_DISK_DUMMY_LABEL = "TMPCACHE"
-
 
 def is_arm64?; RbConfig::CONFIG['host_cpu'] == 'arm64'; end
 
@@ -97,7 +101,10 @@ Vagrant.configure('2') do |config|
 
     required_plugins = %w( vagrant-scp vagrant-exec )
     config.vm.box = "bento/ubuntu-24.04"
-    config.vm.disk :disk, size: 64 * 1024, primary: true
+
+    if VM_PRIMARY_DISK_SIZE
+        config.vm.disk :disk, size: VM_PRIMARY_DISK_SIZE, primary: true
+    end
 
     if is_arm64?()
         libc_package = "libc6:arm64"
@@ -110,7 +117,8 @@ Vagrant.configure('2') do |config|
     end
 
     config.vm.provider :vmware_desktop do |v, override|
-        v.gui  = true
+        v.gui  = false
+        v.linked_clone = false
         v.vmx["ethernet0.virtualDev"]     = "vmxnet3"
         v.vmx["ethernet0.pcislotnumber"]  = "160"
         v.vmx['memsize']  = VM_MEMORY

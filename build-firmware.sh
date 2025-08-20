@@ -259,9 +259,14 @@ if [[ $ARG_CLEAN == true ]]; then
     rm -rf "$FIRMWARE_DIR"
 fi
 
-# ERLANG PROJECT BUILD PREPARATION
+# PROJECT BUILD PREPARATION
+
+# PROJECT TYPE DETECTION
+source "${GLB_SCRIPT_DIR}/plugins/project_detect.sh"
+project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
+
 # Copy source project to build directory and prepare for compilation
-echo "Building project..."
+echo "Building $PROJECT_TYPE project..."
 mkdir -p "$PROJECT_DIR"
 ${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
 if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
@@ -271,8 +276,7 @@ if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
 fi
 mkdir -p "$FIRMWARE_DIR"
 
-# ERLANG PROJECT COMPILATION
-# Use rebar3 to build Erlang release with cross-compiled ERTS and system libs
+# PROJECT COMPILATION
 cd "$PROJECT_DIR"
 PROJECT_VCS_TAG="unknown"
 if [[ -f "$VCS_TAG_FILE" ]]; then
@@ -281,10 +285,12 @@ fi
 # Set up cross-compilation environment (TARGET_ERLANG, etc.)
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
 rm -rf "_build/"
-# Build release with embedded Erlang runtime for target architecture
-rebar3 as "$ARG_PROJECT_PROFILE" release --system_libs "$TARGET_ERLANG" --include-erts "$TARGET_ERLANG"
-cd "_build/${ARG_PROJECT_PROFILE}/rel"/*
-RELEASE_DIR="$( pwd )"
+
+# build project using plugin
+project_build RELEASE_DIR "$PROJECT_DIR" "$ARG_PROJECT_PROFILE" "$TARGET_ERLANG"
+if [[ ! -d "$RELEASE_DIR" ]]; then
+    error 1 "Failed to build $PROJECT_TYPE project in $RELEASE_DIR"
+fi
 
 APP_NAME="$( basename "$RELEASE_DIR" )"
 APP_VER=""

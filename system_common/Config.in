@@ -23,6 +23,8 @@ source "$BR2_EXTERNAL_GRISP_PATH/package/grisp-config/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/erlang-rebar3/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/cryptoauthlib/Config.in"
 source "$BR2_EXTERNAL_GRISP_PATH/package/grisp-updater-tools/Config.in.host"
+source "$BR2_EXTERNAL_GRISP_PATH/package/elixir/Config.in"
+source "$BR2_EXTERNAL_GRISP_PATH/package/elixir/Config.in.host"
 
 # Load user options
 menu "User-provided options"
