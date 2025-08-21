@@ -130,6 +130,21 @@ io:format("~s~n", [os:cmd("fw_printenv -l /tmp")]).
 ```
 
 
+### Test the CAN Bus
+
+From Elixir console:
+
+```elixir
+System.cmd("ip", ["link", "set", "can0", "up", "type", "can", "bitrate", "500000", "loopback", "on"], stderr_to_stdout: true, into: IO.stream(:stdio, :line))
+System.cmd("ip", ["-details", "link", "show", "can0"], stderr_to_stdout: true, into: IO.stream(:stdio, :line))
+task = Task.async(fn ->
+  System.cmd("candump", ["-n", "1", "can0"], stderr_to_stdout: true, into: IO.stream(:stdio, :line))
+end)
+System.cmd("cansend", ["can0", "123#DEADBEEF"])
+Task.await(task, 5_000)
+```
+
+
 ## Random Information
 
 ### Testing Real-Time
