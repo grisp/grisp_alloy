@@ -10,3 +10,10 @@ samples/hello_grisp/priv
 samples/hello_grisp/rebar.lock
 .DS_Store
 .pki-key
+
+# Threse files keep reapearing, and it is not clear why.
+system_common/board/grisp-common/skeleton/var/tmp
+system_common/board/grisp-common/skeleton/var/lock
+system_common/board/grisp-common/skeleton/var/cache
+system_common/board/grisp-common/skeleton/var/run
+system_common/board/grisp-common/skeleton/var/spool

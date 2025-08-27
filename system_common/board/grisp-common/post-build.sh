@@ -19,3 +19,16 @@ EOF
 ${GLB_SCRIPT_DIR}/git-info.sh -d -o "${TARGET_DIR}/usr/lib/git-system-info"
 
 "$GLB_COMMON_SYSTEM_DIR/scripts/scrub-target.sh" "$1"
+
+rm -rf "${TARGET_DIR}/var/tmp"
+ln -snf "/tmp" "${TARGET_DIR}/var/tmp"
+rm -rf "${TARGET_DIR}/var/run"
+ln -snf "/run" "${TARGET_DIR}/var/run"
+rm -rf "${TARGET_DIR}/var/lock"
+ln -snf "/run/lock" "${TARGET_DIR}/var/lock"
+rm -rf "${TARGET_DIR}/var/cache"
+ln -snf "/run/cache" "${TARGET_DIR}/var/cache"
+rm -rf "${TARGET_DIR}/var/spool"
+ln -snf "/run/spool" "${TARGET_DIR}/var/spool"
+rm -rf "${TARGET_DIR}/var/log"
+mkdir -p "${TARGET_DIR}/var/log"
