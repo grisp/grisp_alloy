@@ -175,7 +175,11 @@ Vagrant.configure('2') do |config|
       run: 'once',
       privileged: true,
       inline: <<-SHELL
-        trap 'printf "\\e[r\\e[?25h"' EXIT
+        if [ -t 1 ]; then
+            trap 'tput cnorm 2>/dev/null || printf "\e[?25h" 2>/dev/null || true' EXIT
+        elif [ -t 0 ]; then
+            stty sane 2>/dev/null || true
+        fi
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
 
@@ -231,7 +235,11 @@ Vagrant.configure('2') do |config|
       name: 'install_packages',
       privileged: true,
       inline: <<-SHELL
-        trap 'printf "\\e[r\\e[?25h"' EXIT
+        if [ -t 1 ]; then
+            trap 'tput cnorm 2>/dev/null || printf "\e[?25h" 2>/dev/null || true' EXIT
+        elif [ -t 0 ]; then
+            stty sane 2>/dev/null || true
+        fi
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
 
