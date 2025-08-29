@@ -88,6 +88,26 @@ checkpoint()
     touch "${dir}/${name}"
 }
 
+# Ensure SDK is installed (rootfs, toolchain, base packages)
+install_sdk() {
+    if [[ ! -d $GLB_SDK_DIR ]]; then
+        echo "SDK not installed, trying to install it from artefacts..."
+        if [[ ! -f "${GLB_ARTEFACTS_DIR}/${GLB_SDK_FILENAME}" ]]; then
+            error 1 "SDK ${GLB_SDK_FILENAME} not found in ${GLB_ARTEFACTS_DIR}"
+        fi
+        if [[ ! -d $GLB_SDK_BASE_DIR ]]; then
+            mkdir -p "$GLB_SDK_BASE_DIR"
+            chgrp "$USER" "$GLB_SDK_BASE_DIR"
+            chmod 775 "$GLB_SDK_BASE_DIR"
+        fi
+        tar -C "$GLB_SDK_BASE_DIR" --strip-components=1 -xzf \
+            "${GLB_ARTEFACTS_DIR}/${GLB_SDK_FILENAME}"
+        if [[ ! -d $GLB_SDK_DIR ]]; then
+            error 1 "SDK ${GLB_SDK_FILENAME} is invalid"
+        fi
+    fi
+}
+
 # OS and architecture detection
 BUILD_ARCH="$(uname -m)"
 BUILD_OS="$(uname -s)"
@@ -122,6 +142,7 @@ esac
 
 GLB_SCRIPT_DIR="$(readlink_f "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" )"
 GLB_TOP_DIR="$( cd "$GLB_SCRIPT_DIR" && cd .. && pwd )"
+GLB_VAGRANT_TOP_DIR="/home/vagrant"
 GLB_SDK_NAME="grisp_alloy_sdk"
 GLB_SDK_PARENT_DIR="/opt"
 GLB_SDK_BASE_DIR="${GLB_SDK_PARENT_DIR}/${GLB_SDK_NAME}"
@@ -142,8 +163,10 @@ else
     # running the builder version
     GLB_IS_SDK=false
     GLB_ARTEFACTS_DIR="${GLB_TOP_DIR}/artefacts"
+    GLB_VAGRANT_ARTEFACTS_DIR="${GLB_VAGRANT_TOP_DIR}/artefacts"
     GLB_CACHE_DIR="${GLB_TOP_DIR}/_cache"
     GLB_BUILD_DIR="${GLB_TOP_DIR}/_build"
+    GLB_VAGRANT_BUILD_DIR="${GLB_VAGRANT_TOP_DIR}/_build"
     GLB_TOOLCHAIN_DIR="${GLB_TOP_DIR}/toolchain"
     GLB_TOOLCHAIN_CACHE_DIR="${GLB_CACHE_DIR}/toolchain"
     GLB_TOOLCHAIN_SCRIPT_DIR="${GLB_TOOLCHAIN_DIR}/scripts"
@@ -153,6 +176,8 @@ else
     GLB_SYSTEM_CACHE_DIR="${GLB_CACHE_DIR}/system"
     GLB_SYSTEM_SCRIPT_DIR="${GLB_SYSTEM_DIR}/scripts"
     GLB_SYSTEM_BUILD_DIR="${GLB_BUILD_DIR}/system"
+    GLB_PROJECT_BUILD_DIR="${GLB_BUILD_DIR}/project"
+    GLB_VAGRANT_PROJECT_BUILD_DIR="${GLB_VAGRANT_BUILD_DIR}/project"
     GLB_FIRMWARE_BUILD_DIR="${GLB_BUILD_DIR}/firmware"
 
     if [[ ! -z $ARG_TARGET ]] && [[ -d "$GLB_TOP_DIR/system_${ARG_TARGET}" ]]; then

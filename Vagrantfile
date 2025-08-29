@@ -269,6 +269,7 @@ Vagrant.configure('2') do |config|
 
     config.vm.provision 'file', source: "build-toolchain.sh", destination: "/home/vagrant/build-toolchain.sh"
     config.vm.provision 'file', source: "build-sdk.sh", destination: "/home/vagrant/build-sdk.sh"
+    config.vm.provision 'file', source: "build-project.sh", destination: "/home/vagrant/build-project.sh"
     config.vm.provision 'file', source: "build-firmware.sh", destination: "/home/vagrant/build-firmware.sh"
     config.vm.provision 'file', source: "scripts", destination: "/home/vagrant/scripts"
     config.vm.provision 'file', source: "toolchain", destination: "/home/vagrant/toolchain"

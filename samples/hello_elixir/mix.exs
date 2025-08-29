@@ -33,7 +33,9 @@ defmodule HelloElixir.MixProject do
   defp releases do
     [
       hello_elixir: [
-        include_erts: true
+        include_erts: true,
+        include_executables_for: [:unix],
+        strip_beams: true
       ]
     ]
   end

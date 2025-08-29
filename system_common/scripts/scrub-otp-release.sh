@@ -34,8 +34,8 @@ fi
 STRIP="$CROSSCOMPILE-strip"
 READELF="$CROSSCOMPILE-readelf"
 if [ ! -e "$STRIP" ] || [ ! -e "$READELF" ]; then
-    echo "$SCRIPT_NAME: ERROR: Expecting \$CROSSCOMPILE to be set. Did you source nerves-env.sh?"
-    echo "  \"mix firmware\" should do this for you. Please file an issue is using \"mix\"."
+    echo "$SCRIPT_NAME: ERROR: Expecting \$CROSSCOMPILE to be set. Did you source grisps-env.sh?"
+    echo "  \"build-firmware.sh\" should do this for you. Please file an issue."
     echo "  Additional information:"
     echo "    strip=$STRIP"
     echo "    readelf=$READELF"
@@ -77,8 +77,6 @@ executable_type()
 
         if [ -z "$ELF_MACHINE" ]; then
             echo "$SCRIPT_NAME: ERROR: Didn't expect empty machine field in ELF header in $FILE." 1>&2
-            echo "   Try running '$READELF -h $FILE' and" 1>&2
-            echo "   and create an issue at https://github.com/nerves-project/nerves_system_br/issues." 1>&2
             exit 1
         fi
         echo "readelf:$ELF_MACHINE;$ELF_FLAGS"
@@ -155,29 +153,6 @@ for EXECUTABLE in $EXECUTABLES; do
             echo
             echo "This file was compiled for the host or a different target and probably"
             echo "will not work."
-            echo
-            echo "Check the following:"
-            echo
-            echo "1. If this file comes from a library, that library may be compiling to"
-            echo "   its source directory under \`deps\`. Manually clean up the source"
-            echo "   directory and try building again."
-            echo
-            echo "2. Are you using a path dependency in your mix deps? If so, run"
-            echo "   'mix clean' in that directory to avoid pulling in any of its"
-            echo "   build products."
-            echo
-            echo "3. Did you recently upgrade or change your Nerves system? If so,"
-            echo "   try cleaning and rebuilding this project and its deps."
-            echo
-            echo "4. Are you building outside of Nerves' mix integration? If so,"
-            echo "   make sure that you've sourced 'nerves-env.sh'."
-            echo
-            echo "If you are very sure you know what you are doing, you may place an empty"
-            echo "file in the same directory as the offending file(s) called '.noscrub'."
-            echo "This will explicitly disable scrubbing for that directory."
-            echo
-            echo "If you're still having trouble, please file an issue on Github"
-            echo "at https://github.com/nerves-project/nerves_system_br/issues."
             echo
             exit 1
         fi
