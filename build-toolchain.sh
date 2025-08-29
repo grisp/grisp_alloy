@@ -103,7 +103,7 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
-    vagrant exec /home/vagrant/build-toolchain.sh "${NEW_ARGS[@]}"
+    vagrant exec "${GLB_VAGRANT_TOP_DIR}/build-toolchain.sh" "${NEW_ARGS[@]}"
     exit $?
 fi
 

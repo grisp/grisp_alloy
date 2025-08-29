@@ -84,33 +84,53 @@ e.g.
 ```
 
 
-## Build Firware Update
+## Build Project Artefact
 
 Both the toolchain and the SDK must have been built previously.
 
 ```sh
-./build-firmware.sh <TARGET_NAME> <ERLANG_PROJECT_DIRECTORY> [REBAR_PROFILE]
+./build-project.sh <TARGET_NAME> <PROJECT_DIRECTORY> [PROFILE]
 ```
+
+This builds the project using plugins (Erlang/Elixir) and packages a tarball
+in `artefacts/` containing:
+
+- ALLOY-PROJECT: manifest with project and target metadata
+- ALLOY-FS-PRIORITIES: optional SquashFS priority list (may be empty)
+- release/: OTP release directory
+
+Tarball name: `<app>-<version>-<target>[-<profile>].tgz`
 
 e.g.
 
 ```sh
-./build-firmware.sh grisp2 samples/hello_grisp
+./build-project.sh grisp2 samples/hello_grisp
 ```
 
-In addition to the firmware, an image file can be generated:
+## Build Firmware Update
+
+Builds a firmware from a pre-built project artefact. The artefact can be a
+full path to a `.tgz` file or a name prefix resolved from `artefacts/`.
 
 ```sh
-./build-firmware.sh -i <TARGET_NAME> <ERLANG_PROJECT_DIRECTORY> [REBAR_PROFILE]
+./build-firmware.sh [-i] <TARGET_NAME> <ARTEFACT_PATH_OR_PREFIX> [SERIAL_NUMBER]
 ```
 
-e.g.
+Examples:
 
 ```sh
-./build-firmware.sh -i grisp2 samples/hello_grisp
+./build-firmware.sh grisp2 hello_grisp-0.1.0-grisp2.tgz
+./build-firmware.sh grisp2 hello_grisp-0.1.0-grisp2
+./build-firmware.sh -i grisp2 hello_grisp-0.1.0-grisp2
 ```
 
-Keep in mind that image file could be a lot bigger than the firmware.
+Notes:
+
+- The script validates that the artefact matches the requested target and SDK
+  versions and architecture.
+- When using the `-i` flag, raw disk images are generated in addition to the
+  firmware file.
+- The `SERIAL_NUMBER` (optional) is recorded in `os-release` in the firmware.
 
 
 ### Burn Firmware
