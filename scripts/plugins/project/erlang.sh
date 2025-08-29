@@ -1,4 +1,9 @@
-project_build() {
+project_detect_erlang() {
+    local project_dir="$1"
+    [[ -f "$project_dir/rebar.config" ]]
+}
+
+project_build_erlang() {
 	local -n resref="$1"
 	local project_dir="$2"
 	local profile="$3"
