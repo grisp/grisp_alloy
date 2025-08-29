@@ -1,4 +1,9 @@
-project_build() {
+project_detect_elixir() {
+    local project_dir="$1"
+    [[ -f "$project_dir/mix.exs" ]]
+}
+
+project_build_elixir() {
     local -n resref="$1"
     local project_dir="$2"
     local profile="$3"

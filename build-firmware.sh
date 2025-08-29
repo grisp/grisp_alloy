@@ -76,7 +76,7 @@ done
 shift $((OPTIND-1))
 [[ "${1:-}" == "--" ]] && shift
 if [[ $# -eq 0 ]]; then
-    echo "ERROR: Missing target name "
+    echo "ERROR: Missing target name"
     show_usage
     exit 1
 fi
@@ -235,13 +235,14 @@ source "$CRUCIBLE_FILE"
 
 # BOOT SCHEME PLUGIN: Platform-specific packaging logic
 # Each target uses different boot methods (AHAB for i.MX8, etc.)
-# Plugin provides functions: bootscheme_package_bootloader, bootscheme_package_kernel, bootscheme_package_firmware
-BOOTSCHEME_FILE="${GLB_SCRIPT_DIR}/plugins/bootscheme_$(echo ${BOOTSCHEME} | tr '[:upper:]' '[:lower:]').sh"
-if [[ ! -f "$BOOTSCHEME_FILE" ]]; then
-    error 1 "Boot scheme ${BOOTSCHEME} not found at ${BOOTSCHEME_FILE}"
-fi
-source "$BOOTSCHEME_FILE"
+source "${GLB_SCRIPT_DIR}/plugins/bootscheme.sh"
+bootscheme_setup ${BOOTSCHEME}
 
+# PROJECT MANAGMENT PLUGIN: Loads and sets up project management plugins
+source "${GLB_SCRIPT_DIR}/plugins/project.sh"
+project_setup
+
+# PROJECT BUILD PREPARATION
 PROJECT_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects/${PROJECT_NAME}"
 FIRMWARE_DIR="${GLB_FIRMWARE_BUILD_DIR}/firmware"
 SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
@@ -262,7 +263,6 @@ fi
 # PROJECT BUILD PREPARATION
 
 # PROJECT TYPE DETECTION
-source "${GLB_SCRIPT_DIR}/plugins/project_detect.sh"
 project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
 
 # Copy source project to build directory and prepare for compilation
