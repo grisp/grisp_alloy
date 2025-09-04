@@ -10,8 +10,8 @@
 # 2. Handle Vagrant VM execution on non-Linux hosts or when forced
 # 3. Install SDK if not present
 # 4. Load target-specific configuration (crucible.sh) and boot scheme plugin
-# 5. Build Erlang project using rebar3
-# 6. Create firmware filesystem by merging SDK rootfs with project release
+# 5. Resolve and unpack one or more project artefacts
+# 6. Stage each project under /srv/alloy/<name> and create /srv/erlang symlink
 # 7. Package bootloader, kernel, and firmware using boot scheme
 # 8. Optionally generate raw disk images
 #
@@ -27,7 +27,7 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] TARGET PROJECT_ARTEFACT [SERIAL_NUMBER]"
+    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] [-s SERIAL] [-n NAME] TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
     echo "OPTIONS:"
     echo " -h Show this"
     echo " -d Print scripts debug information"
@@ -36,8 +36,12 @@ show_usage()
     echo " -V Using the Vagrant VM even on Linux"
     echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
     echo " -K Keep the vagrant VM running after exiting"
+    echo " -s Device serial number"
+    echo " -n Firmware name (defaults to first artefact's base name)"
     echo
-    echo "e.g. build-firmware.sh grisp2 ~/my_project"
+    echo "Examples:"
+    echo "  build-firmware.sh grisp2 projA"
+    echo "  build-firmware.sh grisp2 projA --name alpha projB --name beta"
 }
 
 # Parse script's arguments
@@ -49,7 +53,8 @@ ARG_FORCE_VAGRANT=false
 ARG_KEEP_VAGRANT=false
 ARG_SERIAL_DEFINED=false
 ARG_SERIAL="00000000"
-while getopts "hdcistVPK" opt; do
+ARG_FIRMWARE_NAME=""
+while getopts "hdciVs:n:PK" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
@@ -59,6 +64,13 @@ while getopts "hdcistVPK" opt; do
         ;;
     i)
         ARG_GEN_IMAGES=true
+        ;;
+    s)
+        ARG_SERIAL_DEFINED=true
+        ARG_SERIAL="$OPTARG"
+        ;;
+    n)
+        ARG_FIRMWARE_NAME="$OPTARG"
         ;;
     V)
         ARG_FORCE_VAGRANT=true
@@ -84,23 +96,9 @@ if [[ $# -eq 0 ]]; then
 fi
 ARG_TARGET="$1"
 shift
-if [[ $# -eq 0 ]]; then
-    echo "ERROR: Missing project artefact (tarball path or artefact name prefix)"
-    show_usage
-    exit 1
-fi
-ARG_ARTEFACT="$1"
-shift
-if [[ $# -gt 0 ]]; then
-    ARG_SERIAL_DEFINED=true
-    ARG_SERIAL="$1"
-    shift
-fi
-if [[ $# -gt 0 ]]; then
-    echo "ERROR: Too many arguments"
-    show_usage
-    exit 1
-fi
+
+# Remaining tokens (could be NODE/PROJECT specs). We validate later.
+RAW_TOKENS=( "$@" )
 
 # Load common variables and functions (GLB_* globals, error handling, etc.)
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
@@ -110,70 +108,98 @@ if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64"
     error 1 "$HOST_ARCH is not supported, only x86_64, aarch64 or arm64"
 fi
 
-PROJECT_NAME="unknown"
+FIRMWARE_NAME=""
 VCS_TAG_FILE=".alloy_vcs_tag"
 
 set_debug_level "$ARG_DEBUG"
 
-probe_tarball_target() {
-    local tarfile="$1"
-    local tmp_manifest proj_target manifest_path
-    manifest_path="$( tar -tzf "$tarfile" 2>/dev/null | grep -E '^(\./)?ALLOY-PROJECT$' | head -n1 )"
-    if [[ -z "$manifest_path" ]]; then
-        echo ""
-        return 2
-    fi
+# Arrays describing projects to stage
+PROJECT_NAMES=( )
+PROJECT_REFS=( )
+PROJECT_ARTEFACTS=( )
+
+parse_projects() {
+    local tokens=( "${RAW_TOKENS[@]}" )
+    local current_node_idx=-1
+    local artefact_path
+
+    local i=0
+    while [[ $i -lt ${#tokens[@]} ]]; do
+        case "${tokens[$i]}" in
+            --name)
+                if [[ $current_node_idx -lt 0 ]]; then
+                    error 1 "--name must be used after a project reference"
+                fi
+                i=$(( i + 1 ))
+                if [[ $i -ge ${#tokens[@]} ]]; then
+                    error 1 "--name requires a value"
+                fi
+                PROJECT_NAMES[$current_node_idx]="${tokens[$i]}"
+                ;;
+            --*)
+                error 1 "Unknown option: ${tokens[$i]}"
+                ;;
+            *)
+                current_node_idx=$((current_node_idx + 1))
+                PROJECT_REFS[$current_node_idx]="${tokens[$i]}"
+                artefact_path="$( resolve_tarball "${tokens[$i]}" )"
+                if [[ -z "${PROJECT_NAMES[$current_node_idx]}" ]]; then
+                    PROJECT_NAMES[$current_node_idx]="$( artefact_info PROJECT_APP_NAME "$artefact_path" )"
+                fi
+                PROJECT_ARTEFACTS[$current_node_idx]="$artefact_path"
+                ;;
+        esac
+        i=$(( i + 1 ))
+    done
+}
+
+artefact_info() {
+    # Usage: artefact_info VAR_NAME TARFILE → echoes value of VAR_NAME from ALLOY-PROJECT
+    local var_name="$1"
+    local tarfile="$2"
+    local tmp_manifest
+    local val
     tmp_manifest="$(mktemp)"
-    if ! tar -xzf "$tarfile" -O "$manifest_path" > "$tmp_manifest" 2>/dev/null; then
+    if ! tar -xzf "$tarfile" -O "./ALLOY-PROJECT" > "$tmp_manifest" 2>/dev/null; then
         rm -f "$tmp_manifest"
-        echo ""
-        return 2
+        error 3 "Invalid project package: missing ALLOY-PROJECT in $(basename "$tarfile")"
     fi
-    proj_target=$( ( set -a; source "$tmp_manifest"; echo "$PROJECT_TARGET_NAME" ) 2>/dev/null )
+    val=$( ( set -a; source "$tmp_manifest"; echo "${!var_name}" ) 2>/dev/null )
     rm -f "$tmp_manifest"
-    echo "$proj_target"
-    if [[ -z "$proj_target" ]]; then
-        return 2
+    if [[ -z "$val" ]]; then
+        error 4 "Invalid project package: missing ${var_name} in $(basename "$tarfile")"
     fi
-    return 0
+    echo "$val"
 }
 
 resolve_tarball() {
-    local -n resref="$1"
-    local spec="$2"
+    local spec="$1"
+    local path
+    local proj_target
+    local matches
+    local filtered=( )
     if [[ "$spec" == *.tgz && -f "$spec" ]]; then
-        local abs proj_target
-        abs="$( cd "$( dirname "$spec" )" && pwd )/$( basename "$spec" )"
-        proj_target="$(probe_tarball_target "$abs")"
-        if [[ $? -ne 0 ]]; then
-            error 1 "Invalid project package: missing ALLOY-PROJECT or PROJECT_TARGET_NAME in $(basename "$abs")"
-        fi
+        path="$( cd "$( dirname "$spec" )" && pwd )/$( basename "$spec" )"
+        proj_target="$( artefact_info PROJECT_TARGET_NAME "$path" )"
         if [[ "$proj_target" != "$GLB_TARGET_NAME" ]]; then
             error 1 "No valid project package found for selected target '$GLB_TARGET_NAME' (got '$proj_target')"
         fi
-        resref="$abs"
+        echo "$path"
         return 0
     fi
-    local matches
     matches=( $( ls -1 "${GLB_ARTEFACTS_DIR}/${spec}"*.tgz 2>/dev/null || true ) )
     if [[ ${#matches[@]} -eq 0 ]]; then
         error 1 "No artefact matching prefix '${spec}'. Build the project with build-project.sh first."
     elif [[ ${#matches[@]} -gt 1 ]]; then
         # Filter by manifest target in ALLOY-PROJECT
-        local filtered=( )
         for m in "${matches[@]}"; do
-            local proj_target
-            proj_target="$(probe_tarball_target "$m")"
-            if [[ $? -ne 0 ]]; then
-                echo "WARNING: Invalid project package: missing ALLOY-PROJECT or PROJECT_TARGET_NAME in $(basename "$m")" 1>&2
-                continue
-            fi
+            proj_target="$( artefact_info PROJECT_TARGET_NAME "$m" )"
             if [[ "$proj_target" == "$GLB_TARGET_NAME" ]]; then
                 filtered+=("$m")
             fi
         done
         if [[ ${#filtered[@]} -eq 1 ]]; then
-            resref="${filtered[0]}"
+            echo "${filtered[0]}"
             return 0
         elif [[ ${#filtered[@]} -eq 0 ]]; then
             error 1 "No project package found for selected target '$GLB_TARGET_NAME'"
@@ -184,21 +210,17 @@ resolve_tarball() {
         fi
     else
         # Single match: still validate by manifest
-        local only="${matches[0]}" proj_target
-        proj_target="$(probe_tarball_target "$only")"
-        if [[ $? -ne 0 ]]; then
-            error 1 "Invalid project package: missing ALLOY-PROJECT or PROJECT_TARGET_NAME in $(basename "$only")"
-        fi
+        path="${matches[0]}"
+        proj_target="$( artefact_info PROJECT_TARGET_NAME "$path" )"
         if [[ "$proj_target" != "$GLB_TARGET_NAME" ]]; then
-            error 1 "No project package found for selected target '$GLB_TARGET_NAME' (got '$(basename "$only")' with '$proj_target')"
+            error 1 "No project package found for selected target '$GLB_TARGET_NAME' (got '$(basename "$path")' with '$proj_target')"
         fi
-        resref="$only"
+        echo "$path"
+        return 0
     fi
 }
 
-resolve_tarball PROJECT_FILEPATH "$ARG_ARTEFACT"
-PROJECT_FILENAME="$( basename "$PROJECT_FILEPATH" )"
-PROJECT_NAME="$( echo "$PROJECT_FILENAME" | sed "s|\(.*\)-.*\.tgz|\1|" )"
+parse_projects
 
 # VAGRANT VM EXECUTION BLOCK
 # Non-Linux hosts (macOS, etc.) or forced Vagrant mode require VM execution
@@ -210,15 +232,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         vagrant provision
     fi
     vagrant ssh-config > .vagrant.ssh_config
-    # If artefact is under GLB_ARTEFACTS_DIR, use the synced path within VM, preserving subdirectories
-    if [[ "$PROJECT_FILEPATH" == ${GLB_ARTEFACTS_DIR}/* ]]; then
-        REL_PATH="${PROJECT_FILEPATH#${GLB_ARTEFACTS_DIR}/}"
-        NEW_PROJECT_FILEPATH="${GLB_VAGRANT_TOP_DIR}/artefacts/${REL_PATH}"
-    else
-        vagrant exec mkdir -p "$VAGRANT_FIRMWARE_BUILD_DIR"
-        rsync -av -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$PROJECT_FILEPATH" "vagrant@default:${VAGRANT_FIRMWARE_BUILD_DIR}/${PROJECT_FILENAME}"
-        NEW_PROJECT_FILEPATH="${VAGRANT_FIRMWARE_BUILD_DIR}/${PROJECT_FILENAME}"
-    fi
+
+    # Map each project tarball to an in-VM path and upload if needed
+    vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/uploads"
 
     # Keep track of the alloy VCS tag
     if [[ -d "$GLB_TOP_DIR/.git" ]]; then
@@ -239,12 +255,28 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_GEN_IMAGES == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-i" )
     fi
-    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
-    NEW_ARGS=( ${NEW_ARGS[@]} "$NEW_PROJECT_FILEPATH" )
-
     if [[ $ARG_SERIAL_DEFINED == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_SERIAL" )
+        NEW_ARGS=( ${NEW_ARGS[@]} "-s" "$ARG_SERIAL" )
     fi
+    if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-n" "$ARG_FIRMWARE_NAME" )
+    fi
+    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
+
+    # Append per-project arguments (with VM-resolved artefact paths)
+    for i in "${!PROJECT_ARTEFACTS[@]}"; do
+        local_host_path="${PROJECT_ARTEFACTS[$i]}"
+        if [[ "$local_host_path" == ${GLB_ARTEFACTS_DIR}/* ]]; then
+            REL_PATH="${local_host_path#${GLB_ARTEFACTS_DIR}/}"
+            NEW_ARGS+=( "${GLB_VAGRANT_ARTEFACTS_DIR}/${REL_PATH}" )
+        else
+            rsync -av -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$local_host_path" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads"
+            NEW_ARGS+=( "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads/$( basename "$local_host_path" )" )
+        fi
+        if [[ -n "${PROJECT_NAMES[$i]}" ]]; then
+            NEW_ARGS+=( "--name" "${PROJECT_NAMES[$i]}" )
+        fi
+    done
 
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
@@ -255,6 +287,13 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
 fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
+
+# Determine firmware name
+if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
+    FIRMWARE_NAME="$ARG_FIRMWARE_NAME"
+else
+    FIRMWARE_NAME="${PROJECT_NAMES[0]}"
+fi
 
 # Clean SDK if requested (forces full rebuild)
 if [[ $ARG_CLEAN == true ]]; then
@@ -285,8 +324,8 @@ source "${GLB_SCRIPT_DIR}/plugins/bootscheme.sh"
 bootscheme_setup ${BOOTSCHEME}
 
 # PROJECT ARTEFACT PREPARATION
-PROJECT_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects/${PROJECT_NAME}"
-FIRMWARE_DIR="${GLB_FIRMWARE_BUILD_DIR}/firmwares/${PROJECT_NAME}"
+PROJECTS_BASE_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects"
+FIRMWARE_DIR="${GLB_FIRMWARE_BUILD_DIR}/firmwares/${FIRMWARE_NAME}"
 SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
 SDK_FWUP_CONFIG="$GLB_SDK_DIR/images/fwup.conf"
 GLB_VCS_TAG="unknown"
@@ -296,94 +335,134 @@ elif [[ -f "${GLB_TOP_DIR}/${VCS_TAG_FILE}" ]]; then
     GLB_VCS_TAG="$( cat "${GLB_TOP_DIR}/${VCS_TAG_FILE}" )"
 fi
 
-# Clean previous builds if requested
 if [[ $ARG_CLEAN == true ]]; then
-    rm -rf "$PROJECT_DIR"
-    rm -rf "$FIRMWARE_DIR"
+    rm -rf "$PROJECTS_BASE_DIR"
 fi
 
-mkdir -p "$PROJECT_DIR"
+rm -rf "$FIRMWARE_DIR"
+
+mkdir -p "$PROJECTS_BASE_DIR"
 mkdir -p "$FIRMWARE_DIR"
-
-# Unpack project tarball under PROJECT_DIR
-tar -xzf "$PROJECT_FILEPATH" -C "$PROJECT_DIR"
-
-# Read manifest
-MANIFEST_FILE="${PROJECT_DIR}/ALLOY-PROJECT"
-if [[ ! -f "$MANIFEST_FILE" ]]; then
-    error 1 "Missing manifest ALLOY-PROJECT in artefact"
-fi
-source "$MANIFEST_FILE"
-PROJECT_VCS_TAG="${PROJECT_VCS_PROJECT:-unknown}"
-
-# Validate target and environment compatibility
-if [[ "$PROJECT_TARGET_NAME" != "$GLB_TARGET_NAME" ]]; then
-    error 1 "Artefact target '$PROJECT_TARGET_NAME' does not match requested target '$GLB_TARGET_NAME'"
-fi
-
-# Validate system versions and arch if present
-if [[ -n "$PROJECT_COMMON_SYSTEM_VER" && -n "$GLB_COMMON_SYSTEM_VER" && "$PROJECT_COMMON_SYSTEM_VER" != "$GLB_COMMON_SYSTEM_VER" ]]; then
-    error 1 "Artefact common system version '$PROJECT_COMMON_SYSTEM_VER' does not match '$GLB_COMMON_SYSTEM_VER'"
-fi
-if [[ -n "$PROJECT_TARGET_SYSTEM_VER" && -n "$GLB_TARGET_SYSTEM_VER" && "$PROJECT_TARGET_SYSTEM_VER" != "$GLB_TARGET_SYSTEM_VER" ]]; then
-    error 1 "Artefact target system version '$PROJECT_TARGET_SYSTEM_VER' does not match '$GLB_TARGET_SYSTEM_VER'"
-fi
 
 # Prepare cross-compile environment for scrub and packaging
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
-if [[ -n "$PROJECT_ARCH" && -n "$CROSSCOMPILE_ARCH" && "$PROJECT_ARCH" != "$CROSSCOMPILE_ARCH" ]]; then
-    error 1 "Artefact arch '$PROJECT_ARCH' does not match '$CROSSCOMPILE_ARCH'"
-fi
 
-# Locate release directory inside artefact
-RELEASE_DIR="${PROJECT_DIR}/release"
-if [[ ! -d "$RELEASE_DIR" ]]; then
-    error 1 "Invalid artefact: missing 'release' directory"
-fi
+# Unpack and validate all projects
+PROJECT_DIRS=( )
+RELEASE_DIRS=( )
+APP_NAMES=( )
+APP_VERS=( )
+REL_VERS=( )
+PROJ_TYPES=( )
+PROJ_PROFILES=( )
+PROJ_VCS_TAGS=( )
+ERTS_VERS=( )
+PROJECT_ROOTS=( )
 
-APP_NAME="${PROJECT_APP_NAME}"
-APP_VER="${PROJECT_APP_VERSION:-}"
-if [[ -z "$APP_VER" ]]; then
-    APP_REL_DIR=$( echo "${RELEASE_DIR}/lib/${APP_NAME}-"* )
-    if [[ -d $APP_REL_DIR ]]; then
-        APP_VER="$( echo "$APP_REL_DIR" | sed "s|^.*/${APP_NAME}-\(.*\)$|\1|" )"
+for idx in "${!PROJECT_ARTEFACTS[@]}"; do
+    tarball="${PROJECT_ARTEFACTS[$idx]}"
+    app_name="$( artefact_info PROJECT_APP_NAME "$tarball" )"
+    proj_dir="${PROJECTS_BASE_DIR}/${PROJECT_NAMES[$idx]}"
+    proj_root="/srv/alloy/${PROJECT_NAMES[$idx]}"
+    rm -rf "$proj_dir"
+    mkdir -p "$proj_dir"
+    tar -xzf "$tarball" -C "$proj_dir"
+
+    man_file="${proj_dir}/ALLOY-PROJECT"
+    if [[ ! -f "$man_file" ]]; then
+        error 1 "Missing manifest ALLOY-PROJECT in $app_name artefact"
     fi
+    source "$man_file"
+
+    if [[ "$PROJECT_TARGET_NAME" != "$GLB_TARGET_NAME" ]]; then
+        error 1 "Artefact $app_name target '$PROJECT_TARGET_NAME' does not match requested target '$GLB_TARGET_NAME'"
+    fi
+    if [[ -n "$PROJECT_COMMON_SYSTEM_VER" && -n "$GLB_COMMON_SYSTEM_VER" && "$PROJECT_COMMON_SYSTEM_VER" != "$GLB_COMMON_SYSTEM_VER" ]]; then
+        error 1 "Artefact $app_name common system version '$PROJECT_COMMON_SYSTEM_VER' does not match '$GLB_COMMON_SYSTEM_VER'"
+    fi
+    if [[ -n "$PROJECT_TARGET_SYSTEM_VER" && -n "$GLB_TARGET_SYSTEM_VER" && "$PROJECT_TARGET_SYSTEM_VER" != "$GLB_TARGET_SYSTEM_VER" ]]; then
+        error 1 "Artefact $app_name target system version '$PROJECT_TARGET_SYSTEM_VER' does not match '$GLB_TARGET_SYSTEM_VER'"
+    fi
+    if [[ -n "$PROJECT_CROSSCOMPILE_ARCH" && -n "$CROSSCOMPILE_ARCH" && "$PROJECT_CROSSCOMPILE_ARCH" != "$CROSSCOMPILE_ARCH" ]]; then
+        error 1 "Artefact $app_name arch '$PROJECT_CROSSCOMPILE_ARCH' does not match '$CROSSCOMPILE_ARCH'"
+    fi
+
+    rel_dir="${proj_dir}/release"
+    if [[ ! -d "$rel_dir" ]]; then
+        error 1 "Invalid $app_name artefact: missing 'release' directory"
+    fi
+
+    app_ver="${PROJECT_APP_VERSION:-}"
+    if [[ -z "$app_ver" ]]; then
+        app_rel_dir=$( echo "${rel_dir}/lib/${app_name}-"* )
+        if [[ -d $app_rel_dir ]]; then
+            app_ver="$( echo "$app_rel_dir" | sed "s|^.*/${app_name}-\(.*\)$|\1|" )"
+        fi
+    fi
+
+    erts_dir_cand=$( echo "${rel_dir}/erts-"* )
+    if [[ ! -d "$erts_dir_cand" ]] || [[ "$erts_dir_cand" == "${rel_dir}/erts-*" ]]; then
+        error 1 "Missing release erts directory"
+    fi
+    if [[ -z "$app_ver" ]] || [[ ! -d "${rel_dir}/lib/${app_name}-${app_ver}" ]]; then
+        error 1 "Missing release path lib/${app_name}-${app_ver}"
+    fi
+    # Determine release version from manifest if available; fallback to app_ver
+    rel_version="${PROJECT_RELEASE_VERSION:-$app_ver}"
+    if [[ -z "$rel_version" ]]; then
+        # As a last resort, pick the first matching releases/${app_name}-*
+        rel_match=$( echo "${rel_dir}/releases/${app_name}-"* )
+        if [[ -d "$rel_match" ]] && [[ "$rel_match" != "${rel_dir}/releases/${app_name}-*" ]]; then
+            rel_version="$( basename "$rel_match" | sed "s/^${app_name}-//" )"
+        fi
+    fi
+    if [[ -z "$rel_version" ]] || [[ ! -d "${rel_dir}/releases/${rel_version}" ]]; then
+        error 1 "Missing $app_name release path releases/${rel_version}"
+    fi
+
+    PROJECT_DIRS+=( "$proj_dir" )
+    RELEASE_DIRS+=( "$rel_dir" )
+    APP_NAMES+=( "$app_name" )
+    APP_VERS+=( "$app_ver" )
+    PROJ_TYPES+=( "${PROJECT_TYPE}" )
+    PROJ_PROFILES+=( "${PROJECT_PROFILE}" )
+    PROJ_VCS_TAGS+=( "${PROJECT_VCS_PROJECT:-unknown}" )
+    ERTS_VERS+=( "$( basename "$erts_dir_cand" | sed 's/^erts-//' )" )
+    REL_VERS+=( "$rel_version" )
+    PROJECT_ROOTS+=( "$proj_root" )
+done
+
+if [[ ${#RELEASE_DIRS[@]} -eq 0 ]]; then
+    error 1 "Missing project artefact (tarball path or artefact name prefix)"
 fi
 
-BASE_FILENAME="${APP_NAME}"
-if [[ -n "${APP_VER}" ]]; then
-    BASE_FILENAME="${BASE_FILENAME}-${APP_VER}"
-fi
-BASE_FILENAME="${BASE_FILENAME}-${GLB_TARGET_NAME}"
-if [[ -n "${PROJECT_PROFILE}" && "${PROJECT_PROFILE}" != "default" ]]; then
-    BASE_FILENAME="${BASE_FILENAME}-${PROJECT_PROFILE}"
-fi
-
+BASE_FILENAME="${FIRMWARE_NAME}-${GLB_TARGET_NAME}"
 FIRMWARE_FILENAME="${BASE_FILENAME}.fw"
 FIRMWARE_FILE="${GLB_ARTEFACTS_DIR}/${FIRMWARE_FILENAME}"
 IMAGE_BASE_FILENAME="${BASE_FILENAME}"
 IMAGE_BASE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_BASE_FILENAME}"
 IMAGE_FILE_EXTENSION=".img"
 
-# Create a consolidated priority file (project + firmware)
+# Consolidated priority file across all projects + firmware
 SQUASHFS_PRIORITIES_FILE="$FIRMWARE_DIR/squashfs.priority"
 rm -f "$SQUASHFS_PRIORITIES_FILE"
 PRIO_TEMP="$FIRMWARE_DIR/.priorities.tmp"
 PRIO_PATHS="$FIRMWARE_DIR/.prio.paths"
 rm -f "$PRIO_TEMP" "$PRIO_PATHS"
 
-# 1) Project-defined priorities
-PROJECT_PRIORITIES_FILE="${PROJECT_DIR}/ALLOY-FS-PRIORITIES"
-if [[ -f "$PROJECT_PRIORITIES_FILE" ]]; then
-    cat "$PROJECT_PRIORITIES_FILE" >> "$PRIO_TEMP"
-fi
-
-# 2) Firmware priorities, but skip duplicates present in project file
-if [[ -f "$PROJECT_PRIORITIES_FILE" ]]; then
-    awk '{print $1}' "$PROJECT_PRIORITIES_FILE" | sort -u > "$PRIO_PATHS"
-else
-    : > "$PRIO_PATHS"
-fi
+: > "$PRIO_PATHS"
+for idx in "${!PROJECT_DIRS[@]}"; do
+    prio_file="${PROJECT_DIRS[$idx]}/ALLOY-FS-PRIORITIES"
+    if [[ -f "$prio_file" ]]; then
+        while read -r path weight; do
+            [[ -z "$path" ]] && continue
+            if ! grep -qx -- "$path" "$PRIO_PATHS" 2>/dev/null; then
+                echo "$path" >> "$PRIO_PATHS"
+                echo "$path $weight" >> "$PRIO_TEMP"
+            fi
+        done < "$prio_file"
+    fi
+done
 
 for ((i = 0; i < ${#SQUASHFS_PRIORITIES[@]}; i += 2 )); do
     p="${SQUASHFS_PRIORITIES[i]}"
@@ -393,7 +472,6 @@ for ((i = 0; i < ${#SQUASHFS_PRIORITIES[@]}; i += 2 )); do
     fi
 done
 
-# Sort by weight desc for readability
 if [[ -s "$PRIO_TEMP" ]]; then
     sort -k2,2nr -o "$SQUASHFS_PRIORITIES_FILE" "$PRIO_TEMP"
 else
@@ -402,18 +480,25 @@ fi
 rm -f "$PRIO_TEMP" "$PRIO_PATHS"
 
 # FILESYSTEM OVERLAY PREPARATION
-# Create overlay containing Erlang release that will be merged with SDK rootfs
-echo "Updating base firmware image with project release..."
+# Create per-node release directories under /srv/alloy and an init symlink
+echo "Packaging project releases..."
 
-# Place Erlang release in standard location (/srv/erlang in target filesystem)
-ERLANG_OVERLAY_DIR="${FIRMWARE_DIR}/rootfs_overlay/srv/erlang"
-rm -rf "$ERLANG_OVERLAY_DIR"
-mkdir -p "$ERLANG_OVERLAY_DIR"
-cp -R "${RELEASE_DIR}/." "$ERLANG_OVERLAY_DIR"
+OVERLAY_ROOT="${FIRMWARE_DIR}/rootfs_overlay/srv"
+rm -rf "$OVERLAY_ROOT"
+mkdir -p "$OVERLAY_ROOT/alloy"
 
-# Remove unnecessary files from release (docs, sources, etc.) to reduce size
-"${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" \
-    "$FIRMWARE_DIR/rootfs_overlay/srv/erlang"
+for i in "${!RELEASE_DIRS[@]}"; do
+    node_dir="${OVERLAY_ROOT}/alloy/${PROJECT_NAMES[$i]}"
+    if [[ -e "$node_dir" ]]; then
+        error 1 "Destination already exists: ${node_dir}"
+    fi
+    mkdir -p "$node_dir"
+    cp -R "${RELEASE_DIRS[$i]}/." "$node_dir"
+    "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" "$node_dir"
+done
+
+# Create init symlink to first node's directory
+ln -sfn "${PROJECT_ROOTS[0]}" "${OVERLAY_ROOT}/erlang"
 
 # Update the os-release file
 OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
@@ -428,25 +513,31 @@ EOF
 # Generate alloy manifest
 ALLOY_FIRMWARE_FILE="${FIRMWARE_DIR}/rootfs_overlay/alloy-firmware.json"
 mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
-cat << EOF > "$ALLOY_FIRMWARE_FILE"
 {
-    "architecture": "${CROSSCOMPILE_ARCH}",
-    "serial": "${ARG_SERIAL}",
-    "target": "${GLB_TARGET_NAME}",
-    "system_common_version": "${GLB_COMMON_SYSTEM_VER}",
-    "system_common_vcs": "${GLB_VCS_TAG}",
-    "system_target_version": "${GLB_TARGET_SYSTEM_VER}",
-    "system_target_vcs": "${GLB_VCS_TAG}",
-    "projects": {
-        "${PROJECT_APP_NAME}": {
-            "version": "${PROJECT_APP_VERSION}",
-            "vcs": "${PROJECT_VCS_TAG}",
-            "type": "${PROJECT_TYPE}",
-            "profile": "${PROJECT_PROFILE}"
-        }
-    }
-}
-EOF
+    echo "{";
+    echo "    \"architecture\": \"${CROSSCOMPILE_ARCH}\",";
+    echo "    \"serial\": \"${ARG_SERIAL}\",";
+    echo "    \"target\": \"${GLB_TARGET_NAME}\",";
+    echo "    \"system_common_version\": \"${GLB_COMMON_SYSTEM_VER}\",";
+    echo "    \"system_common_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"system_target_version\": \"${GLB_TARGET_SYSTEM_VER}\",";
+    echo "    \"system_target_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"projects\": {";
+    for pi in "${!APP_NAMES[@]}"; do
+        echo "        \"${APP_NAMES[$pi]}\": {";
+        echo "            \"root\": \"${PROJECT_ROOTS[$pi]}\",";
+        echo "            \"app_ver\": \"${APP_VERS[$pi]}\",";
+        echo "            \"rel_ver\": \"${REL_VERS[$pi]}\",";
+        echo "            \"type\": \"${PROJ_TYPES[$pi]}\",";
+        echo "            \"profile\": \"${PROJ_PROFILES[$pi]}\",";
+        echo "            \"erts_ver\": \"${ERTS_VERS[$pi]}\",";
+        echo "            \"vcs\": \"${PROJ_VCS_TAGS[$pi]}\"";
+        echo -n "        }";
+        if [[ $pi -lt $((${#APP_NAMES[@]}-1)) ]]; then echo ","; else echo; fi
+    done
+    echo "    }";
+    echo "}";
+} > "$ALLOY_FIRMWARE_FILE"
 
 cat $OS_RELEASE_FILE
 cat $ALLOY_FIRMWARE_FILE

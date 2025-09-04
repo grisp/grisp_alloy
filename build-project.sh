@@ -238,6 +238,43 @@ if [[ "$ARG_PROJECT_PROFILE" != "default" ]]; then
 fi
 TARBALL_FILE="${GLB_ARTEFACTS_DIR}/${TARBALL_BASENAME}.tgz"
 
+###############################################################################
+# Release validations
+###############################################################################
+
+# Validate ERTS directory exists
+ERTS_DIR_CANDIDATE=$( echo "${RELEASE_DIR}/erts-"* )
+if [[ ! -d "$ERTS_DIR_CANDIDATE" ]] || [[ "$ERTS_DIR_CANDIDATE" == "${RELEASE_DIR}/erts-*" ]]; then
+    echo "ERROR: Missing release erts directory"
+    echo "To be compatible with GRiSP Alloy, the project must release the ERTS runtime"
+    echo "e.g."
+    echo "    rebar.config:"
+    echo "        {relx, [{release, {...}, [...]}, {include_erts, true}, ...]}"
+    echo "    mix.exs:"
+    echo "        releases: [foobar: [..., include_erts: true, ...]]"
+    echo
+    exit 1
+fi
+
+# Validate lib/<APP>-<VERSION>
+if [[ -z "$APP_VER" ]] || [[ ! -d "${RELEASE_DIR}/lib/${APP_NAME}-${APP_VER}" ]]; then
+    error 1 "Missing release path lib/${APP_NAME}-${APP_VER}"
+fi
+
+# Validate releases/<RELEASE_NAME> (any string)
+RELEASES_DIR_CANDIDATE="$( find "${RELEASE_DIR}/releases" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n1 )"
+if [[ -z "$RELEASES_DIR_CANDIDATE" ]] || [[ ! -d "$RELEASES_DIR_CANDIDATE" ]]; then
+    error 1 "Missing release path under releases/"
+fi
+REL_BASENAME="$( basename "$RELEASES_DIR_CANDIDATE" )"
+PROJECT_RELEASE_VERSION="$REL_BASENAME"
+
+# Extract ERTS version (strip leading 'erts-')
+PROJECT_ERTS_VERSION="$( basename "$ERTS_DIR_CANDIDATE" | sed 's/^erts-//' )"
+if [[ -z "$PROJECT_ERTS_VERSION" ]]; then
+    error 1 "Missing release erts directory"
+fi
+
 rm -rf "$PACKAGE_DIR" && mkdir -p "$PACKAGE_DIR/release"
 cp -R "$RELEASE_DIR"/. "$PACKAGE_DIR/release/"
 
@@ -251,7 +288,9 @@ PROJECT_PROFILE="${ARG_PROJECT_PROFILE}"
 PROJECT_TARGET_NAME="${GLB_TARGET_NAME}"
 PROJECT_COMMON_SYSTEM_VER="${GLB_COMMON_SYSTEM_VER}"
 PROJECT_TARGET_SYSTEM_VER="${GLB_TARGET_SYSTEM_VER}"
-PROJECT_ARCH="${CROSSCOMPILE_ARCH}"
+PROJECT_CROSSCOMPILE_ARCH="${CROSSCOMPILE_ARCH}"
+PROJECT_ERTS_VERSION="${PROJECT_ERTS_VERSION}"
+PROJECT_RELEASE_VERSION="${PROJECT_RELEASE_VERSION}"
 PROJECT_VCS_PROJECT="${PROJECT_VCS_TAG}"
 PROJECT_VCS_ALLOY="${GLB_VCS_TAG}"
 EOF
