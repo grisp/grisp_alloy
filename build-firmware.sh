@@ -27,7 +27,7 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] [-s SERIAL] [-n NAME] TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
+    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] [-s SERIAL] [-n NAME] [-o OVERLAY_DIR] TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
     echo "OPTIONS:"
     echo " -h Show this"
     echo " -d Print scripts debug information"
@@ -38,6 +38,7 @@ show_usage()
     echo " -K Keep the vagrant VM running after exiting"
     echo " -s Device serial number"
     echo " -n Firmware name (defaults to first artefact's base name)"
+    echo " -o Overlay directory to merge into rootfs before packaging"
     echo
     echo "Examples:"
     echo "  build-firmware.sh grisp2 projA"
@@ -54,7 +55,7 @@ ARG_KEEP_VAGRANT=false
 ARG_SERIAL_DEFINED=false
 ARG_SERIAL="00000000"
 ARG_FIRMWARE_NAME=""
-while getopts "hdciVs:n:PK" opt; do
+while getopts "hdciVs:n:o:PK" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
@@ -71,6 +72,9 @@ while getopts "hdciVs:n:PK" opt; do
         ;;
     n)
         ARG_FIRMWARE_NAME="$OPTARG"
+        ;;
+    o)
+        ARG_OVERLAY_DIR="$OPTARG"
         ;;
     V)
         ARG_FORCE_VAGRANT=true
@@ -96,6 +100,12 @@ if [[ $# -eq 0 ]]; then
 fi
 ARG_TARGET="$1"
 shift
+# Validate overlay dir on host if provided
+if [[ -n "$ARG_OVERLAY_DIR" ]]; then
+    if [[ ! -d "$ARG_OVERLAY_DIR" ]]; then
+        error 1 "Overlay directory not found: $ARG_OVERLAY_DIR"
+    fi
+fi
 
 # Remaining tokens (could be NODE/PROJECT specs). We validate later.
 RAW_TOKENS=( "$@" )
@@ -109,6 +119,7 @@ if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64"
 fi
 
 FIRMWARE_NAME=""
+OVERLAY_DIR=""
 VCS_TAG_FILE=".alloy_vcs_tag"
 
 set_debug_level "$ARG_DEBUG"
@@ -261,6 +272,13 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-n" "$ARG_FIRMWARE_NAME" )
     fi
+    if [[ -n "$ARG_OVERLAY_DIR" ]]; then
+        # Sync overlay dir to VM uploads/overlay and pass translated path
+        vagrant exec rm -rf "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/overlay"
+        vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/overlay"
+        rsync -av -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
+        NEW_ARGS=( ${NEW_ARGS[@]} "-o" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
+    fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
 
     # Append per-project arguments (with VM-resolved artefact paths)
@@ -293,6 +311,10 @@ if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
     FIRMWARE_NAME="$ARG_FIRMWARE_NAME"
 else
     FIRMWARE_NAME="${PROJECT_NAMES[0]}"
+fi
+
+if [[ -n "$ARG_OVERLAY_DIR" ]]; then
+    OVERLAY_DIR="$ARG_OVERLAY_DIR"
 fi
 
 # Clean SDK if requested (forces full rebuild)
@@ -496,6 +518,11 @@ for i in "${!RELEASE_DIRS[@]}"; do
     cp -R "${RELEASE_DIRS[$i]}/." "$node_dir"
     "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" "$node_dir"
 done
+
+# If an overlay directory is provided, merge it into the rootfs_overlay now
+if [[ -n "$OVERLAY_DIR" ]]; then
+    rsync -a "$OVERLAY_DIR/" "${FIRMWARE_DIR}/rootfs_overlay/"
+fi
 
 # Create init symlink to first node's directory
 ln -sfn "${PROJECT_ROOTS[0]}" "${OVERLAY_ROOT}/erlang"
