@@ -109,28 +109,35 @@ e.g.
 
 ## Build Firmware Update
 
-Builds a firmware from a pre-built project artefact. The artefact can be a
-full path to a `.tgz` file or a name prefix resolved from `artefacts/`.
+Builds a firmware from one or more pre-built project artefacts. Each artefact
+can be a full path to a `.tgz` file or a name prefix resolved from `artefacts/`.
 
 ```sh
-./build-firmware.sh [-i] <TARGET_NAME> <ARTEFACT_PATH_OR_PREFIX> [SERIAL_NUMBER]
+./build-firmware.sh [-i] [-s SERIAL] [-n FIRMWARE_NAME] <TARGET_NAME> (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])...
 ```
 
 Examples:
 
 ```sh
-./build-firmware.sh grisp2 hello_grisp-0.1.0-grisp2.tgz
-./build-firmware.sh grisp2 hello_grisp-0.1.0-grisp2
-./build-firmware.sh -i grisp2 hello_grisp-0.1.0-grisp2
+# Single project
+./build-firmware.sh grisp2 artefacts/hello_grisp-0.1.0-grisp2.tgz
+# Multiple projects with explicit destination names
+./build-firmware.sh grisp2 hello_grisp --name alpha hello_elixir --name beta
 ```
 
-Notes:
+Behavior:
 
-- The script validates that the artefact matches the requested target and SDK
+- Each project is staged under `/srv/alloy/<name>` in the target filesystem.
+  The `<name>` defaults to the project app name or can be set with `--name`.
+- A stable symlink `/srv/erlang` points to the first project's directory.
+- alloy-firmware.json is generated describing all deployed projects (root,
+  app_ver, rel_ver, type, profile, erts_ver, vcs) and SDK/target metadata.
+- The script validates that each artefact matches the requested target and SDK
   versions and architecture.
+- Destinations must be unique; the build fails if two projects use the same
+  name or the destination already exists in the overlay.
 - When using the `-i` flag, raw disk images are generated in addition to the
   firmware file.
-- The `SERIAL_NUMBER` (optional) is recorded in `os-release` in the firmware.
 
 
 ### Burn Firmware

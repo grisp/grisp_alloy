@@ -11,7 +11,7 @@ error() {
     local code="$1"
     shift
     local msg="$*"
-    echo "ERROR: $msg ($code)"
+    echo "ERROR: $msg ($code)" 1>&2
     exit $code
 }
 
@@ -179,6 +179,7 @@ else
     GLB_PROJECT_BUILD_DIR="${GLB_BUILD_DIR}/project"
     GLB_VAGRANT_PROJECT_BUILD_DIR="${GLB_VAGRANT_BUILD_DIR}/project"
     GLB_FIRMWARE_BUILD_DIR="${GLB_BUILD_DIR}/firmware"
+    GLB_VAGRANT_FIRMWARE_BUILD_DIR="${GLB_VAGRANT_BUILD_DIR}/firmware"
 
     if [[ ! -z $ARG_TARGET ]] && [[ -d "$GLB_TOP_DIR/system_${ARG_TARGET}" ]]; then
         GLB_TARGET_NAME="$ARG_TARGET"
