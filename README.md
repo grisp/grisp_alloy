@@ -112,8 +112,9 @@ e.g.
 Builds a firmware from one or more pre-built project artefacts. Each artefact
 can be a full path to a `.tgz` file or a name prefix resolved from `artefacts/`.
 
+
 ```sh
-./build-firmware.sh [-i] [-s SERIAL] [-n FIRMWARE_NAME] <TARGET_NAME> (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])...
+./build-firmware.sh [-i] [-s SERIAL] [-o OVERLAY_DIR] [-n FIRMWARE_NAME] <TARGET_NAME> (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])...
 ```
 
 Examples:
@@ -123,6 +124,8 @@ Examples:
 ./build-firmware.sh grisp2 artefacts/hello_grisp-0.1.0-grisp2.tgz
 # Multiple projects with explicit destination names
 ./build-firmware.sh grisp2 hello_grisp --name alpha hello_elixir --name beta
+# Multiple projects with overlay
+./build-firmware.sh -o samples/overlay grisp2 hello_grisp hello_elixir
 ```
 
 Behavior:
