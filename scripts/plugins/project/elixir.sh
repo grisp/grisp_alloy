@@ -67,17 +67,13 @@ project_build_elixir() {
     if [[ -d "$target_lib_dir" && -d "$release_lib_dir" ]]; then
         # Find all OTP libraries in the target installation
         local otp_libs=()
-        for lib in "$target_lib_dir"/*; do
+        for lib in "$release_lib_dir"/*; do
             if [[ -d "$lib" ]]; then
                 local lib_name="$(basename "$lib")"
                 # Skip non-OTP libraries (like user applications)
                 # OTP libraries typically have names like stdlib-3.17
-                if [[ "$lib_name" =~ ^(edoc|kernel|reltool|tftp|asn1|eldap|megaco|
-                    runtime_tools|tools|common_test|erl_interface|mnesia|sasl|wx|
-                    compiler|et|observer|snmp|xmerl|crypto|eunit|odbc|ssh|debugger|
-                    ftp|os_mon|ssl|dialyzer|inets|parsetools|stdlib|diameter|
-                    jinterface|public_key|syntax_tools)- ]]; then
-                    otp_libs+=("$lib_name")
+                if [[ "$lib_name" =~ ^(edoc|kernel|reltool|tftp|asn1|eldap|megaco|runtime_tools|tools|common_test|erl_interface|mnesia|sasl|wx|compiler|et|observer|snmp|xmerl|crypto|eunit|odbc|ssh|debugger|ftp|os_mon|ssl|dialyzer|inets|parsetools|stdlib|diameter|jinterface|public_key|syntax_tools)- ]]; then
+                   otp_libs+=("$lib_name")
                 fi
             fi
         done
