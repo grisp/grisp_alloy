@@ -58,5 +58,41 @@ project_build_elixir() {
         cp -a "$target_erts_dir" "$rel_path/"
     fi
 
+    # Replace OTP libraries with target versions
+    # Mix includes host OTP libraries when include_erts=true,
+    # but we need target versions
+    local target_lib_dir="${target_erlang}/lib"
+    local release_lib_dir="${rel_path}/lib"
+
+    if [[ -d "$target_lib_dir" && -d "$release_lib_dir" ]]; then
+        # Find all OTP libraries in the target installation
+        local otp_libs=()
+        for lib in "$target_lib_dir"/*; do
+            if [[ -d "$lib" ]]; then
+                local lib_name="$(basename "$lib")"
+                # Skip non-OTP libraries (like user applications)
+                # OTP libraries typically have names like stdlib-3.17
+                if [[ "$lib_name" =~ ^(edoc|kernel|reltool|tftp|asn1|eldap|megaco|
+                    runtime_tools|tools|common_test|erl_interface|mnesia|sasl|wx|
+                    compiler|et|observer|snmp|xmerl|crypto|eunit|odbc|ssh|debugger|
+                    ftp|os_mon|ssl|dialyzer|inets|parsetools|stdlib|diameter|
+                    jinterface|public_key|syntax_tools)- ]]; then
+                    otp_libs+=("$lib_name")
+                fi
+            fi
+        done
+
+        # Replace each OTP library in the release
+        for lib_name in "${otp_libs[@]}"; do
+            local target_lib="${target_lib_dir}/${lib_name}"
+            local release_lib="${release_lib_dir}/${lib_name}"
+
+            # Remove existing host version
+            rm -rf "$release_lib"
+            # Copy target version
+            cp -a "$target_lib" "$release_lib"
+        done
+    fi
+
     resref="$rel_path"
 }
