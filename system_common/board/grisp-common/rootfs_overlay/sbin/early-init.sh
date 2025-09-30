@@ -6,7 +6,7 @@ log() { echo "[eraly-init] $*"; }
 
 # -------- settings (override with kernel cmdline: data_dev=/dev/XYZ) --------
 
-DATA_DEV="/dev/rootdisk0p4"
+DATA_DEV=${1:-"/dev/rootdisk0p4"}
 DATA_MNT="/data"
 DATA_FS="f2fs"
 # Security/wear-friendly mount opts; adjust as needed.
