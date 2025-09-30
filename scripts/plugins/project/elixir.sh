@@ -9,6 +9,12 @@ project_build_elixir() {
     local profile="$3"
     local target_erlang="$4"
     local rel_path
+    local target_erts_dir
+    local otp_dir
+    local otp_app
+    local dst
+
+    target_erts_dir="$( ls -d "$target_erlang"/erts-* 2>/dev/null | head -n1 )"
 
     # Map rebar3-style profile to Mix env
     local mix_env="$profile"
@@ -42,7 +48,9 @@ project_build_elixir() {
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
             LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
             ELIXIR_ERL_OPTIONS=+fnu \
-            ERTS_DIR="$target_erlang" \
+            ERTS_DIR="$target_erts_dir" \
+            ERL_LIB_DIR="$target_erlang" \
+            ERL_SYSTEM_LIB_DIR="$target_erlang/lib" \
             MIX_ENV="$mix_env" \
             "$mix_cmd" release --overwrite
     )
@@ -51,11 +59,32 @@ project_build_elixir() {
     rel_path="$( cd "$project_dir/_build/${mix_env}/rel"/* && pwd )"
 
     # Replace embedded ERTS in the release with the target ERTS
-    local target_erts_dir
-    target_erts_dir="$( ls -d "$target_erlang"/erts-* 2>/dev/null | head -n1 )"
     if [[ -n "$target_erts_dir" && -d "$target_erts_dir" ]]; then
         rm -rf "${rel_path}/erts-"*
         cp -a "$target_erts_dir" "$rel_path/"
+    fi
+
+    # Replace OTP libraries with target versions (copy only ebin and priv)
+    local target_lib_dir="${target_erlang}/lib"
+    local release_lib_dir="${rel_path}/lib"
+
+    if [[ -d "$target_lib_dir" && -d "$release_lib_dir" ]]; then
+        for otp_dir in "${target_lib_dir}"/*; do
+            otp_app="$(basename "$otp_dir")" # e.g., crypto-5.6
+
+            # Replace only if an app with this base name exists in the release
+            if compgen -G "${release_lib_dir}/${otp_app%%-*}-*" > /dev/null; then
+                rm -rf "${release_lib_dir}/${otp_app%%-*}-"*
+                dst="${release_lib_dir}/${otp_app}"
+                mkdir -p "$dst"
+                if [[ -d "${otp_dir}/ebin" ]]; then
+                    cp -a "${otp_dir}/ebin" "$dst/"
+                fi
+                if [[ -d "${otp_dir}/priv" ]]; then
+                    cp -a "${otp_dir}/priv" "$dst/"
+                fi
+            fi
+        done
     fi
 
     resref="$rel_path"
