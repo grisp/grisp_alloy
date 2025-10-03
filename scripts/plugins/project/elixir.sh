@@ -27,20 +27,20 @@ project_build_elixir() {
         cd "$project_dir"
         # Use host OTP for Mix/Hex (unset ERL_* that point to target libs)
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
-            LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+            -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
             ELIXIR_ERL_OPTIONS=+fnu \
             MIX_ENV="$mix_env" \
             "$mix_cmd" deps.get --only "$mix_env"
 
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
-            LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+            -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
             ELIXIR_ERL_OPTIONS=+fnu \
             MIX_ENV="$mix_env" \
             "$mix_cmd" compile
 
         # For release assembly, point include_erts at target ERTS
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
-            LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+            -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
             ELIXIR_ERL_OPTIONS=+fnu \
             ERTS_DIR="$target_erlang" \
             MIX_ENV="$mix_env" \
