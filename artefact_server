@@ -1,0 +1,381 @@
+#!/usr/bin/env escript
+%%! -smp enable -noinput
+
+%% Self-contained artefact HTTP server
+%% Serves files from a root directory (default: ./artefacts)
+%% Special case: if URL matches <name>/<path_inside>, and <name>.tar exists in root,
+%% the server responds with the file inside the tar without extracting to disk.
+
+-mode(compile).
+
+-include_lib("kernel/include/file.hrl").
+
+main(Args) ->
+    {Port, RootOpt} = parse_args(Args),
+    {ok, Cwd} = file:get_cwd(),
+    Root = normalize_root(RootOpt, Cwd),
+    ok = ensure_dir(Root),
+    io:format("artefact_server: serving ~s on http://0.0.0.0:~p\n", [Root, Port]),
+    start_server(Port, Root).
+
+parse_args(Args) ->
+    parse_args(Args, #{port => 8080, root => "artefacts"}).
+
+parse_args(["-p", PortStr | Rest], Acc) ->
+    parse_args(Rest, Acc#{port := to_int(PortStr)});
+parse_args(["--port", PortStr | Rest], Acc) ->
+    parse_args(Rest, Acc#{port := to_int(PortStr)});
+parse_args(["-r", Root | Rest], Acc) ->
+    parse_args(Rest, Acc#{root := Root});
+parse_args(["--root", Root | Rest], Acc) ->
+    parse_args(Rest, Acc#{root := Root});
+parse_args(["-h" | _], Acc) ->
+    usage(),
+    halt_ok(Acc);
+parse_args(["--help" | _], Acc) ->
+    usage(),
+    halt_ok(Acc);
+parse_args([], #{port := Port, root := Root}) ->
+    {Port, Root};
+parse_args([Unknown | _], _Acc) ->
+    io:format(standard_error, "Unknown option: ~s\n", [Unknown]),
+    usage(),
+    halt_error().
+
+usage() ->
+    io:format(
+      "Usage: artefact_server [-p PORT|--port PORT] [-r ROOT|--root ROOT]\n"
+      "\n"
+      "Options:\n"
+      "  -p, --port  HTTP port (default: 8080)\n"
+      "  -r, --root  Root directory to serve (default: ./artefacts)\n\n").
+
+halt_ok(_Acc) ->
+    erlang:halt(0).
+
+halt_error() ->
+    erlang:halt(1).
+
+to_int(Str) ->
+    try list_to_integer(Str) of
+        I when I > 0 -> I
+    catch _:_ ->
+        io:format(standard_error, "Invalid integer: ~p\n", [Str]),
+        halt_error()
+    end.
+
+normalize_root(Root, Cwd) when is_list(Root) ->
+    case filename:pathtype(Root) of
+        absolute -> filename:absname(Root);
+        relative -> filename:absname(filename:join(Cwd, Root))
+    end.
+
+ensure_dir(Path) ->
+    case filelib:is_dir(Path) of
+        true -> ok;
+        false ->
+            io:format(standard_error, "Root does not exist: ~s\n", [Path]),
+            halt_error()
+    end.
+
+start_server(Port, Root) ->
+    {ok, Listen} = gen_tcp:listen(Port, [binary, {packet, raw}, {reuseaddr, true}, {active, false}]),
+    accept_loop(Listen, Root).
+
+accept_loop(Listen, Root) ->
+    case gen_tcp:accept(Listen) of
+        {ok, Sock} ->
+            spawn(fun() -> handle_client(Sock, Root) end),
+            accept_loop(Listen, Root);
+        {error, closed} -> ok
+    end.
+
+handle_client(Sock, Root) ->
+    inet:setopts(Sock, [{nodelay, true}]),
+    case recv_request(Sock) of
+        {ok, #{method := Method, path := Path, httpver := Ver, headers := Headers}} ->
+            Response = handle_request(Method, Path, Ver, Headers, Root),
+            send_response(Sock, Response);
+        {error, _} -> ok
+    end,
+    gen_tcp:close(Sock).
+
+recv_request(Sock) ->
+    case recv_until_blank_line(Sock, <<>>) of
+        {ok, Data} -> parse_request(Data);
+        Error -> Error
+    end.
+
+recv_until_blank_line(Sock, Acc) ->
+    case gen_tcp:recv(Sock, 0, 60000) of
+        {ok, Bin} ->
+            New = <<Acc/binary, Bin/binary>>,
+            case binary:match(New, <<"\r\n\r\n">>) of
+                {_, _} -> {ok, New};
+                nomatch -> recv_until_blank_line(Sock, New)
+            end;
+        Error -> Error
+    end.
+
+parse_request(Bin) ->
+    case split_header_body(Bin) of
+        {Header, _Body} ->
+            Lines = binary:split(Header, <<"\r\n">>, [global]),
+            case Lines of
+                [ReqLine | Rest] ->
+                    case parse_request_line(ReqLine) of
+                        {ok, Method, RawPath, Ver} ->
+                            Headers = parse_headers(Rest, #{}),
+                            {ok, #{method => Method, path => RawPath, httpver => Ver, headers => Headers}};
+                        _ -> {error, bad_request}
+                    end;
+                _ -> {error, bad_request}
+            end
+    end.
+
+split_header_body(Bin) ->
+    case binary:split(Bin, <<"\r\n\r\n">>) of
+        [Header, Body] -> {Header, Body};
+        _ -> {Bin, <<>>}
+    end.
+
+parse_request_line(Line) ->
+    Parts0 = binary:split(Line, <<" ">>, [global]),
+    Parts = [P || P <- Parts0, P =/= <<>>],
+    case Parts of
+        [Method, Path, Ver] -> {ok, Method, Path, Ver};
+        _ -> {error, bad_request}
+    end.
+
+parse_headers([<<>> | _], Acc) -> Acc;
+parse_headers([<<"\r">> | _], Acc) -> Acc;
+parse_headers([H | T], Acc) when is_binary(H), H =/= <<>> ->
+    case binary:match(H, <<":">>) of
+        {Pos, _Len} ->
+            K = binary:part(H, 0, Pos),
+            V0 = binary:part(H, Pos + 1, byte_size(H) - Pos - 1),
+            V = trim_leading_spaces(V0),
+            parse_headers(T, maps:put(string:lowercase(binary_to_list(K)), V, Acc));
+        nomatch ->
+            parse_headers(T, Acc)
+    end;
+parse_headers([], Acc) -> Acc.
+
+trim_leading_spaces(<<$\s, Rest/binary>>) -> trim_leading_spaces(Rest);
+trim_leading_spaces(Bin) -> Bin.
+
+handle_request(<<"GET">>, RawPath, _Ver, _Headers, Root) ->
+    handle_get_or_head(get, RawPath, Root);
+handle_request(<<"HEAD">>, RawPath, _Ver, _Headers, Root) ->
+    handle_get_or_head(head, RawPath, Root);
+handle_request(_Other, _RawPath, _Ver, _Headers, _Root) ->
+    {405, #{<<"content-type">> => <<"text/plain">>}, <<"Method Not Allowed">> }.
+
+handle_get_or_head(Verb, RawPath, Root) ->
+    Path0 = strip_query(RawPath),
+    Decoded = urldecode(Path0),
+    case sanitize_path(Decoded) of
+        {ok, Segments} ->
+            route_request(Verb, Segments, Root);
+        {error, _} ->
+            {400, #{<<"content-type">> => <<"text/plain">>}, <<"Bad Request">>}
+    end.
+
+strip_query(Path) ->
+    case binary:match(Path, <<"?">>) of
+        {Pos, _Len} -> binary:part(Path, 0, Pos);
+        nomatch -> Path
+    end.
+
+urldecode(Bin) when is_binary(Bin) ->
+    list_to_binary(uri_string:unquote(binary_to_list(Bin))).
+
+sanitize_path(<<"/">>) -> {ok, []};
+sanitize_path(Path) when is_binary(Path) ->
+    Str = binary_to_list(Path),
+    case Str of
+        "/" ++ Rest -> sanitize_path(list_to_binary(Rest));
+        _ ->
+            Segs = [S || S <- string:tokens(Str, "/"), S =/= ""],
+            case lists:any(fun(S) -> S =:= ".." end, Segs) of
+                true -> {error, unsafe};
+                false -> {ok, Segs}
+            end
+    end.
+
+route_request(_Verb, [], Root) ->
+    list_index(Root);
+route_request(Verb, Segments, Root) ->
+    PathRel = filename:join(Segments),
+    Full = filename:join(Root, PathRel),
+    case filelib:is_file(Full) of
+        true ->
+            case path_has_symlink(Root, Segments) of
+                true -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>};
+                false -> serve_file(Verb, Full)
+            end;
+        false ->
+            tar_route(Verb, Segments, Root)
+    end.
+
+tar_route(Verb, [Base | InnerSegs], Root) ->
+    TarPath = filename:join(Root, Base ++ ".tar"),
+    case filelib:is_file(TarPath) of
+        true ->
+            case is_symlink(TarPath) of
+                true -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>};
+                false ->
+                    case InnerSegs of
+                        [] -> serve_file(Verb, TarPath);
+                        _ -> serve_tar_inner(Verb, TarPath, Base, filename:join(InnerSegs))
+                    end
+            end;
+        false -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
+    end;
+tar_route(_Verb, _Segments, _Root) ->
+    {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}.
+
+serve_file(head, FullPath) ->
+    case file:read_file_info(FullPath) of
+        {ok, #file_info{size = Size}} ->
+            Mime = mime_type(FullPath),
+            {200, #{<<"content-type">> => Mime, <<"content-length">> => integer_to_binary(Size)}, <<>>};
+        _ -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
+    end;
+serve_file(get, FullPath) ->
+    case file:read_file_info(FullPath) of
+        {ok, #file_info{size = Size}} ->
+            Mime = mime_type(FullPath),
+            {stream, 200, #{<<"content-type">> => Mime, <<"content-length">> => integer_to_binary(Size)}, FullPath};
+        _ -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
+    end.
+
+serve_tar_inner(head, TarPath, Base, InnerRel) ->
+    case read_tar_member(TarPath, Base, InnerRel) of
+        {ok, _Name, Bin} ->
+            Mime = mime_type(InnerRel),
+            {200, #{<<"content-type">> => Mime, <<"content-length">> => integer_to_binary(byte_size(Bin))}, <<>>};
+        {error, _} -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
+    end;
+serve_tar_inner(get, TarPath, Base, InnerRel) ->
+    case read_tar_member(TarPath, Base, InnerRel) of
+        {ok, _Name, Bin} ->
+            Mime = mime_type(InnerRel),
+            {200, #{<<"content-type">> => Mime, <<"content-length">> => integer_to_binary(byte_size(Bin))}, Bin};
+        {error, _} -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
+    end.
+
+read_tar_member(TarPath, Base, InnerRel) ->
+    Candidates = [
+        InnerRel,
+        filename:join(Base, InnerRel),
+        filename:join("./", InnerRel),
+        filename:join("./" ++ Base, InnerRel)
+    ],
+    try_candidates(TarPath, Candidates).
+
+try_candidates(_TarPath, []) -> {error, not_found};
+try_candidates(TarPath, [C | Rest]) ->
+    case erl_tar:extract(TarPath, [{files, [C]}, memory]) of
+        {ok, [{Name, Bin} | _]} ->
+            {ok, Name, Bin};
+        {ok, []} ->
+            try_candidates(TarPath, Rest);
+        {error, _} ->
+            try_candidates(TarPath, Rest)
+    end.
+
+list_index(Root) ->
+    case file:list_dir(Root) of
+        {ok, Files} ->
+            Body = iolist_to_binary([
+                <<"artefact_server\n\n">>,
+                lists:map(fun(F) -> [F, <<"\n">>] end, lists:sort(Files))
+            ]),
+            {200, #{<<"content-type">> => <<"text/plain; charset=utf-8">>}, Body};
+        _ -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
+    end.
+
+%% --- Symlink and path safety helpers ---
+
+is_symlink(Path) ->
+    case file:read_link_info(Path) of
+        {ok, #file_info{type = symlink}} -> true;
+        _ -> false
+    end.
+
+path_has_symlink(Root, Segments) ->
+    path_has_symlink(Root, Segments, Root).
+
+path_has_symlink(_Root, [], _AccPath) -> false;
+path_has_symlink(Root, [Seg | Rest], AccPath) ->
+    Next = filename:join(AccPath, Seg),
+    case file:read_link_info(Next) of
+        {ok, #file_info{type = symlink}} -> true;
+        {ok, _} -> path_has_symlink(Root, Rest, Next);
+        {error, _} -> false
+    end.
+
+mime_type(Path) when is_list(Path) -> mime_type(list_to_binary(Path));
+mime_type(PathBin) when is_binary(PathBin) ->
+    Ext = filename:extension(PathBin),
+    case string:lowercase(binary_to_list(Ext)) of
+        ".tar" -> <<"application/x-tar">>;
+        ".gz" -> <<"application/gzip">>;
+        ".xz" -> <<"application/x-xz">>;
+        ".bz2" -> <<"application/x-bzip2">>;
+        ".txt" -> <<"text/plain; charset=utf-8">>;
+        ".md" -> <<"text/markdown; charset=utf-8">>;
+        ".json" -> <<"application/json">>;
+        ".fw" -> <<"application/octet-stream">>;
+        ".bin" -> <<"application/octet-stream">>;
+        _ -> <<"application/octet-stream">>
+    end.
+
+send_response(Sock, {stream, Code, Headers, FilePath}) ->
+    StatusLine = status_line(Code),
+    HeaderBin = headers_binary(Headers),
+    ok = gen_tcp:send(Sock, [StatusLine, HeaderBin, <<"\r\n">>]),
+    stream_file(Sock, FilePath);
+send_response(Sock, {Code, Headers, Body}) ->
+    StatusLine = status_line(Code),
+    HB = ensure_content_length(Headers, Body),
+    HeaderBin = headers_binary(HB),
+    gen_tcp:send(Sock, [StatusLine, HeaderBin, <<"\r\n">>, Body]).
+
+status_line(Code) ->
+    <<"HTTP/1.1 ", (integer_to_binary(Code))/binary, " ", (status_text(Code))/binary, "\r\n">>.
+
+status_text(200) -> <<"OK">>;
+status_text(400) -> <<"Bad Request">>;
+status_text(404) -> <<"Not Found">>;
+status_text(405) -> <<"Method Not Allowed">>;
+status_text(_) -> <<"OK">>.
+
+headers_binary(Map) ->
+    iolist_to_binary(
+      [ [K, <<": ">>, V, <<"\r\n">>] || {K, V} <- maps:to_list(Map) ]
+    ).
+
+ensure_content_length(Headers, Body) ->
+    case maps:is_key(<<"content-length">>, Headers) of
+        true -> Headers;
+        false -> maps:put(<<"content-length">>, integer_to_binary(byte_size(Body)), Headers)
+    end.
+
+stream_file(Sock, FilePath) ->
+    case file:open(FilePath, [read, raw, binary]) of
+        {ok, Fd} ->
+            stream_file_loop(Sock, Fd),
+            file:close(Fd);
+        _ -> ok
+    end.
+
+stream_file_loop(Sock, Fd) ->
+    case file:read(Fd, 65536) of
+        {ok, Bin} ->
+            ok = gen_tcp:send(Sock, Bin),
+            stream_file_loop(Sock, Fd);
+        eof -> ok;
+        {error, _} -> ok
+    end.

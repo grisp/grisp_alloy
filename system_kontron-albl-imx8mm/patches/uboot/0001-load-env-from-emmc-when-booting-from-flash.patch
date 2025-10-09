@@ -1,6 +1,25 @@
---- a/board/kontron/sl-mx8mm/sl-mx8mm.c	2025-10-03 17:31:35.656240929 +0000
-+++ b/board/kontron/sl-mx8mm/sl-mx8mm.c	2025-10-03 17:33:18.267260979 +0000
-@@ -234,6 +234,14 @@
+--- a/board/kontron/sl-mx8mm/sl-mx8mm.c	2025-10-29 16:02:09.416952577 +0000
++++ b/board/kontron/sl-mx8mm/sl-mx8mm.c	2025-10-29 18:56:37.395144970 +0000
+@@ -212,6 +212,18 @@
+ 		env_set("bootdelay", "0");
+ 	}
+
++	switch (get_boot_device()) {
++		case SPI_NOR_BOOT:
++		case MMC1_BOOT:
++			env_set("bootmed", "emmc");
++			break;
++		case SD2_BOOT:
++			env_set("bootmed", "sdcard");
++			break;
++		default:
++			env_set("bootmed", "unknown");
++	}
++
+ 	return 0;
+ }
+
+@@ -234,6 +246,13 @@
  	     boot_dev == MMC1_BOOT || boot_dev == MMC2_BOOT))
  		return ENVL_MMC;
 
@@ -8,22 +27,19 @@
 +	 * Make sure that the environment is loaded from
 +	 * the eMMC even when booting from SPI flash.
 +	 */
-+	if (CONFIG_IS_ENABLED(ENV_IS_IN_MMC) &&
-+	    (boot_dev == QSPI_BOOT || boot_dev == FLEXSPI_BOOT || boot_dev == SPI_NOR_BOOT))
++	if (CONFIG_IS_ENABLED(ENV_IS_IN_MMC) && boot_dev == SPI_NOR_BOOT)
 +		return ENVL_MMC;
 +
  	if (CONFIG_IS_ENABLED(ENV_IS_IN_SPI_FLASH))
  		return ENVL_SPI_FLASH;
 
-@@ -246,32 +254,31 @@
+@@ -246,32 +265,29 @@
  #if defined(CONFIG_ENV_IS_IN_MMC)
  int board_mmc_get_env_dev(int devno)
  {
 -	return devno;
 +	/* Use eMMC0 when booting from SPI flash */
 +	switch (get_boot_device()) {
-+		case FLEXSPI_BOOT:
-+		case QSPI_BOOT:
 +		case SPI_NOR_BOOT:
 +			return 0;
 +		default:

@@ -2,7 +2,7 @@
 
 set -efu
 
-log() { echo "[eraly-init] $*"; }
+log() { echo "[early-init] $*"; }
 
 # -------- settings (override with kernel cmdline: data_dev=/dev/XYZ) --------
 
@@ -57,10 +57,10 @@ fi
 # -------- try to mount; if it fails, repair or format as f2fs --------
 
 # First, see if a quick check can make it mountable (ignore errors)
-fsck.$DATA_FS -a "$DATA_DEV" || true
+fsck.$DATA_FS -a "$DATA_DEV" >/dev/null 2>&1 || true
 
-if ! mount -t "$DATA_FS" -o "$DATA_OPTS" "$DATA_DEV" "$DATA_MNT"; then
-  log "Mount failed; (re)creating $DATA_FS on $DATA_DEV"
+if ! mount -t "$DATA_FS" -o "$DATA_OPTS" "$DATA_DEV" "$DATA_MNT" >/dev/null 2>&1; then
+  log "Mount failed; (re)creating $DATA_FS on $DATA_DEV (it could take some time)"
   mkfs.$DATA_FS -f -l data "$DATA_DEV"
   fsck.$DATA_FS -a "$DATA_DEV" || true
   # Try to mount again
