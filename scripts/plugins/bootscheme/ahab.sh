@@ -78,3 +78,27 @@ bootscheme_package_firmware() {
     FITIMAGE="${KERNEL_FILE}" \
         "${FWUP}" -c -f "${SDK_FWUP_CONFIG}" -o "${FIRMWARE_FILE}"
 }
+
+bootscheme_package_update() {
+    local GRISP_UPDATER_TOOLS="${GLB_SDK_HOST_DIR}/bin/grisp_updater_tools"
+    local ROOTFS_FILE="${FIRMWARE_DIR}/combined.squashfs"
+    local KERNEL_FILE="${FIRMWARE_DIR}/fitImage"
+
+    cd "${GLB_SDK_DIR}/images"
+    rm -rf "${PACKAGE_FILE}"
+
+    env -i PATH=$PATH:"${GLB_SDK_HOST_DIR}/lib/erlang/erts-*/bin" \
+        "${GRISP_UPDATER_TOOLS}" -t \
+            -n "${GLB_FW_META_PRODUCT}" \
+            -v "${GLB_FW_META_VERSION}" \
+            --vcs="${GLB_FW_META_VCS_IDENTIFIER}" \
+            --uuid="${GLB_FW_META_UUID}" \
+            --author="${GLB_FW_META_AUTHOR}" \
+            --kernel-path=${GSU_KERNEL_PATH} \
+            --kernel-image="${KERNEL_FILE}" \
+            --architecture="${GLB_FW_META_ARCHITECTURE}" \
+            --platform="${GLB_FW_META_PLATFORM}" \
+            "${GSU_PARTITIONS}" \
+            "${ROOTFS_FILE}" \
+            "${PACKAGE_FILE}"
+}
