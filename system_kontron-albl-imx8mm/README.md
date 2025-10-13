@@ -207,20 +207,36 @@ IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.1-kontron-a
 
 ### Manual A/B Software Upgrade
 
-First ensure the SSH client is setup, and an IP has been allocated.
-Then, apply the upgrade.
+If SSH is used to pull the firmware on the device, ensure the SSH client is setup,
+and an IP has been allocated. You can also setup an SSH server in your application
+and scp the file to the device, or use the sdcard to get the firware file.
+You can use the `/data` directory that is writable to store the firmware.
+
+To pull the firmware using SSH client from Erlang console:
 
 From Erlang console:
 
 ```erlang
 io:format("~s~n", [os:cmd("scp -i /data/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null <USERNAME>@D<EV_HOST_IP>:<PATH_TO_GRISP_ALLOY>/artefacts/hello_grisp-0.2.2-kontron-albl-imx8mm.fw /data")]).
-io:format("~s~n", [os:cmd("fwup -a -d /dev/mmcblk0 -i /data/hello_grisp-0.2.2-kontron-albl-imx8mm.fw -t upgrade")]).
 ```
 
-From Elixir console:
+or from Elixir console:
 
 ```elixir
 IO.puts(:os.cmd(~c"scp -i /data/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null <USERNAME>@D<EV_HOST_IP>:<PATH_TO_GRISP_ALLOY>/artefacts/hello_elixir-0.2.2-kontron-albl-imx8mm.fw /data"))
+```
+
+Then, apply the upgrade.
+
+From Erlang console:
+
+```erlang
+io:format("~s~n", [os:cmd("fwup -a -d /dev/mmcblk0 -i /data/hello_grisp-0.2.2-kontron-albl-imx8mm.fw -t upgrade")]).
+```
+
+or the Elixir console:
+
+```elixir
 IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.2-kontron-albl-imx8mm.fw -t upgrade"))
 ```
 
