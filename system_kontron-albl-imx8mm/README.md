@@ -255,6 +255,37 @@ From Elixir console:
 IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.2-kontron-albl-imx8mm.fw -t validate"))
 ```
 
+At any moment the specysl `status` task can be run to get information about the
+A/B software update status.
+
+From Erlang console:
+
+```erlang
+io:format("~s~n", [os:cmd("fwup -a -d /dev/mmcblk0 -i /data/hello_grisp-0.2.2-kontron-albl-imx8mm.fw -t status")]).
+```
+
+From Elixir console:
+
+```elixir
+IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.2-kontron-albl-imx8mm.fw -t status"))
+```
+
+If software rollback is available because a previous firware was validated and
+no further upgrade atempts were made, it is possible to rollback to the previous
+software version.
+
+From Erlang console:
+
+```erlang
+io:format("~s~n", [os:cmd("fwup -a -d /dev/mmcblk0 -i /data/hello_grisp-0.2.2-kontron-albl-imx8mm.fw -t rollback")]).
+```
+
+From Elixir console:
+
+```elixir
+IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.2-kontron-albl-imx8mm.fw -t rollback"))
+```
+
 
 ### Test the CAN Bus
 
