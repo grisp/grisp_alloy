@@ -1,0 +1,35 @@
+diff --git a/arch/arm/dts/imx8mm-u-boot.dtsi b/arch/arm/dts/imx8mm-u-boot.dtsi
+index 06f2f73a03..70d0a195a1 100644
+--- a/arch/arm/dts/imx8mm-u-boot.dtsi
++++ b/arch/arm/dts/imx8mm-u-boot.dtsi
+@@ -132,6 +132,21 @@
+ 				};
+ #endif
+ 
++				tee {
++					description = "OP-TEE";
++					type = "firmware";
++					arch = "arm64";
++					os = "tee";
++					compression = "none";
++					load = <0x7e000000>;
++					entry = <0x7e000000>;
++
++					tee-blob {
++						filename = "tee.bin";
++						type = "blob-ext";
++					};
++				};
++
+ 				binman_fip: fip {
+ 					arch = "arm64";
+ 					compression = "none";
+@@ -160,7 +175,7 @@
+ 					fdt = "fdt-SEQ";
+ 					firmware = "uboot";
+ #ifndef CONFIG_ARMV8_PSCI
+-					loadables = "atf";
++					loadables = "atf", "tee";
+ #endif
+ 				};
+ 			};
