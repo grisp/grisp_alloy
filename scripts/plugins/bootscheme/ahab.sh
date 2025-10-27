@@ -6,10 +6,11 @@ bootscheme_package_bootloader() {
 bootscheme_package_kernel() {
     # TODO: Sign the kernel if secureboot is enabled
     # TODO: Add support for encrypted disk via ramdisk
-    local USE_RAMFS=${1:-false}
+    local USE_INITRAMFS=${1:-false}
+    local INITRAMFS_FILE_NAME=rootfs.cpio.gz
     local MKIMAGE="${GLB_SDK_HOST_DIR}/bin/mkimage"
-    local ITS_WITH_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITH_RAMFS}"
-    local ITS_WITHOUT_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITHOUT_RAMFS}"
+    local ITS_WITH_INITRAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITH_INITRAMFS}"
+    local ITS_WITHOUT_INITRAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITHOUT_INITRAMFS}"
     local KERNEL_FILE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_FILENAME}"
     local DTB_FILE="${GLB_SDK_DIR}/images/${BOOTSCHEME_DTB_FILENAME}"
 
@@ -19,14 +20,14 @@ bootscheme_package_kernel() {
     if [[ ! -f "${KERNEL_FILE}" ]]; then
         error 1 "kernel image ${BOOTSCHEME_KERNEL_FILENAME} not found at ${KERNEL_FILE}"
     fi
-    if [[ "${USE_RAMFS}" == "true" ]]; then
-        local ITS_TEMPLATE="${ITS_WITH_RAMFS_TEMPLATE}"
-        local INITRAMFS_FILE="${GLB_SDK_DIR}/images/${RAMFS_FILENAME}"
+    if [[ "${USE_INITRAMFS}" == "true" ]]; then
+        local ITS_TEMPLATE="${ITS_WITH_INITRAMFS_TEMPLATE}"
+        local INITRAMFS_FILE="${GLB_SDK_DIR}/images/${INITRAMFS_FILE_NAME}"
         if [[ ! -f "${INITRAMFS_FILE}" ]]; then
-            error 1 "initramfs file ${INITRAMFS_FILENAME} not found at $INITRAMFS_FILE"
+            error 1 "initramfs file ${INITRAMFS_FILE_NAME} not found at ${INITRAMFS_FILE}"
         fi
     else
-        local ITS_TEMPLATE="$ITS_WITHOUT_RAMFS_TEMPLATE"
+        local ITS_TEMPLATE="${ITS_WITHOUT_INITRAMFS_TEMPLATE}"
         local INITRAMFS_FILE=""
     fi
     if [[ ! -f "${DTB_FILE}" ]]; then
@@ -41,7 +42,7 @@ bootscheme_package_kernel() {
 
     sed -e "s|%KERNEL%|${KERNEL_FILE}|g" \
         -e "s|%DTB%|${DTB_FILE}|g" \
-        -e "s|%RAMFS%|${INITRAMFS_FILE}|g" \
+        -e "s|%INITRAMFS%|${INITRAMFS_FILE}|g" \
         "${ITS_TEMPLATE}" > "${ITS_FILE}"
 
     "${MKIMAGE}" -E -p 0x3000 -f "${ITS_FILE}" "${FITIMAGE_FILE}"

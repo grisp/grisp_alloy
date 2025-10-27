@@ -336,7 +336,6 @@ install_sdk
 # BUILD CONFIGURATION SETUP
 # Initialize variables that will be set by crucible.sh and boot scheme plugin
 BOOTSCHEME=NONE
-BOOTSCHEME_KERNEL_RAMFS=false
 SQUASHFS_PRIORITIES=()
 FWUP_IMAGE_TARGETS=()
 
@@ -600,7 +599,8 @@ cat $ALLOY_FIRMWARE_FILE
 bootscheme_package_bootloader
 
 # Package kernel (with or without initramfs)
-bootscheme_package_kernel
+cp ${GLB_TARGET_SYSTEM_DIR}/initramfs/rootfs.cpio.gz ${GLB_SDK_DIR}/images/rootfs.cpio.gz
+bootscheme_package_kernel true
 
 # FIRMWARE IMAGE CREATION
 # Create final .fw file using FWUP configuration and boot scheme logic
