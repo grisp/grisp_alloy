@@ -26,3 +26,7 @@ bootscheme_package_firmware() {
     ROOTFS="${ROOTFS_FILE}" \
         "${FWUP}" -c -f "${SDK_FWUP_CONFIG}" -o "${FIRMWARE_FILE}"
 }
+
+bootscheme_package_update() {
+    error 1 "Update package generation not supported for none boot scheme"
+}

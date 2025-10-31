@@ -16,6 +16,9 @@ project_build_erlang() {
 
 	(
 		cd "$project_dir"
+		# First retrieve the dependencies without using the target ERTS
+		env -u ERL_LIBS "$rebar3_cmd" as "$profile" get-deps
+		# Then build the release using the target ERTS
 		"$rebar3_cmd" as "$profile" release --system_libs "$target_erlang" --include-erts "$target_erlang"
 	)
 

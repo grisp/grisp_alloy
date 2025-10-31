@@ -1,5 +1,68 @@
 # Kontron AL iMX8M Mini System
 
+## Firmware layout and storage mapping
+
+The firmware layout is defined in [`fwup.conf`](fwup.conf) and mirrored in
+[`crucible.sh`](crucible.sh) (the `GSU_PARTITIONS` variable).
+Keep these two in sync.
+
+- Definition: `fwup.conf` declares the GPT table, the bootloader offsets and the dual U-Boot environments.
+- Packaging: `crucible.sh` uses the same layout when generating the software update package.
+
+Partition scheme (GPT):
+
+- p0 reserved, 128 MiB: raw area before the first partition
+- p1 boot, FAT32, 64 MiB: contains `fitImage_A` and `fitImage_B`
+- p2 rootfs A, squashfs, 256 MiB
+- p3 rootfs B, squashfs, 256 MiB
+- p4 data, f2fs, all remaining space
+
+Bootloader and environment:
+
+- U-Boot is written at 33 KiB offset in the user area
+  (`UBOOT_OFFSET = 66` 512-byte blocks). The `complete` task in `fwup.conf`
+  writes it to the media.
+- Two redundant U-Boot environments are placed immediately after the bootloader
+  area; their offsets are computed as `UBOOT_ENV_PRIMARY_OFFSET` and
+  `UBOOT_ENV_SECONDARY_OFFSET` in `fwup.conf`.
+- Today, when booting from eMMC, the ROM still loads the bootloader from the
+  SPI NOR flash. We nevertheless write the bootloader to the eMMC user area and
+  plan to boot directly from eMMC in the near future.
+
+Mirroring in packaging scripts:
+
+- `crucible.sh` contains `GSU_PARTITIONS` with the same GUIDs, offsets and sizes
+  as in `fwup.conf`.
+- Any change to sizes, offsets or partition ordering in one file must be
+  reflected in the other.
+
+U-Boot environment configuration:
+
+- If you change the environment addresses/offsets, update [`uboot.config`](uboot/uboot.config),
+  [`fw_env.config`](rootfs_overlay/etc/fw_env.config) and the
+  [Kontron Al/BL iMX8M Mini updater HAL](https://github.com/grisp/grisp_updater_kalblimx8mm)
+  so the tools target the correct locations.
+
+Data partition initialization:
+
+- The `data` partition (p4) is not formatted during firmware setup.
+  It is created/repaired on first boot by [`early-init.sh`](../system_common/board/grisp-common/rootfs_overlay/sbin/early-init.sh)
+  and mounted at `/data` as f2fs.
+
+Runtime device mapping (erlinit links):
+
+- `erlinit` provides stable aliases that track the active boot device:
+  - `/dev/rootdisk0` points to `/dev/mmcblk0` when running from eMMC, and to `/dev/mmcblk1` when running from SD card
+  - `/dev/rootdisk0p1` reserved (no filesystem)
+  - `/dev/rootdisk0p2` boot (FAT32) with FIT images, mounted at `/boot`
+  - `/dev/rootdisk0p3` system A (squashfs), mounted at `/` when active
+  - `/dev/rootdisk0p4` system B (squashfs), mounted at `/` when active
+  - `/dev/rootdisk0p5` data (f2fs), mounted at `/data`
+
+Use these aliases in scripts and tooling (`fw_env.config`, updater logic) to
+remain agnostic to whether the system is currently running from eMMC or SD.
+
+
 ## Building
 
 To package a firmware for the Kontron LA/BL iMX8M Mini board, you need a
@@ -118,7 +181,7 @@ diskutil list # On MacOS
 Then you can use the `fwup command to write the SD card:
 
 ```sh
-fwup -a -d <DEVICE> -i artefacts/hello_grisp-0.1.0-kontron-albl-imx8mm.fw -t sdcard
+fwup -a -d <DEVICE> -i artefacts/hello_grisp-0.1.0-kontron-albl-imx8mm.fw -t complete
 ```
 
 
@@ -193,7 +256,7 @@ From Erlang console:
 ```erlang
 io:format("~s~n", [os:cmd("scp -i /data/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null <USERNAME>@D<EV_HOST_IP>:<PATH_TO_GRISP_ALLOY>/artefacts/hello_grisp-0.2.1-kontron-albl-imx8mm.fw /data")]).
 io:format("~s~n", [os:cmd("fwup --unsafe -a -d /dev/null -i /data/hello_grisp-0.2.1-kontron-albl-imx8mm.fw -t bootloader")]).
-io:format("~s~n", [os:cmd("fwup -a -d /dev/mmcblk0 -i /data/hello_grisp-0.2.1-kontron-albl-imx8mm.fw -t emmc")]).
+io:format("~s~n", [os:cmd("fwup -a -d /dev/mmcblk0 -i /data/hello_grisp-0.2.1-kontron-albl-imx8mm.fw -t complete")]).
 ```
 
 From Elixir console:
@@ -201,11 +264,11 @@ From Elixir console:
 ```elixir
 IO.puts(:os.cmd(~c"scp -i /data/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null <USERNAME>@D<EV_HOST_IP>:<PATH_TO_GRISP_ALLOY>/artefacts/hello_elixir-0.2.1-kontron-albl-imx8mm.fw /data"))
 IO.puts(:os.cmd(~c"fwup --unsafe -a -d /dev/null -i /data/hello_elixir-0.2.1-kontron-albl-imx8mm.fw -t bootloader"))
-IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.1-kontron-albl-imx8mm.fw -t emmc"))
+IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.1-kontron-albl-imx8mm.fw -t complete"))
 ```
 
 
-### Manual A/B Software Upgrade
+### Manual A/B Software Upgrade with fwup
 
 If SSH is used to pull the firmware on the device, ensure the SSH client is setup,
 and an IP has been allocated. You can also setup an SSH server in your application
@@ -284,6 +347,73 @@ From Elixir console:
 
 ```elixir
 IO.puts(:os.cmd(~c"fwup -a -d /dev/mmcblk0 -i /data/hello_elixir-0.2.2-kontron-albl-imx8mm.fw -t rollback"))
+```
+
+### Manual A/B Software Upgrade wuth grisp_updater
+
+For this to work, your application needs to include [grisp_updater_kalblimx8mm](https://github.com/grisp/grisp_updater_kalblimx8mm).
+
+
+#### Using Tarball
+
+Copy the software update package, by setting up an IP address using DHCP, then
+either pulling it from the device or pushing it using scp. Then you can update
+using grisp_updater.
+
+From Erlang Console:
+
+```erlang
+
+```grisp_updater:update(<<"tarball:///data/hello_grisp-0.1.0-kontron-albl-imx8mm.tar">>).
+
+From Elixir Console:
+
+```elixir
+:grisp_updater.update("tarball:///data/hello_grisp-0.1.0-kontron-albl-imx8mm.tar").
+```
+
+### Using HTTP
+
+Run the artefact server in grisp_alloy:
+
+```shell
+./artefact_server
+```
+
+**WARNING**: Running the artefact server will give open read access to all the
+files under the artefacts directory to your local network.
+
+
+On the device, settup the IP address to be able to access yout host machine
+using DHCP, then you can update using HTTP.
+
+From Erlang Console:
+
+```erlang
+grisp_updater:update(<<"http:///<DEV_IP_ADDRESS>/hello_grisp-0.1.0-kontron-albl-imx8mm">>).
+```
+
+From Elixir console:
+
+```elixir
+:grisp_updater.update("http:///<DEV_IP_ADDRESS>/hello_grisp-0.1.0-kontron-albl-imx8mm").
+```
+
+### Validating
+
+After updating either from tarball or HTTP, you need to reboot the device and
+makr the system as validated.
+
+From Erlang console:
+
+```erlang
+grisp_updater:validate().
+```
+
+From Elixir console:
+
+```elixir
+:grisp_updater.validate().
 ```
 
 

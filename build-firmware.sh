@@ -14,12 +14,14 @@
 # 6. Stage each project under /srv/alloy/<name> and create /srv/erlang symlink
 # 7. Package bootloader, kernel, and firmware using boot scheme
 # 8. Optionally generate raw disk images
+# 9. Optionally generate update package
 #
 # KEY COMPONENTS:
 # - SDK: Pre-built root filesystem and toolchain
 # - Crucible: Target-specific build configuration
 # - Boot scheme: Platform-specific packaging (e.g., AHAB for i.MX8)
 # - FWUP: Firmware update packaging system
+# - GRISP_UPDATER_TOOLS: Update package generation tool
 
 set -e
 
@@ -33,6 +35,7 @@ show_usage()
     echo " -d Print scripts debug information"
     echo " -c Cleanup the curent state and start from scratch"
     echo " -i Generate raw images in addition of the firmware"
+    echo " -u Generate update package in addition of the firmware"
     echo " -V Using the Vagrant VM even on Linux"
     echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
     echo " -K Keep the vagrant VM running after exiting"
@@ -51,13 +54,14 @@ OPTIND=1
 ARG_DEBUG="${DEBUG:-0}"
 ARG_CLEAN=false
 ARG_GEN_IMAGES=false
+ARG_GEN_UPDATE_PACKAGE=false
 ARG_FORCE_VAGRANT=false
 ARG_KEEP_VAGRANT=false
 ARG_SERIAL_DEFINED=false
 ARG_SERIAL="00000000"
 ARG_FIRMWARE_NAME=""
 ARG_FIRMWARE_VER=""
-while getopts "hdciVs:n:o:PK" opt; do
+while getopts "hdciuVs:n:o:PK" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
@@ -67,6 +71,9 @@ while getopts "hdciVs:n:o:PK" opt; do
         ;;
     i)
         ARG_GEN_IMAGES=true
+        ;;
+    u)
+        ARG_GEN_UPDATE_PACKAGE=true
         ;;
     s)
         ARG_SERIAL_DEFINED=true
@@ -271,6 +278,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_GEN_IMAGES == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-i" )
     fi
+    if [[ $ARG_GEN_UPDATE_PACKAGE == true ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "-u" )
+    fi
     if [[ $ARG_SERIAL_DEFINED == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-s" "$ARG_SERIAL" )
     fi
@@ -339,6 +349,9 @@ BOOTSCHEME=NONE
 BOOTSCHEME_KERNEL_RAMFS=false
 SQUASHFS_PRIORITIES=()
 FWUP_IMAGE_TARGETS=()
+GSU_KERNEL_PATH=
+GSU_PARTITIONS=
+
 
 # CRUCIBLE: Target-specific build configuration
 # Contains target-specific settings like boot scheme, kernel config, etc.
@@ -479,6 +492,8 @@ FIRMWARE_FILE="${GLB_ARTEFACTS_DIR}/${FIRMWARE_FILENAME}"
 IMAGE_BASE_FILENAME="${BASE_FILENAME}"
 IMAGE_BASE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_BASE_FILENAME}"
 IMAGE_FILE_EXTENSION=".img"
+PACKAGE_FILENAME="${BASE_FILENAME}.tar"
+PACKAGE_FILE="${GLB_ARTEFACTS_DIR}/${PACKAGE_FILENAME}"
 
 # Consolidated priority file across all projects + firmware
 SQUASHFS_PRIORITIES_FILE="$FIRMWARE_DIR/squashfs.priority"
@@ -609,6 +624,22 @@ mkdir -p "$( dirname "$FIRMWARE_FILE" )"
 
 bootscheme_package_firmware
 
+# Extract firmware metadata into GLB_FW_META_* variables
+while IFS= read -r line; do
+    case "$line" in
+        meta-*=*)
+            key="${line%%=*}"
+            val="${line#*=}"
+            val="${val%\"}"
+            val="${val#\"}"
+            key="${key#meta-}"
+            key="$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
+            eval "GLB_FW_META_${key}=\"$val\""
+            export "GLB_FW_META_${key}"
+        ;;
+    esac
+done < <("${GLB_SDK_HOST_DIR}/bin/fwup" -m -i "$FIRMWARE_FILE")
+
 # OPTIONAL RAW IMAGE GENERATION (-i flag)
 # Convert .fw file to raw disk images for direct writing to SD cards/eMMC
 if [[ $ARG_GEN_IMAGES == true ]]; then
@@ -630,6 +661,12 @@ if [[ $ARG_GEN_IMAGES == true ]]; then
         # Convert firmware to raw image using FWUP programming mode
         "${FWUP}" -a -d "${IMAGE_FILE}" -t "${IMAGE_TARGET}" -i "$FIRMWARE_FILE"
     done
+fi
+
+# OPTIONAL GRiSP Software Update Package GENERATION (-u flag)
+if [[ $ARG_GEN_UPDATE_PACKAGE == true ]]; then
+    echo "Building software update package artefacts/$PACKAGE_FILENAME..."
+    bootscheme_package_update
 fi
 
 echo "Done"
