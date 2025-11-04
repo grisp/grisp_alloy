@@ -105,9 +105,8 @@ fi
 SOURCE_PROJECT_DIR="$( cd $ARG_PROJECT; pwd )"
 PROJECT_NAME="$( basename "$SOURCE_PROJECT_DIR" )"
 VCS_TAG_FILE=".alloy_vcs_tag"
-RSYNC_CMD=( rsync -avH --delete --exclude='.git/' --exclude='.hg/'
-            --exclude='_build/' --exclude='*.beam' --exclude='*.o'
-            --exclude='*.so' )
+RSYNC_CMD=( rsync -aqH --delete --exclude='_build/' --exclude='*.beam' \
+            --exclude='*.o' --exclude='*.so' )
 
 set_debug_level "$ARG_DEBUG"
 
@@ -130,7 +129,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
 
     # Keep track of the project VCS tag
     if [[ -d "$SOURCE_PROJECT_DIR/.git" ]]; then
-        PROJECT_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -c "$SOURCE_PROJECT_DIR" )"
+        PROJECT_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$SOURCE_PROJECT_DIR" )"
         echo "$PROJECT_VCS_TAG" \
             | ssh -F "${GLB_TOP_DIR}/.vagrant.ssh_config" \
                 "vagrant@default" \
@@ -139,7 +138,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
 
     # Keep track of the alloy VCS tag
     if [[ -d "$GLB_TOP_DIR/.git" ]]; then
-        GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -c "$GLB_TOP_DIR" )"
+        GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"
         echo "$GLB_VCS_TAG" \
             | ssh -F "${GLB_TOP_DIR}/.vagrant.ssh_config" \
                 "vagrant@default" \
@@ -184,7 +183,7 @@ PROJECT_DIR="${GLB_PROJECT_BUILD_DIR}/builds/${PROJECT_NAME}"
 PACKAGE_DIR="${GLB_PROJECT_BUILD_DIR}/packages/${PROJECT_NAME}"
 GLB_VCS_TAG="unknown"
 if [[ -d "${GLB_TOP_DIR}/.git" ]]; then
-    GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -c "$GLB_TOP_DIR" )"
+    GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"
 elif [[ -f "${GLB_TOP_DIR}/${VCS_TAG_FILE}" ]]; then
     GLB_VCS_TAG="$( cat "${GLB_TOP_DIR}/${VCS_TAG_FILE}" )"
 fi
@@ -201,10 +200,11 @@ project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
 # Copy source project to build directory and prepare for compilation
 echo "Building $PROJECT_TYPE project..."
 mkdir -p "$PROJECT_DIR"
-${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
+echo ${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
+${RSYNC_CMD[@]} -v "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
 if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
-        && [[ -d "$SOURCE_PROJECT_DIR/.git" ]]; then
-    "${GLB_SCRIPT_DIR}/git-info.sh" -c "$SOURCE_PROJECT_DIR" \
+        && [[ -d "$PROJECT_DIR/.git" ]]; then
+    "${GLB_SCRIPT_DIR}/git-info.sh" -c "$PROJECT_DIR" \
         -o "$PROJECT_DIR/${VCS_TAG_FILE}"
 fi
 mkdir -p "$PACKAGE_DIR"

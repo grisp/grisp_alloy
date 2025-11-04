@@ -254,7 +254,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
 
     # Keep track of the alloy VCS tag
     if [[ -d "$GLB_TOP_DIR/.git" ]]; then
-        GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -c "$GLB_TOP_DIR" )"
+        GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"
         echo "$GLB_VCS_TAG" \
             | ssh -F "${GLB_TOP_DIR}/.vagrant.ssh_config" \
                 "vagrant@default" \
@@ -360,7 +360,7 @@ SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
 SDK_FWUP_CONFIG="$GLB_SDK_DIR/images/fwup.conf"
 GLB_VCS_TAG="unknown"
 if [[ -d "${GLB_TOP_DIR}/.git" ]]; then
-    GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -c "$GLB_TOP_DIR" )"
+    GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"
 elif [[ -f "${GLB_TOP_DIR}/${VCS_TAG_FILE}" ]]; then
     GLB_VCS_TAG="$( cat "${GLB_TOP_DIR}/${VCS_TAG_FILE}" )"
 fi
