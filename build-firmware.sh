@@ -41,7 +41,7 @@ show_usage()
     echo " -K Keep the vagrant VM running after exiting"
     echo " -s Device serial number"
     echo " -n Firmware name (defaults to first artefact's base name)"
-    echo " -n Firmware version (defaults to first artefact's version)"
+    echo " -v Firmware version (defaults to first artefact's version)"
     echo " -o Overlay directory to merge into rootfs before packaging"
     echo
     echo "Examples:"
@@ -61,7 +61,7 @@ ARG_SERIAL_DEFINED=false
 ARG_SERIAL="00000000"
 ARG_FIRMWARE_NAME=""
 ARG_FIRMWARE_VER=""
-while getopts "hdciuVs:n:o:PK" opt; do
+while getopts "hdciuVs:n:v:o:PK" opt; do
     case "$opt" in
     d)
         ARG_DEBUG=1
@@ -318,18 +318,11 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
     cd "$GLB_TOP_DIR"
-    vagrant exec "${GLB_VAGRANT_TOP_DIR}/build-firmware.sh" "${NEW_ARGS[@]}"
+    vagrant exec -- "${GLB_VAGRANT_TOP_DIR}/build-firmware.sh" "${NEW_ARGS[@]}"
     exit $?
 fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
-
-# Determine firmware name
-if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
-    FIRMWARE_NAME="$ARG_FIRMWARE_NAME"
-else
-    FIRMWARE_NAME="${PROJECT_NAMES[0]}"
-fi
 
 if [[ -n "$ARG_OVERLAY_DIR" ]]; then
     OVERLAY_DIR="$ARG_OVERLAY_DIR"
@@ -368,7 +361,6 @@ bootscheme_setup ${BOOTSCHEME}
 
 # PROJECT ARTEFACT PREPARATION
 PROJECTS_BASE_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects"
-FIRMWARE_DIR="${GLB_FIRMWARE_BUILD_DIR}/firmwares/${FIRMWARE_NAME}"
 SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
 SDK_FWUP_CONFIG="$GLB_SDK_DIR/images/fwup.conf"
 GLB_VCS_TAG="unknown"
@@ -382,11 +374,6 @@ if [[ $ARG_CLEAN == true ]]; then
     rm -rf "$PROJECTS_BASE_DIR"
 fi
 
-rm -rf "$FIRMWARE_DIR"
-
-mkdir -p "$PROJECTS_BASE_DIR"
-mkdir -p "$FIRMWARE_DIR"
-
 # Prepare cross-compile environment for scrub and packaging
 source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
 
@@ -395,6 +382,7 @@ PROJECT_DIRS=( )
 RELEASE_DIRS=( )
 APP_NAMES=( )
 APP_VERS=( )
+REL_NAMES=( )
 REL_VERS=( )
 PROJ_TYPES=( )
 PROJ_PROFILES=( )
@@ -435,12 +423,10 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
         error 1 "Invalid $app_name artefact: missing 'release' directory"
     fi
 
+    # Require app version from manifest; do not guess
     app_ver="${PROJECT_APP_VERSION:-}"
     if [[ -z "$app_ver" ]]; then
-        app_rel_dir=$( echo "${rel_dir}/lib/${app_name}-"* )
-        if [[ -d $app_rel_dir ]]; then
-            app_ver="$( echo "$app_rel_dir" | sed "s|^.*/${app_name}-\(.*\)$|\1|" )"
-        fi
+        error 1 "Invalid $app_name artefact: missing PROJECT_APP_VERSION in manifest"
     fi
 
     erts_dir_cand=$( echo "${rel_dir}/erts-"* )
@@ -450,14 +436,10 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
     if [[ -z "$app_ver" ]] || [[ ! -d "${rel_dir}/lib/${app_name}-${app_ver}" ]]; then
         error 1 "Missing release path lib/${app_name}-${app_ver}"
     fi
-    # Determine release version from manifest if available; fallback to app_ver
-    rel_version="${PROJECT_RELEASE_VERSION:-$app_ver}"
+    # Require release version from manifest; do not guess
+    rel_version="${PROJECT_RELEASE_VERSION:-}"
     if [[ -z "$rel_version" ]]; then
-        # As a last resort, pick the first matching releases/${app_name}-*
-        rel_match=$( echo "${rel_dir}/releases/${app_name}-"* )
-        if [[ -d "$rel_match" ]] && [[ "$rel_match" != "${rel_dir}/releases/${app_name}-*" ]]; then
-            rel_version="$( basename "$rel_match" | sed "s/^${app_name}-//" )"
-        fi
+        error 1 "Invalid $app_name artefact: missing PROJECT_RELEASE_VERSION in manifest"
     fi
     if [[ -z "$rel_version" ]] || [[ ! -d "${rel_dir}/releases/${rel_version}" ]]; then
         error 1 "Missing $app_name release path releases/${rel_version}"
@@ -467,6 +449,7 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
     RELEASE_DIRS+=( "$rel_dir" )
     APP_NAMES+=( "$app_name" )
     APP_VERS+=( "$app_ver" )
+    REL_NAMES+=( "${PROJECT_RELEASE_NAME:-$app_name}" )
     PROJ_TYPES+=( "${PROJECT_TYPE}" )
     PROJ_PROFILES+=( "${PROJECT_PROFILE}" )
     PROJ_VCS_TAGS+=( "${PROJECT_VCS_PROJECT:-unknown}" )
@@ -477,6 +460,13 @@ done
 
 if [[ ${#RELEASE_DIRS[@]} -eq 0 ]]; then
     error 1 "Missing project artefact (tarball path or artefact name prefix)"
+fi
+
+# Determine firmware name (default to first project's release name if not provided)
+if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
+    FIRMWARE_NAME="$ARG_FIRMWARE_NAME"
+else
+    FIRMWARE_NAME="${REL_NAMES[0]}"
 fi
 
 # Determine firmware version
@@ -494,6 +484,12 @@ IMAGE_BASE_FILE="${GLB_ARTEFACTS_DIR}/${IMAGE_BASE_FILENAME}"
 IMAGE_FILE_EXTENSION=".img"
 PACKAGE_FILENAME="${BASE_FILENAME}.tar"
 PACKAGE_FILE="${GLB_ARTEFACTS_DIR}/${PACKAGE_FILENAME}"
+FIRMWARE_DIR="${GLB_FIRMWARE_BUILD_DIR}/firmwares/${FIRMWARE_NAME}"
+
+rm -rf "$FIRMWARE_DIR"
+
+mkdir -p "$PROJECTS_BASE_DIR"
+mkdir -p "$FIRMWARE_DIR"
 
 # Consolidated priority file across all projects + firmware
 SQUASHFS_PRIORITIES_FILE="$FIRMWARE_DIR/squashfs.priority"
@@ -561,10 +557,10 @@ ln -sfn "${PROJECT_ROOTS[0]}" "${OVERLAY_ROOT}/erlang"
 OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
 mkdir -p $( dirname $OS_RELEASE_FILE )
 cat << EOF > "$OS_RELEASE_FILE"
-NAME="${OS_RELEASE_NAME:="${GLB_TARGET_NAME}-${PROJECT_APP_NAME}"}"
-PRETTY_NAME="${OS_RELEASE_PRETTY_NAME:="${GLB_TARGET_NAME}-${PROJECT_APP_NAME}"}"
+NAME="${OS_RELEASE_NAME:="${GLB_TARGET_NAME}-${FIRMWARE_NAME}"}"
+PRETTY_NAME="${OS_RELEASE_PRETTY_NAME:="${GLB_TARGET_NAME}-${FIRMWARE_NAME}"}"
 ID="${OS_RELEASE_ID:=${GLB_TARGET_NAME}}"
-VERSION="${GLB_COMMON_SYSTEM_VER}-${GLB_COMMON_SYSTEM_VER}-${FIRMWARE_VER}"
+VERSION="${GLB_COMMON_SYSTEM_VER}/${GLB_COMMON_SYSTEM_VER}/${FIRMWARE_VER}"
 EOF
 
 # Generate alloy manifest
@@ -586,6 +582,7 @@ mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
         echo "        \"${APP_NAMES[$pi]}\": {";
         echo "            \"root\": \"${PROJECT_ROOTS[$pi]}\",";
         echo "            \"app_ver\": \"${APP_VERS[$pi]}\",";
+        echo "            \"rel_name\": \"${REL_NAMES[$pi]}\",";
         echo "            \"rel_ver\": \"${REL_VERS[$pi]}\",";
         echo "            \"type\": \"${PROJ_TYPES[$pi]}\",";
         echo "            \"profile\": \"${PROJ_PROFILES[$pi]}\",";

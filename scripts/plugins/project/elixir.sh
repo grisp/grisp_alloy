@@ -89,3 +89,42 @@ project_build_elixir() {
 
     resref="$rel_path"
 }
+
+project_metadata_elixir() {
+    local -n app_name_ref="$1"
+    local -n app_version_ref="$2"
+    local -n release_name_ref="$3"
+    local -n release_version_ref="$4"
+    local release_dir="$5"
+    local project_dir="$6"
+
+    release_name_ref="$( basename "$release_dir" )"
+
+    local rel_dir
+    rel_dir="$( find "${release_dir}/releases" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n1 )"
+    if [[ -n "$rel_dir" ]]; then
+        release_version_ref="$( basename "$rel_dir" )"
+    else
+        release_version_ref=""
+    fi
+
+    # Prefer app name from mix.exs (project app: :name)
+    local cand=""
+    if [[ -f "$project_dir/mix.exs" ]]; then
+        cand="$( grep -E "app:[[:space:]]*:[A-Za-z0-9_]+" "$project_dir/mix.exs" | head -n1 | sed -E 's/.*app:[[:space:]]*:([A-Za-z0-9_]+).*/\1/' )"
+    fi
+    if [[ -n "$cand" ]] && compgen -G "${release_dir}/lib/${cand}-*" > /dev/null; then
+        app_name_ref="$cand"
+    else
+        app_name_ref="$release_name_ref"
+    fi
+
+    # Determine app version from lib/<app>-<ver>
+    local app_rel_dir
+    app_rel_dir=$( echo "${release_dir}/lib/${app_name_ref}-"* )
+    if [[ -d "$app_rel_dir" ]]; then
+        app_version_ref="$( echo "$app_rel_dir" | sed "s|^.*/${app_name_ref}-\(.*\)$|\1|" )"
+    else
+        app_version_ref=""
+    fi
+}

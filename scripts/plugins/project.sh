@@ -5,6 +5,7 @@
 #  1) project_setup      → loads plugins and registers supported types
 #  2) project_detect     → auto-detects a project's type
 #  3) project_build      → dispatches build to the detected type's handler
+#  4) project_metadata   → asks the detected type for app/release metadata
 #
 # Plugin loading
 #  - Plugins live under plugins/project/*.sh
@@ -27,6 +28,10 @@
 #  - project_build_<type> resref project_dir profile target_erlang
 #      Build the project release and set resref to the absolute path of the
 #      assembled release directory. Return non-zero on failure.
+#  - project_metadata_<type> app_name_ref app_version_ref release_name_ref \
+#                           release_version_ref release_dir project_dir
+#      Populate the provided refs with the main app name/version and the
+#      release name/version for the built artefacts.
 #
 # Notes
 #  - Detectors should only check for their own type; they must not modify
@@ -59,4 +64,11 @@ project_build() {
     local project_type
     project_detect project_type "$project_dir"
     project_build_${project_type} "$@"
+}
+
+project_metadata() {
+    local project_dir="$6"
+    local project_type
+    project_detect project_type "$project_dir"
+    project_metadata_${project_type} "$@"
 }
