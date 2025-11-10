@@ -381,8 +381,8 @@ Run the artefact server in grisp_alloy:
 ./artefact_server
 ```
 
-**WARNING**: Running the artefact server will give open read access to all the
-files under the artefacts directory to your local network.
+**WARNING**: Running the artefact server without HTTPS will give open read
+access to all the files under the artefacts directory to your local network.
 
 
 On the device, set up the IP address to be able to access your host machine
@@ -398,6 +398,39 @@ From Elixir console:
 
 ```elixir
 :grisp_updater.update("http://<HOST_IP>:8080/hello_grisp-0.1.0-kontron-albl-imx8mm").
+```
+
+### Using HTTPS
+
+For HTTPS software update with signature verification to work, the firmware
+must have been built with a security pack, so the firware contains all the
+required security material.
+
+In addition, when using a develpment server with self-signed certificate,
+you need to ensure the certificate hostname resolve to your development machine.
+For that you may have to add a custom overlay using `./build-firmware.sh` option
+`-o` that will ad a `/etc/hosts` file resolving the certificate hostname to
+your development machine IP.
+
+Run the artefact server in grisp_alloy:
+
+```shell
+./artefact_server -S /path/to/security_pack
+```
+
+On the device, set up the IP address to be able to access your host machine
+using DHCP, then you can update using HTTP.
+
+From Erlang console:
+
+```erlang
+grisp_updater:update(<<"https://<HOSTNAME>:8443/hello_grisp-0.1.0-kontron-albl-imx8mm">>).
+```
+
+From Elixir console:
+
+```elixir
+:grisp_updater.update("https://<HOSTNAME>:8443/hello_grisp-0.1.0-kontron-albl-imx8mm").
 ```
 
 ### Validating

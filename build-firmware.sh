@@ -29,89 +29,83 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-firmware.sh [-h] [-d] [-c] [-i] [-V] [-P] [-K] [-s SERIAL] [-n NAME] [-v VERSION] [-o OVERLAY_DIR] TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
+    echo "USAGE: build-firmware.sh OPTIONS TARGET (ARTEFACT_PREFIX | ARTEFACT_PATH [--name NAME])..."
     echo "OPTIONS:"
-    echo " -h Show this"
-    echo " -d Print scripts debug information"
-    echo " -c Cleanup the curent state and start from scratch"
-    echo " -i Generate raw images in addition of the firmware"
-    echo " -u Generate update package in addition of the firmware"
-    echo " -V Using the Vagrant VM even on Linux"
-    echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
-    echo " -K Keep the vagrant VM running after exiting"
-    echo " -s Device serial number"
-    echo " -n Firmware name (defaults to first artefact's base name)"
-    echo " -v Firmware version (defaults to first artefact's version)"
-    echo " -o Overlay directory to merge into rootfs before packaging"
+    echo " -h | --help"
+    echo "    Show this"
+    echo " -d | --debug"
+    echo "    Print scripts debug information"
+    echo " -c | --clean"
+    echo "    Cleanup the curent state and start from scratch"
+    echo " -i | --generate-images"
+    echo "    Generate raw images in addition of the firmware"
+    echo " -u | --generate-update"
+    echo "    Generate update package in addition of the firmware"
+    echo " -V | --force-vagrant"
+    echo "    Using the Vagrant VM even on Linux"
+    echo " -P | --provision"
+    echo "    Re-provision the vagrant VM; use to reflect some changes to the VM"
+    echo " -K | --keep-vagrant"
+    echo "    Keep the vagrant VM running after exiting"
+    echo " -n | --name <NAME>"
+    echo "    Firmware name (defaults to first artefact's base name)"
+    echo " -v | --version <VERSION>"
+    echo "    Firmware version (defaults to first artefact's version)"
+    echo " -o | --overlay <OVERLAY_DIR>"
+    echo "    Overlay directory to merge into rootfs before packaging"
+    echo " -S | --security-pack <DIR>"
+    echo "    Security pack root directory"
+    echo " -s | --serial <SERIAL>"
+    echo "    Device serial number (default: 00000000)"
+    echo " -p | --profile <NAME>"
+    echo "    Security profile (default: default)"
+    echo " -U | --sign-update"
+    echo "    Enable grisp_updater package signing (requires --security-pack)"
     echo
     echo "Examples:"
     echo "  build-firmware.sh grisp2 projA"
     echo "  build-firmware.sh grisp2 projA --name alpha projB --name beta"
 }
 
-# Parse script's arguments
-OPTIND=1
-ARG_DEBUG="${DEBUG:-0}"
-ARG_CLEAN=false
-ARG_GEN_IMAGES=false
-ARG_GEN_UPDATE_PACKAGE=false
-ARG_FORCE_VAGRANT=false
-ARG_KEEP_VAGRANT=false
-ARG_SERIAL_DEFINED=false
-ARG_SERIAL="00000000"
-ARG_FIRMWARE_NAME=""
-ARG_FIRMWARE_VER=""
-while getopts "hdciuVs:n:v:o:PK" opt; do
-    case "$opt" in
-    d)
-        ARG_DEBUG=1
-        ;;
-    c)
-        ARG_CLEAN=true
-        ;;
-    i)
-        ARG_GEN_IMAGES=true
-        ;;
-    u)
-        ARG_GEN_UPDATE_PACKAGE=true
-        ;;
-    s)
-        ARG_SERIAL_DEFINED=true
-        ARG_SERIAL="$OPTARG"
-        ;;
-    n)
-        ARG_FIRMWARE_NAME="$OPTARG"
-        ;;
-    v)
-        ARG_FIRMWARE_VER="$OPTARG"
-        ;;
-    o)
-        ARG_OVERLAY_DIR="$OPTARG"
-        ;;
-    V)
-        ARG_FORCE_VAGRANT=true
-        ;;
-    P)
-        ARG_PROVISION_VAGRANT=true
-        ;;
-    K)
-        ARG_KEEP_VAGRANT=true
-        ;;
-    *)
-        show_usage
-        exit 0
-        ;;
-    esac
-done
-shift $((OPTIND-1))
-[[ "${1:-}" == "--" ]] && shift
-if [[ $# -eq 0 ]]; then
+## Parse script's arguments (GNU-like long/short options)
+
+source "$( dirname "$0" )/scripts/argparse.sh"
+args_init
+args_add h help ARG_SHOW_HELP flag true false
+args_add d debug ARG_DEBUG flag 1 0
+args_add c clean ARG_CLEAN flag true false
+args_add i generate-images ARG_GEN_IMAGES flag true false
+args_add u generate-update ARG_GEN_UPDATE_PACKAGE flag true false
+args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
+args_add P provision ARG_PROVISION_VAGRANT flag true false
+args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
+args_add s serial ARG_SERIAL value "00000000"
+args_add n name ARG_FIRMWARE_NAME value ""
+args_add v version ARG_FIRMWARE_VER value ""
+args_add o overlay ARG_OVERLAY_DIR value ""
+args_add S security-pack ARG_SECPACK_DIR value ""
+args_add p profile ARG_PROFILE value "default"
+args_add U sign-update ARG_SIGN_UPDATE flag true false
+
+if ! args_parse "$@"; then
+    exit 1
+fi
+
+if [[ $ARG_SHOW_HELP == true ]]; then
+    show_usage
+    exit 0
+fi
+
+# Remaining positional tokens
+RAW_TOKENS=( "${POSITIONAL[@]}" )
+set --
+if [[ ${#RAW_TOKENS[@]} -eq 0 ]]; then
     echo "ERROR: Missing target name"
     show_usage
     exit 1
 fi
-ARG_TARGET="$1"
-shift
+ARG_TARGET="${RAW_TOKENS[0]}"
+RAW_TOKENS=( "${RAW_TOKENS[@]:1}" )
 # Validate overlay dir on host if provided
 if [[ -n "$ARG_OVERLAY_DIR" ]]; then
     if [[ ! -d "$ARG_OVERLAY_DIR" ]]; then
@@ -119,8 +113,7 @@ if [[ -n "$ARG_OVERLAY_DIR" ]]; then
     fi
 fi
 
-# Remaining tokens (could be NODE/PROJECT specs). We validate later.
-RAW_TOKENS=( "$@" )
+# Remaining tokens (NODE/PROJECT specs) already in RAW_TOKENS
 
 # Load common variables and functions (GLB_* globals, error handling, etc.)
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
@@ -130,11 +123,16 @@ if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64"
     error 1 "$HOST_ARCH is not supported, only x86_64, aarch64 or arm64"
 fi
 
+# If signing is requested, a security pack must be provided
+if [[ $ARG_SIGN_UPDATE == true && $ARG_SECPACK_DIR_OPT -eq 0 ]]; then
+    error 1 "--sign-update/-U requires --security-pack/-S to be specified"
+fi
+
 FIRMWARE_NAME=""
 OVERLAY_DIR=""
 VCS_TAG_FILE=".alloy_vcs_tag"
 
-set_debug_level "$ARG_DEBUG"
+set_debug_level "${ARG_DEBUG}"
 
 # Arrays describing projects to stage
 PROJECT_NAMES=( )
@@ -269,33 +267,68 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     fi
 
     NEW_ARGS=( )
-    if [[ $ARG_DEBUG -gt 0 ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-d" )
+    if [[ ${ARG_DEBUG_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--debug" )
     fi
-    if [[ $ARG_CLEAN == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
+    if [[ ${ARG_CLEAN_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--clean" )
     fi
-    if [[ $ARG_GEN_IMAGES == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-i" )
+    if [[ ${ARG_GEN_IMAGES_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--generate-images" )
     fi
-    if [[ $ARG_GEN_UPDATE_PACKAGE == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-u" )
+    if [[ ${ARG_GEN_UPDATE_PACKAGE_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--generate-update" )
     fi
-    if [[ $ARG_SERIAL_DEFINED == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-s" "$ARG_SERIAL" )
+    if [[ ${ARG_SERIAL_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--serial" "$ARG_SERIAL" )
     fi
-    if [[ -n "$ARG_FIRMWARE_NAME" ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-n" "$ARG_FIRMWARE_NAME" )
+    if [[ ${ARG_FIRMWARE_NAME_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--name" "$ARG_FIRMWARE_NAME" )
     fi
-    if [[ -n "$ARG_FIRMWARE_VER" ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-v" "$ARG_FIRMWARE_VER" )
+    if [[ ${ARG_FIRMWARE_VER_OPT} -gt 0 ]]; then
+        NEW_ARGS=( ${NEW_ARGS[@]} "--version" "$ARG_FIRMWARE_VER" )
     fi
-    if [[ -n "$ARG_OVERLAY_DIR" ]]; then
+    if [[ ${ARG_OVERLAY_DIR_OPT} -gt 0 ]]; then
         # Sync overlay dir to VM uploads/overlay and pass translated path
         vagrant exec rm -rf "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/overlay"
         vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/overlay"
-        rsync -av -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
-        NEW_ARGS=( ${NEW_ARGS[@]} "-o" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
+        rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
+        NEW_ARGS=( ${NEW_ARGS[@]} "--overlay" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
+    fi
+
+    # Security pack handling in VM: copy minimal content and pass path
+    if [[ ${ARG_SECPACK_DIR_OPT} -gt 0 ]]; then
+        if [[ ! -d "$ARG_SECPACK_DIR" ]]; then
+            error 1 "Security pack directory not found: $ARG_SECPACK_DIR"
+        fi
+        if [[ ! -x "$ARG_SECPACK_DIR/secpack" ]]; then
+            error 1 "Security pack 'secpack' script missing or not executable in: $ARG_SECPACK_DIR"
+        fi
+        if [[ $ARG_SIGN_UPDATE == true ]]; then
+            if [[ ! -f "$ARG_SECPACK_DIR/grisp_updater/verification/signature_key.pem" ]]; then
+                error 1 "Security pack signing key not found: $ARG_SECPACK_DIR/grisp_updater/verification/signature_key.pem"
+            fi
+        fi
+        vagrant exec rm -rf "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack"
+        vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack"
+        SECPACK_COPY_ITEMS=( secpack scripts overlay grisp_updater )
+        for item in "${SECPACK_COPY_ITEMS[@]}"; do
+            local_src="${ARG_SECPACK_DIR}/${item}"
+            if [[ -e "$local_src" ]]; then
+                if [[ -d "$local_src" ]]; then
+                    rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$local_src/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/secpack/${item}/"
+                else
+                    rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$local_src" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/secpack/"
+                fi
+            fi
+        done
+        NEW_ARGS=( ${NEW_ARGS[@]} "--security-pack" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/secpack" )
+        if [[ ${ARG_PROFILE_OPT} -gt 0 ]]; then
+            NEW_ARGS=( ${NEW_ARGS[@]} "--profile" "$ARG_PROFILE" )
+        fi
+        if [[ $ARG_SIGN_UPDATE == true ]]; then
+            NEW_ARGS=( ${NEW_ARGS[@]} "--sign-update" )
+        fi
     fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
 
@@ -306,7 +339,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
             REL_PATH="${local_host_path#${GLB_ARTEFACTS_DIR}/}"
             NEW_ARGS+=( "${GLB_VAGRANT_ARTEFACTS_DIR}/${REL_PATH}" )
         else
-            rsync -av -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$local_host_path" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads"
+            rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$local_host_path" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads"
             NEW_ARGS+=( "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads/$( basename "$local_host_path" )" )
         fi
         if [[ -n "${PROJECT_NAMES[$i]}" ]]; then
@@ -314,8 +347,12 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         fi
     done
 
+    # SECURITY: Always delete the copied security pack inside the VM at exit.
+    # This ensures sensitive materials do not persist on the VM, regardless of success or failure.
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
-        trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
+        trap "vagrant exec rm -rf '$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack'; cd '$GLB_TOP_DIR'; vagrant halt" EXIT
+    else
+        trap "vagrant exec rm -rf '$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack'" EXIT
     fi
     cd "$GLB_TOP_DIR"
     vagrant exec -- "${GLB_VAGRANT_TOP_DIR}/build-firmware.sh" "${NEW_ARGS[@]}"
@@ -547,7 +584,28 @@ done
 
 # If an overlay directory is provided, merge it into the rootfs_overlay now
 if [[ -n "$OVERLAY_DIR" ]]; then
-    rsync -a "$OVERLAY_DIR/" "${FIRMWARE_DIR}/rootfs_overlay/"
+    rsync -qa "$OVERLAY_DIR/" "${FIRMWARE_DIR}/rootfs_overlay/"
+fi
+
+# Merge security pack overlay if provided
+if [[ -n "$ARG_SECPACK_DIR" ]]; then
+    if [[ ! -x "$ARG_SECPACK_DIR/secpack" ]]; then
+        error 1 "Security pack 'secpack' script missing or not executable in: $ARG_SECPACK_DIR"
+    fi
+    SECPACK_GEN_DIR="${FIRMWARE_DIR}/security_overlay"
+    rm -rf "$SECPACK_GEN_DIR"
+    mkdir -p "$SECPACK_GEN_DIR"
+    if ! "$ARG_SECPACK_DIR/secpack" generate-overlay "$SECPACK_GEN_DIR" "$ARG_SERIAL" "$ARG_PROFILE"; then
+        error 1 "Security pack overlay generation failed"
+    fi
+    rsync -qa "$SECPACK_GEN_DIR/" "${FIRMWARE_DIR}/rootfs_overlay/"
+    export GLB_SECPACK_DIR="$ARG_SECPACK_DIR"
+    if [[ "$ARG_SIGN_UPDATE" == "true" ]]; then
+        if [[ ! -f "$ARG_SECPACK_DIR/grisp_updater/verification/signature_key.pem" ]]; then
+            error 1 "Security pack signing key not found: $ARG_SECPACK_DIR/grisp_updater/verification/signature_key.pem"
+        fi
+        export GLB_SECPACK_SIGN_UPDATE=true
+    fi
 fi
 
 # Create init symlink to first node's directory
@@ -664,6 +722,19 @@ fi
 if [[ $ARG_GEN_UPDATE_PACKAGE == true ]]; then
     echo "Building software update package artefacts/$PACKAGE_FILENAME..."
     bootscheme_package_update
+fi
+
+# SECURITY CLEANUP
+# If a security pack was used, remove potentially sensitive build-time overlays.
+# We only delete generated build overlays inside ${FIRMWARE_DIR}; the original
+# user-provided overlay (-o/--overlay) is NEVER deleted.
+if [[ $ARG_SECPACK_DIR_OPT -gt 0 ]]; then
+    # Delete the temporary security overlay generated from the security pack
+    # to avoid leaving sensitive material on disk.
+    rm -rf "$SECPACK_GEN_DIR"
+    # Delete the merged rootfs overlay that now contains security-sensitive
+    # files and is no longer needed after packaging firmware/images.
+    rm -rf "${FIRMWARE_DIR}/rootfs_overlay"
 fi
 
 echo "Done"

@@ -87,8 +87,13 @@ bootscheme_package_update() {
     cd "${GLB_SDK_DIR}/images"
     rm -rf "${PACKAGE_FILE}"
 
+    local SIGN_ARGS=()
+    if [[ "${GLB_SECPACK_SIGN_UPDATE:-false}" == "true" ]]; then
+        SIGN_ARGS+=("--key-file" "${GLB_SECPACK_DIR}/grisp_updater/verification/signature_key.pem")
+    fi
+
     env -i PATH=$PATH:"${GLB_SDK_HOST_DIR}/lib/erlang/erts-*/bin" \
-        "${GRISP_UPDATER_TOOLS}" -t \
+        "${GRISP_UPDATER_TOOLS}" -t "${SIGN_ARGS[@]}" \
             -n "${GLB_FW_META_PRODUCT}" \
             -v "${GLB_FW_META_VERSION}" \
             --vcs="${GLB_FW_META_VCS_IDENTIFIER}" \

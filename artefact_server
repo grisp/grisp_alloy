@@ -1,25 +1,40 @@
 #!/usr/bin/env escript
 %%! -smp enable -noinput
 
-%% Self-contained artefact HTTP server
-%% Serves files from a root directory (default: ./artefacts)
-%% Special case: if URL matches <name>/<path_inside>, and <name>.tar exists in root,
-%% the server responds with the file inside the tar without extracting to disk.
+%% Self-contained artefact HTTP/HTTPS server
+%% - Serves files from a root directory (default: ./artefacts)
+%% - Special case: if URL matches <name>/<path_inside>, and <name>.tar exists in root,
+%%   the server responds with the file inside the tar without extracting to disk.
+%%
+%% Secure mode (-S|--security-pack DIR):
+%% - Enables HTTPS with mutual TLS (client certificate required)
+%% - Uses server key/cert from: DIR/servers/<name>.key.pem and DIR/servers/<name>.fullchain.pem
+%% - Verifies clients against:  DIR/clients/devices.chain.pem (required)
+%% - Defaults to port 8443 in secure mode (overridable via -p/--port)
+%% - TLS versions allowed: TLS 1.2 and TLS 1.3
 
 -mode(compile).
 
 -include_lib("kernel/include/file.hrl").
 
 main(Args) ->
-    {Port, RootOpt} = parse_args(Args),
+    {Port, RootOpt, SecpackOpt, ServerNameOpt, Debug} = parse_args(Args),
     {ok, Cwd} = file:get_cwd(),
     Root = normalize_root(RootOpt, Cwd),
     ok = ensure_dir(Root),
-    io:format("artefact_server: serving ~s on http://0.0.0.0:~p\n", [Root, Port]),
-    start_server(Port, Root).
+    case SecpackOpt of
+        undefined ->
+            io:format("artefact_server: serving ~s on http://0.0.0.0:~p\n", [Root, Port]),
+            start_server(Port, Root, Debug);
+        _ ->
+            _ = application:ensure_all_started(ssl),
+            {KeyFile, CertFile, CACertFile} = resolve_tls_materials(SecpackOpt, ServerNameOpt),
+            io:format("artefact_server: serving ~s on https://0.0.0.0:~p (mTLS)\n", [Root, Port]),
+            start_server_tls(Port, Root, KeyFile, CertFile, CACertFile, Debug)
+    end.
 
 parse_args(Args) ->
-    parse_args(Args, #{port => 8080, root => "artefacts"}).
+    parse_args(Args, #{port => 8080, root => "artefacts", secpack => undefined, server_name => undefined, debug => false}).
 
 parse_args(["-p", PortStr | Rest], Acc) ->
     parse_args(Rest, Acc#{port := to_int(PortStr)});
@@ -29,14 +44,35 @@ parse_args(["-r", Root | Rest], Acc) ->
     parse_args(Rest, Acc#{root := Root});
 parse_args(["--root", Root | Rest], Acc) ->
     parse_args(Rest, Acc#{root := Root});
+parse_args(["-S", Secpack | Rest], Acc) ->
+    % When secpack is specified and port was default, bump to 8443
+    Acc1 = case maps:get(port, Acc) of
+        8080 -> Acc#{port := 8443};
+        P -> Acc#{port := P}
+    end,
+    parse_args(Rest, Acc1#{secpack := Secpack});
+parse_args(["--security-pack", Secpack | Rest], Acc) ->
+    Acc1 = case maps:get(port, Acc) of
+        8080 -> Acc#{port := 8443};
+        P -> Acc#{port := P}
+    end,
+    parse_args(Rest, Acc1#{secpack := Secpack});
+parse_args(["-n", Name | Rest], Acc) ->
+    parse_args(Rest, Acc#{server_name := Name});
+parse_args(["--name", Name | Rest], Acc) ->
+    parse_args(Rest, Acc#{server_name := Name});
+parse_args(["-v" | Rest], Acc) ->
+    parse_args(Rest, Acc#{debug := true});
+parse_args(["--verbose" | Rest], Acc) ->
+    parse_args(Rest, Acc#{debug := true});
 parse_args(["-h" | _], Acc) ->
     usage(),
     halt_ok(Acc);
 parse_args(["--help" | _], Acc) ->
     usage(),
     halt_ok(Acc);
-parse_args([], #{port := Port, root := Root}) ->
-    {Port, Root};
+parse_args([], #{port := Port, root := Root, secpack := Secpack, server_name := Name, debug := Debug}) ->
+    {Port, Root, Secpack, Name, Debug};
 parse_args([Unknown | _], _Acc) ->
     io:format(standard_error, "Unknown option: ~s\n", [Unknown]),
     usage(),
@@ -44,11 +80,16 @@ parse_args([Unknown | _], _Acc) ->
 
 usage() ->
     io:format(
-      "Usage: artefact_server [-p PORT|--port PORT] [-r ROOT|--root ROOT]\n"
+      "Usage: artefact_server [OPTIONS]\n"
       "\n"
       "Options:\n"
-      "  -p, --port  HTTP port (default: 8080)\n"
-      "  -r, --root  Root directory to serve (default: ./artefacts)\n\n").
+      "  -p, --port                  HTTP(S) port (default: 8080; 8443 when -S is used)\n"
+      "  -r, --root                  Root directory to serve (default: ./artefacts)\n"
+      "  -S, --security-pack DIR     Enable HTTPS + client auth using security pack at DIR\n"
+      "                               Requires DIR/devices/devices.chain.pem (devices CA bundle)\n"
+      "                               Uses DIR/servers/<name>.key.pem and <name>.fullchain.pem\n"
+      "  -n, --name NAME             Server identity name; default is the first key in DIR/servers\n"
+      "  -v, --verbose               Log each request as: METHOD CODE PATH\n\n").
 
 halt_ok(_Acc) ->
     erlang:halt(0).
@@ -78,27 +119,59 @@ ensure_dir(Path) ->
             halt_error()
     end.
 
-start_server(Port, Root) ->
+start_server(Port, Root, Debug) ->
     {ok, Listen} = gen_tcp:listen(Port, [binary, {packet, raw}, {reuseaddr, true}, {active, false}]),
-    accept_loop(Listen, Root).
+    accept_loop(Listen, Root, Debug).
 
-accept_loop(Listen, Root) ->
+start_server_tls(Port, Root, KeyFile, CertFile, CACertFile, Debug) ->
+    {ok, Listen} = ssl:listen(Port, [binary, {reuseaddr, true}, {active, false},
+                                     {certfile, CertFile}, {keyfile, KeyFile},
+                                     {cacertfile, CACertFile}, {verify, verify_peer},
+                                     {fail_if_no_peer_cert, true}, {depth, 3},
+                                     {versions, ['tlsv1.2','tlsv1.3']}]),
+    accept_loop_tls(Listen, Root, Debug).
+
+accept_loop(Listen, Root, Debug) ->
     case gen_tcp:accept(Listen) of
         {ok, Sock} ->
-            spawn(fun() -> handle_client(Sock, Root) end),
-            accept_loop(Listen, Root);
+            spawn(fun() -> handle_client(Sock, Root, Debug) end),
+            accept_loop(Listen, Root, Debug);
         {error, closed} -> ok
     end.
 
-handle_client(Sock, Root) ->
+accept_loop_tls(Listen, Root, Debug) ->
+    case ssl:transport_accept(Listen) of
+        {ok, Sock0} ->
+            case ssl:handshake(Sock0) of
+                {ok, SSLSock} -> spawn(fun() -> handle_client_tls(SSLSock, Root, Debug) end);
+                {error, _} -> ok
+            end,
+            accept_loop_tls(Listen, Root, Debug);
+        {error, closed} -> ok
+    end.
+
+handle_client(Sock, Root, Debug) ->
     inet:setopts(Sock, [{nodelay, true}]),
     case recv_request(Sock) of
         {ok, #{method := Method, path := Path, httpver := Ver, headers := Headers}} ->
             Response = handle_request(Method, Path, Ver, Headers, Root),
+            Status = case Response of {stream, C, _, _} -> C; {C, _, _} -> C end,
+            log_request(Debug, Method, Status, Path),
             send_response(Sock, Response);
         {error, _} -> ok
     end,
     gen_tcp:close(Sock).
+
+handle_client_tls(Sock, Root, Debug) ->
+    case recv_request_tls(Sock) of
+        {ok, #{method := Method, path := Path, httpver := Ver, headers := Headers}} ->
+            Response = handle_request(Method, Path, Ver, Headers, Root),
+            Status = case Response of {stream, C, _, _} -> C; {C, _, _} -> C end,
+            log_request(Debug, Method, Status, Path),
+            send_response_tls(Sock, Response);
+        {error, _} -> ok
+    end,
+    ssl:close(Sock).
 
 recv_request(Sock) ->
     case recv_until_blank_line(Sock, <<>>) of
@@ -113,6 +186,23 @@ recv_until_blank_line(Sock, Acc) ->
             case binary:match(New, <<"\r\n\r\n">>) of
                 {_, _} -> {ok, New};
                 nomatch -> recv_until_blank_line(Sock, New)
+            end;
+        Error -> Error
+    end.
+
+recv_request_tls(Sock) ->
+    case recv_until_blank_line_tls(Sock, <<>>) of
+        {ok, Data} -> parse_request(Data);
+        Error -> Error
+    end.
+
+recv_until_blank_line_tls(Sock, Acc) ->
+    case ssl:recv(Sock, 0, 60000) of
+        {ok, Bin} ->
+            New = <<Acc/binary, Bin/binary>>,
+            case binary:match(New, <<"\r\n\r\n">>) of
+                {_, _} -> {ok, New};
+                nomatch -> recv_until_blank_line_tls(Sock, New)
             end;
         Error -> Error
     end.
@@ -343,6 +433,17 @@ send_response(Sock, {Code, Headers, Body}) ->
     HeaderBin = headers_binary(HB),
     gen_tcp:send(Sock, [StatusLine, HeaderBin, <<"\r\n">>, Body]).
 
+send_response_tls(Sock, {stream, Code, Headers, FilePath}) ->
+    StatusLine = status_line(Code),
+    HeaderBin = headers_binary(Headers),
+    ok = ssl:send(Sock, [StatusLine, HeaderBin, <<"\r\n">>]),
+    stream_file_tls(Sock, FilePath);
+send_response_tls(Sock, {Code, Headers, Body}) ->
+    StatusLine = status_line(Code),
+    HB = ensure_content_length(Headers, Body),
+    HeaderBin = headers_binary(HB),
+    ssl:send(Sock, [StatusLine, HeaderBin, <<"\r\n">>, Body]).
+
 status_line(Code) ->
     <<"HTTP/1.1 ", (integer_to_binary(Code))/binary, " ", (status_text(Code))/binary, "\r\n">>.
 
@@ -356,6 +457,11 @@ headers_binary(Map) ->
     iolist_to_binary(
       [ [K, <<": ">>, V, <<"\r\n">>] || {K, V} <- maps:to_list(Map) ]
     ).
+
+log_request(true, Method, Status, Path) ->
+    io:format("~s ~p ~s\n", [binary_to_list(Method), Status, binary_to_list(Path)]);
+log_request(false, _Method, _Status, _Path) ->
+    ok.
 
 ensure_content_length(Headers, Body) ->
     case maps:is_key(<<"content-length">>, Headers) of
@@ -378,4 +484,60 @@ stream_file_loop(Sock, Fd) ->
             stream_file_loop(Sock, Fd);
         eof -> ok;
         {error, _} -> ok
+    end.
+
+stream_file_tls(Sock, FilePath) ->
+    case file:open(FilePath, [read, raw, binary]) of
+        {ok, Fd} ->
+            stream_file_loop_tls(Sock, Fd),
+            file:close(Fd);
+        _ -> ok
+    end.
+
+stream_file_loop_tls(Sock, Fd) ->
+    case file:read(Fd, 65536) of
+        {ok, Bin} ->
+            ok = ssl:send(Sock, Bin),
+            stream_file_loop_tls(Sock, Fd);
+        eof -> ok;
+        {error, _} -> ok
+    end.
+
+%% --- TLS material resolution from secpack ---
+
+resolve_tls_materials(SecpackDir, ServerNameOpt) ->
+    Root = normalize_root(SecpackDir, filename:absname(".")),
+    ensure_dir(Root),
+    ServersDir = filename:join(Root, "servers"),
+    ensure_dir(ServersDir),
+    DevicesDir = filename:join(Root, "devices"),
+    ensure_dir(DevicesDir),
+    ServerName = case ServerNameOpt of
+        undefined -> pick_first_server_basename(ServersDir);
+        N -> N
+    end,
+    Key = filename:join(ServersDir, ServerName ++ ".key.pem"),
+    Cert = filename:join(ServersDir, ServerName ++ ".fullchain.pem"),
+    ok = ensure_file(Key),
+    ok = ensure_file(Cert),
+    CACert = filename:join(DevicesDir, "devices.chain.pem"),
+    ok = ensure_file(CACert),
+    {Key, Cert, CACert}.
+
+pick_first_server_basename(ServersDir) ->
+    {ok, Files} = file:list_dir(ServersDir),
+    Keys = [ F || F <- lists:sort(Files), lists:suffix(".key.pem", F) ],
+    case Keys of
+        [H | _] -> filename:basename(H, ".key.pem");
+        [] ->
+            io:format(standard_error, "No server key found in ~s\n", [ServersDir]),
+            halt_error()
+    end.
+
+ensure_file(Path) ->
+    case filelib:is_file(Path) of
+        true -> ok;
+        false ->
+            io:format(standard_error, "File not found: ~s\n", [Path]),
+            halt_error()
     end.
