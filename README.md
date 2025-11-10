@@ -89,7 +89,7 @@ e.g.
 Both the toolchain and the SDK must have been built previously.
 
 ```sh
-./build-project.sh <TARGET_NAME> <PROJECT_DIRECTORY> [PROFILE]
+./build-project.sh [-p <PROFILE>] <TARGET_NAME> <PROJECT_DIRECTORY>
 ```
 
 This builds the project using plugins (Erlang/Elixir) and packages a tarball
@@ -99,7 +99,7 @@ in `artefacts/` containing:
 - ALLOY-FS-PRIORITIES: optional SquashFS priority list (may be empty)
 - release/: OTP release directory
 
-Tarball name: `<app>-<version>-<target>[-<profile>].tgz`
+Tarball name: `<rel_name>-<rel_ver>-<target>[-<profile>].tgz`
 
 e.g.
 
@@ -142,6 +142,41 @@ Behavior:
 - When using the `-i` flag, raw disk images are generated in addition to the
   firmware file.
 
+### Using a Security Pack
+
+A security pack is an external repository holding all security-related material
+(keys, certificates, and helper scripts). It is consumed by `grisp_alloy` to:
+- generate a device/profile security overlay merged into the firmware rootfs
+- sign software update packages for on-device signature validation
+- enable mTLS and client certificate validation in artefact_server
+
+Required contents in the security pack:
+- `grisp_updater/verification/`
+  - `signature_cert.pem` — certificate chain used by devices to verify update signatures
+  - `signature_key.pem` — private key used to sign software update packages
+- `devices`
+  - `devices.chain.pem` - certification chain for all devices
+- Root script `secpack` exposing command `generate-overlay`:
+  - `secpack generate-overlay <output-dir> <serial> [profile]`
+    - Creates an overlay with security data for the given device serial and optional profile (`default` if omitted)
+
+Usage with `build-firmware.sh`:
+- `-S | --security-pack <DIR>`: path to the security pack
+  - Automatically runs `secpack generate-overlay` and merges the result (after any `--overlay`)
+- `-p | --profile <NAME>`: select security profile (default: `default`)
+- `-U | --sign-update`: sign the software update package using `grisp_updater_tools` with the signing key from the security pack
+  - Requires `signature_key.pem`; build fails early if missing when `-U` is provided
+- `-s | --serial <SERIAL>`: device serial used by the security pack for device-specific material
+
+Examples:
+
+```sh
+# Generate security overlay (default profile) and build firmware
+./build-firmware.sh -S /path/to/security-pack -s 00000001 grisp2 hello_grisp
+
+# Build and sign the update package using the secpack signing key
+./build-firmware.sh -u -U -S /path/to/security-pack -s 00000001 -p dev grisp2 hello_grisp
+```
 
 ### Burn Firmware
 

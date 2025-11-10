@@ -28,77 +28,60 @@ BR_VERSION="2025.05"
 
 show_usage()
 {
-    echo "USAGE: build-sdk.sh [-h] [-d] [-b] [-r] [-c] [-V] [-P] [-K] [-p PAKAGE_PREFIX] TARGET"
+    echo "USAGE: build-sdk.sh OPTIONS TARGET"
     echo "OPTIONS:"
-    echo " -h Show this."
-    echo " -d Print scripts debug information."
-    echo " -b Print the buildroot environment variables."
-    echo " -r Try running buildroot only, if possible; may be enough if there"
+    echo " -h | --help"
+    echo "    Show this."
+    echo " -d | --debug"
+    echo "    Print scripts debug information."
+    echo " -b | --print-buildroot"
+    echo "    Print the buildroot environment variables."
+    echo " -r | --rebuild"
+    echo "    Try running buildroot only, if possible; may be enough if there"
     echo "    has been only very small changes made to the SDK files."
-    echo " -c Cleanup the curent state and start building from scratch."
-    echo " -V Using the Vagrant VM even on Linux."
-    echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM."
-    echo " -K Keep the vagrant VM running after exiting."
-    echo " -p Clean given package prefix, can be used with -r to rebuild a given package"
+    echo " -c | --clean"
+    echo "    Cleanup the current state and start building from scratch."
+    echo " -V | --force-vagrant"
+    echo "    Using the Vagrant VM even on Linux."
+    echo " -P | --provision"
+    echo "    Re-provision the vagrant VM; use to reflect some changes to the VM."
+    echo " -K | --keep-vagrant"
+    echo "    Keep the vagrant VM running after exiting."
+    echo " -p | --clean-package <PACKAGE_PREFIX>"
+    echo "    Clean given package prefix; can be used with --rebuild to rebuild a package."
     echo
     echo "e.g. build-sdk.sh grisp2"
 }
 
-# Parse script's arguments
-OPTIND=1
-ARG_TARGET=""
-ARG_DEBUG="${DEBUG:-0}"
-ARG_BRCMD="false"
-ARG_REBUILD="false"
-ARG_CLEAN="false"
-ARG_FORCE_VAGRANT=false
-ARG_PROVISION_VAGRANT=false
-ARG_KEEP_VAGRANT=false
-ARG_CLEAN_PACKAGES=(  )
+# Parse script's arguments (GNU-like long/short options)
+source "$( dirname "$0" )/scripts/argparse.sh"
+args_init
+args_add h help ARG_SHOW_HELP flag true false
+args_add d debug ARG_DEBUG flag 1 0
+args_add b print-buildroot ARG_BRCMD flag true false
+args_add r rebuild ARG_REBUILD flag true false
+args_add c clean ARG_CLEAN flag true false
+args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
+args_add P provision ARG_PROVISION_VAGRANT flag true false
+args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
+args_add p clean-package ARG_CLEAN_PACKAGES accum
 
-while getopts "hdbrcVPKp:" opt; do
-    case "$opt" in
-    d)
-        ARG_DEBUG=1
-        ;;
-    b)
-        ARG_BRCMD=true
-        ;;
-    r)
-        ARG_REBUILD=true
-        ;;
-    c)
-        ARG_CLEAN="true"
-        ;;
-    V)
-        ARG_FORCE_VAGRANT=true
-        ;;
-    P)
-        ARG_PROVISION_VAGRANT=true
-        ;;
-    K)
-        ARG_KEEP_VAGRANT=true
-        ;;
-    p)
-        ARG_CLEAN_PACKAGES+=( ${OPTARG} )
-        ;;
-
-    *)
-        show_usage
-        exit 0
-        ;;
-    esac
-done
-shift $((OPTIND-1))
-[[ "${1:-}" == "--" ]] && shift
-if [[ $# -eq 0 ]]; then
-    echo "ERROR: Missing argument"
+if ! args_parse "$@"; then
+    exit 1
+fi
+if [[ $ARG_SHOW_HELP == true ]]; then
+    show_usage
+    exit 0
+fi
+# Positional TARGET
+POSITIONALS=( "${POSITIONAL[@]}" )
+if [[ ${#POSITIONALS[@]} -eq 0 ]]; then
+    echo "ERROR: Missing TARGET"
     show_usage
     exit 1
 fi
-ARG_TARGET="$1"
-shift
-if [[ $# > 0 ]]; then
+ARG_TARGET="${POSITIONALS[0]}"
+if [[ ${#POSITIONALS[@]} -gt 1 ]]; then
     echo "ERROR: Too many arguments"
     show_usage
     exit 1
@@ -110,29 +93,29 @@ set_debug_level "$ARG_DEBUG"
 
 # VAGRANT VM EXECUTION BLOCK
 # Buildroot requires Linux environment for proper cross-compilation
-if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
+if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     cd "$GLB_TOP_DIR"
     vagrant up
     if [[ $ARG_PROVISION_VAGRANT == true ]]; then
         vagrant provision
     fi
     NEW_ARGS=( )
-    if [[ $ARG_DEBUG -gt 0 ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-d" )
+    if [[ ${ARG_DEBUG_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--debug" )
     fi
-    if [[ $ARG_BRCMD == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-b" )
+    if [[ ${ARG_BRCMD_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--print-buildroot" )
     fi
-    if [[ $ARG_REBUILD == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-r" )
+    if [[ ${ARG_REBUILD_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--rebuild" )
     fi
-    if [[ $ARG_CLEAN == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
+    if [[ ${ARG_CLEAN_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--clean" )
     fi
-    for p in ${ARG_CLEAN_PACKAGES[@]}; do
-        NEW_ARGS=( ${NEW_ARGS[@]} "-p" "$p" )
+    for p in "${ARG_CLEAN_PACKAGES[@]}"; do
+        NEW_ARGS+=( "--clean-package" "$p" )
     done
-    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
+    NEW_ARGS+=( "$ARG_TARGET" )
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi

@@ -22,69 +22,54 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-project.sh [-h] [-d] [-c] [-V] [-P] [-K] TARGET PROJECT_DIR [PROFILE]"
+    echo "USAGE: build-project.sh OPTIONS TARGET PROJECT_DIR"
     echo "OPTIONS:"
-    echo " -h Show this"
-    echo " -d Print scripts debug information"
-    echo " -c Cleanup the curent state and start from scratch"
-    echo " -V Using the Vagrant VM even on Linux"
-    echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
-    echo " -K Keep the vagrant VM running after exiting"
+    echo " -h | --help"
+    echo "    Show this"
+    echo " -d | --debug"
+    echo "    Print scripts debug information"
+    echo " -c | --clean"
+    echo "    Cleanup the curent state and start from scratch"
+    echo " -V | --force-vagrant"
+    echo "    Using the Vagrant VM even on Linux"
+    echo " -P | --provision"
+    echo "    Re-provision the vagrant VM; use to reflect some changes to the VM"
+    echo " -K | --keep-vagrant"
+    echo "    Keep the vagrant VM running after exiting"
+    echo " -p | --profile <PROFILE>"
+    echo "    Project profile to build (default: default)"
     echo
     echo "e.g. build-project.sh grisp2 ~/my_project"
 }
 
-# Parse script's arguments
-OPTIND=1
-ARG_DEBUG="${DEBUG:-0}"
-ARG_CLEAN=false
-ARG_PROJECT_PROFILE="default"
-ARG_FORCE_VAGRANT=false
-ARG_KEEP_VAGRANT=false
-while getopts "hdcstVPK" opt; do
-    case "$opt" in
-    d)
-        ARG_DEBUG=1
-        ;;
-    c)
-        ARG_CLEAN=true
-        ;;
-    V)
-        ARG_FORCE_VAGRANT=true
-        ;;
-    P)
-        ARG_PROVISION_VAGRANT=true
-        ;;
-    K)
-        ARG_KEEP_VAGRANT=true
-        ;;
-    *)
-        show_usage
-        exit 0
-        ;;
-    esac
-done
-shift $((OPTIND-1))
-[[ "${1:-}" == "--" ]] && shift
-if [[ $# -eq 0 ]]; then
-    echo "ERROR: Missing target name"
+# Parse script's arguments (GNU-like long/short options)
+source "$( dirname "$0" )/scripts/argparse.sh"
+args_init
+args_add h help ARG_SHOW_HELP flag true false
+args_add d debug ARG_DEBUG flag 1 0
+args_add c clean ARG_CLEAN flag true false
+args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
+args_add P provision ARG_PROVISION_VAGRANT flag true false
+args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
+args_add p profile ARG_PROJECT_PROFILE value "default"
+
+if ! args_parse "$@"; then
+    exit 1
+fi
+if [[ $ARG_SHOW_HELP == true ]]; then
+    show_usage
+    exit 0
+fi
+# Positional TARGET PROJECT_DIR
+POSITIONALS=( "${POSITIONAL[@]}" )
+if [[ ${#POSITIONALS[@]} -lt 2 ]]; then
+    echo "ERROR: Missing target or project directory"
     show_usage
     exit 1
 fi
-ARG_TARGET="$1"
-shift
-if [[ $# -eq 0 ]]; then
-    echo "ERROR: Missing project directory"
-    show_usage
-    exit 1
-fi
-ARG_PROJECT="$1"
-shift
-if [[ $# > 0 ]]; then
-    ARG_PROJECT_PROFILE="$1"
-    shift
-fi
-if [[ $# > 0 ]]; then
+ARG_TARGET="${POSITIONALS[0]}"
+ARG_PROJECT="${POSITIONALS[1]}"
+if [[ ${#POSITIONALS[@]} -gt 2 ]]; then
     echo "ERROR: Too many arguments"
     show_usage
     exit 1
@@ -146,15 +131,17 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     fi
 
     NEW_ARGS=( )
-    if [[ $ARG_DEBUG -gt 0 ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-d" )
+    if [[ ${ARG_DEBUG_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--debug" )
     fi
-    if [[ $ARG_CLEAN == true ]]; then
-        NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
+    if [[ ${ARG_CLEAN_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--clean" )
     fi
-    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
-    NEW_ARGS=( ${NEW_ARGS[@]} "$VAGRANT_PROJECT_BUILD_DIR" )
-    NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_PROJECT_PROFILE" )
+    if [[ ${ARG_PROJECT_PROFILE_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--profile" "$ARG_PROJECT_PROFILE" )
+    fi
+    NEW_ARGS+=( "$ARG_TARGET" )
+    NEW_ARGS+=( "$VAGRANT_PROJECT_BUILD_DIR" )
 
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
