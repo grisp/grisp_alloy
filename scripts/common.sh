@@ -126,8 +126,8 @@ case "$BUILD_OS" in
         AWK=awk
         ;;
     darwin)
-        READLINK=greadlink
-        TAR=gtar
+        READLINK=readlink
+        TAR=tar
         AWK=awk
         ;;
     cygwin | freebsd)
