@@ -575,7 +575,7 @@ cmd_upload()
         -w "%{http_code}" -o "$tmp_body" \
 		"$url" )"
 	set -e
-	if [[ "$http_code" != "200" && "$http_code" != "201" ]]; then
+	if [[ "$http_code" != "200" && "$http_code" != "201" && "$http_code" != "204" ]]; then
 		echo "ERROR: Upload failed (HTTP $http_code)" 1>&2
 		cat "$tmp_body" 1>&2 || true
 		rm -f "$tmp_body"
