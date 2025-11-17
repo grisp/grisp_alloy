@@ -566,8 +566,13 @@ cmd_upload()
 	local http_code
 	local tmp_body
 	tmp_body="$(mktemp)"
+	curl_flags="-S"  # Show errors but allow progress bar
+	if [[ $ARG_INSECURE == true ]]; then
+		curl_flags="$curl_flags -k"
+	fi
+	curl_flags="$curl_flags --http1.1 -#"
 	set +e
-	http_code="$( curl $(curl_flags_common) -X PUT \
+	http_code="$( curl $curl_flags -X PUT \
         -H "$( bearer_auth_header "$token" )" \
         -H "Expect:" \
         -H "Content-Type: application/octet-stream" \
