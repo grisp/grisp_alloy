@@ -90,7 +90,7 @@ fi
 SOURCE_PROJECT_DIR="$( cd $ARG_PROJECT; pwd )"
 PROJECT_NAME="$( basename "$SOURCE_PROJECT_DIR" )"
 VCS_TAG_FILE=".alloy_vcs_tag"
-RSYNC_CMD=( rsync -aqH --delete --exclude='_build/' --exclude='*.beam' \
+RSYNC_CMD=( rsync -aqH --copy-links --delete --exclude='_build/' --exclude='*.beam' \
             --exclude='*.o' --exclude='*.so' )
 
 set_debug_level "$ARG_DEBUG"
