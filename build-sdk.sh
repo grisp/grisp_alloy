@@ -206,6 +206,9 @@ done
 prepare_environment()
 {
     echo "Preparing environment..."
+    if [[ $USER == "" ]]; then
+        error 1 "USER environment variable is not set"
+    fi
     rm -rf "$GLB_SYSTEM_BUILD_DIR"
     rm -rf "$GLB_SDK_BASE_DIR"/*
     mkdir -p "$GLB_ARTEFACTS_DIR"

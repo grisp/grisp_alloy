@@ -30,7 +30,7 @@ sudo apt install build-essential libncurses5-dev \
     libssl-dev gawk libtool-bin automake lzip python3 mtools \
     u-boot-tools git-lfs keyutils qemu-user qemu-user-static \
     gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu \
-    binutils-x86-64-linux-gnu-dbg
+    binutils-x86-64-linux-gnu-dbg cpio
 ```
 
 
