@@ -32,8 +32,13 @@ and this project adheres to Semantic Versioning.
   - `prepare-sdk` (placeholder until full implementation)
 - Added CLI unit tests for `alloy` global parsing, unknown-option handling, and
   dispatch normalization (`scripts/tests/test_alloy_entry.sh`).
+- Added shared parser conformance tests covering `scripts/argparse.sh`
+  count-option semantics and edge cases (`scripts/tests/test_argparse.sh`).
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
   writing, mandatory `.git/ALLOY_COMMIT_MSG` preparation, and outcome-focused
   commit messages (without acceptance-criteria/test-run logs).
+- Updated `scripts/argparse.sh` to implement design-conformant `count` option
+  behavior (`-d`, `-dd`, `-ddd`, `-dN`, `--debug`, `--debug=N`) with strict
+  invalid-value errors and occurrence tracking.

@@ -6,6 +6,7 @@
 # - Short flags:        -d -ci -o VALUE  and -oVALUE
 # - Long options:       --debug, --overlay VALUE, --overlay=VALUE
 # - Combined shorts:    -abc (flags may be combined)
+# - Count options:      -d -dd -d3 --debug --debug=3
 # - Terminator:         --   (all following tokens are positional)
 # - Defaults:           per-option default value support
 # - Presence counters:  for each option, <VAR>_OPT counts occurrences (0 if absent)
@@ -21,7 +22,7 @@
 #       short   : single letter short name or '' for no short
 #       long    : long name (without --) or '' for no long
 #       var     : destination variable name (e.g., ARG_DEBUG)
-#       type    : one of 'flag' | 'value' | 'accum'
+#       type    : one of 'flag' | 'value' | 'accum' | 'count'
 #
 #       Type-specific defaults:
 #       - flag  : args_add s long VAR flag <set_when_present> <default_when_absent>
@@ -30,6 +31,8 @@
 #                 Example: args_add s serial ARG_SERIAL value "00000000"
 #       - accum : args_add s long VAR accum
 #                 (no default; VAR is an array, initialized empty)
+#       - count : args_add s long VAR count [default]
+#                 (defaults to 0; bare occurrence increments by 1; attached/equals sets value)
 #
 #   args_parse "$@"          # parse arguments
 #   Results:
@@ -56,27 +59,41 @@ args_add() {
     local long="$1"; shift
     local var="$1"; shift
     local type="$1"; shift
-    local def_a="$1"; shift || true
-    local def_b="$1"; shift || true
+    local def_a="${1-}"
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
+    local def_b="${1-}"
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
 
     case "$type" in
-        flag|value|accum) : ;;
+        flag|value|accum|count) : ;;
         *) echo "ERROR: args_add: invalid type '$type' for --$long" 1>&2; return 2;;
     esac
     ARGS_SHORTS+=("$short")
     ARGS_LONGS+=("$long")
     ARGS_VARS+=("$var")
     ARGS_TYPES+=("$type")
-    if [[ "$type" == "flag" ]]; then
-        # def_a = set_when_present, def_b = default_when_absent
-        ARGS_FLAG_SET+=("$def_a")
-        ARGS_FLAG_DEF+=("$def_b")
-        ARGS_DEFAULTS+=("")
-    else
-        ARGS_DEFAULTS+=("$def_a")
-        ARGS_FLAG_SET+=("")
-        ARGS_FLAG_DEF+=("")
-    fi
+    case "$type" in
+        flag)
+            # def_a = set_when_present, def_b = default_when_absent
+            ARGS_FLAG_SET+=("$def_a")
+            ARGS_FLAG_DEF+=("$def_b")
+            ARGS_DEFAULTS+=("")
+            ;;
+        count)
+            ARGS_DEFAULTS+=("${def_a:-0}")
+            ARGS_FLAG_SET+=("")
+            ARGS_FLAG_DEF+=("")
+            ;;
+        *)
+            ARGS_DEFAULTS+=("$def_a")
+            ARGS_FLAG_SET+=("")
+            ARGS_FLAG_DEF+=("")
+            ;;
+    esac
 }
 
 # --- internal helpers ---
@@ -126,6 +143,12 @@ _args_set_default_if_unset() {
                     eval "$var=()"
                 fi
                 ;;
+            count)
+                if [[ -z "${!var+x}" ]]; then
+                    defv="${ARGS_DEFAULTS[$i]}"
+                    eval "$var=\"${defv:-0}\""
+                fi
+                ;;
         esac
     done
 }
@@ -158,6 +181,24 @@ _args_assign_value() {
             eval "__count=\${$seen_var:-0}"
             __count=$(( __count + 1 ))
             eval "$seen_var=$__count"
+            ;;
+        count)
+            local __count_val
+            if [[ -z "$val" ]]; then
+                eval "__count_val=\${$var:-0}"
+                __count_val=$(( __count_val + 1 ))
+                eval "$var=$__count_val"
+            else
+                if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+                    echo "ERROR: Option value must be a non-negative integer" 1>&2
+                    return 2
+                fi
+                eval "$var=\"$val\""
+            fi
+            local __seen_count
+            eval "__seen_count=\${$seen_var:-0}"
+            __seen_count=$(( __seen_count + 1 ))
+            eval "$seen_var=$__seen_count"
             ;;
     esac
 }
@@ -207,7 +248,13 @@ args_parse() {
                 if [[ "$has_eq" == true ]]; then
                     echo "ERROR: Option --$name does not take a value" 1>&2; return 2
                 fi
-                _args_assign_value "$idx" "1"
+                _args_assign_value "$idx" "1" || return 2
+            elif [[ "$type" == "count" ]]; then
+                if [[ "$has_eq" == true ]]; then
+                    _args_assign_value "$idx" "$val" || return 2
+                else
+                    _args_assign_value "$idx" "" || return 2
+                fi
             else
                 if [[ "$has_eq" == false ]]; then
                     i=$((i+1))
@@ -216,7 +263,7 @@ args_parse() {
                     fi
                     val="${argv[$i]}"
                 fi
-                _args_assign_value "$idx" "$val"
+                _args_assign_value "$idx" "$val" || return 2
             fi
             i=$((i+1)); continue
         fi
@@ -234,8 +281,20 @@ args_parse() {
                 fi
                 type="${ARGS_TYPES[$idx]}"
                 if [[ "$type" == "flag" ]]; then
-                    _args_assign_value "$idx" "1"
+                    _args_assign_value "$idx" "1" || return 2
                     pos=$((pos+1))
+                elif [[ "$type" == "count" ]]; then
+                    rest="${shorts:$((pos+1))}"
+                    if [[ -n "$rest" && "$rest" =~ ^[0-9]+$ ]]; then
+                        _args_assign_value "$idx" "$rest" || return 2
+                        pos=${#shorts}
+                    elif [[ -n "$rest" && "$rest" =~ ^[0-9] ]]; then
+                        echo "ERROR: Option -$ch value must be a non-negative integer" 1>&2
+                        return 2
+                    else
+                        _args_assign_value "$idx" "" || return 2
+                        pos=$((pos+1))
+                    fi
                 else
                     # option expects a value: use remainder of token or next argv
                     rest="${shorts:$((pos+1))}"
@@ -251,7 +310,7 @@ args_parse() {
                         val="${argv[$i]}"
                         pos=${#shorts}
                     fi
-                    _args_assign_value "$idx" "$val"
+                    _args_assign_value "$idx" "$val" || return 2
                 fi
             done
             i=$((i+1)); continue
