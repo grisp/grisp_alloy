@@ -29,25 +29,33 @@ Backlog policy:
   - Tests: Self-tests for helper wrappers and fixture setup sanity checks.
   - Done when: Every subsequent task can reuse one canonical harness pattern and run baseline/full verification deterministically.
 
-- [ ] **Task 1.1: `alloy` main entry and global option parser**
+- [x] **Task 1.1: `alloy` main entry and global option parser**
   - Scope: Implement top-level dispatch bootstrap and global flags (`--help`, `--debug`, `--trace`, mode flags).
   - Tests: CLI parse unit tests for global options and unknown-option errors.
   - Done when: Entry script routes to command handlers with normalized argv/env.
 
+- [ ] **Task 1.1a: `scripts/argparse.sh` conformance to design contract**
+  - Scope: Bring shared parser behavior in line with `docs/03_ALLOY_DESIGN.md` §8.6.2, including `count` option type and required count semantics (`-d`, `-dd`, `-ddd`, `-dN`, `--debug`, `--debug=N`).
+  - Tests: Unit tests for parser API/types and count edge cases (valid and invalid forms), including `<VAR>_OPT` occurrence tracking and `POSITIONAL` behavior.
+  - Done when: `scripts/argparse.sh` supports design-defined `flag|value|accum|count` behavior with deterministic tests covering `count` mapping and failures.
+
 - [ ] **Task 1.2: Mode detection and mode-gated command matrix**
   - Scope: Implement repository-vs-SDK mode detection and allow/deny matrix.
   - Tests: Mode-gating tests for allowed/disallowed commands.
-  - Done when: Invalid command-in-mode combinations fail with clear errors.
+  - Refinement note (from Task 1.1): Matrix must explicitly enforce `build sdk` as repository-only and `prepare sdk` as SDK-only, with clear user-facing errors.
+  - Done when: Invalid command-in-mode combinations (including `build sdk` in SDK mode and `prepare sdk` in repository mode) fail with clear errors.
 
 - [ ] **Task 1.3: `scripts/utils/debug_utils.sh`**
   - Scope: Logging, debug levels, trace toggles, hidden-section helpers.
   - Tests: Unit tests for log level filtering and trace behavior.
-  - Done when: Output format and verbosity match design contracts.
+  - Refinement note (from Task 1.1): Move debug/trace behavior now embedded in top-level `alloy` into shared utilities to avoid duplicated logic.
+  - Done when: Output format and verbosity match design contracts and top-level entrypoint consumes shared debug utilities.
 
 - [ ] **Task 1.4: `scripts/utils/common.sh`**
   - Scope: Shared guardrails (`die`, `require_var`, script preamble helpers).
   - Tests: Unit tests for failure paths and messaging.
-  - Done when: Common failures are standardized across commands.
+  - Refinement note (from Task 1.1): Consolidate generic entrypoint helpers (`fail`, path resolution, validation helpers) into shared common utilities where appropriate.
+  - Done when: Common failures are standardized across commands and generic bash helpers are centralized.
 
 - [ ] **Task 1.5: `scripts/utils/file_utils.sh`**
   - Scope: Path normalization, safe copy/sync helpers, deterministic directory ops.
@@ -234,7 +242,8 @@ Backlog policy:
 - [ ] **Task 5.1: build-sdk command parser and directory layout**
   - Scope: Build directory structure (`plan/`, `targets/`, `staging/`, `motherlode/`).
   - Tests: Command tests for directory creation and option validation.
-  - Done when: Layout matches current design.
+  - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build sdk ...` UX (not legacy script filename forms).
+  - Done when: Layout matches current design and command help/usage is canonicalized.
 
 - [ ] **Task 5.2: Nugget staging (builtin/local/VCS)**
   - Scope: Stage all nugget inputs into build motherlode.
@@ -296,7 +305,8 @@ Backlog policy:
 - [ ] **Task 6.1: build-project command parser and SDK resolution**
   - Scope: Parse options, resolve SDK mode/repository mode behavior.
   - Tests: Command tests for `--sdk` and mode combinations.
-  - Done when: Project command starts with a validated SDK context.
+  - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build project ...` UX (not legacy script filename forms).
+  - Done when: Project command starts with a validated SDK context and command help/usage is canonicalized.
 
 - [ ] **Task 6.2: Plugin detection and build dispatch**
   - Scope: Detect project type and call plugin build/info hooks.
@@ -328,7 +338,8 @@ Backlog policy:
 - [ ] **Task 7.1: build-firmware parser and project-spec normalization**
   - Scope: Parse project specs, `--name`, output flags, params, variant.
   - Tests: Parser unit tests with mixed option/project ordering.
-  - Done when: Parsed model is deterministic and validated.
+  - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build firmware ...` UX (not legacy script filename forms).
+  - Done when: Parsed model is deterministic, validated, and command help/usage is canonicalized.
 
 - [ ] **Task 7.2: Main context load and guard checks**
   - Scope: Source main context and enforce `ALLOY_IS_AUXILIARY=false`.
@@ -385,12 +396,14 @@ Backlog policy:
 - [ ] **Task 8.3: `alloy serve artefacts` command**
   - Scope: Implement HTTP/TLS/mTLS serving command integration.
   - Tests: Command and integration tests for tls modes.
-  - Done when: Server starts with expected security mode from options/secpack.
+  - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy serve artefacts ...` UX.
+  - Done when: Server starts with expected security mode from options/secpack and command help/usage is canonicalized.
 
 - [ ] **Task 8.4: `alloy grispio` command**
   - Scope: Token management and upload command orchestration.
   - Tests: Unit tests for token handling and reference resolution.
-  - Done when: Upload workflow is reproducible and validated.
+  - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy grispio ...` UX.
+  - Done when: Upload workflow is reproducible, validated, and command help/usage is canonicalized.
 
 ## Phase 9: Documentation and Consistency Gates
 
@@ -405,3 +418,8 @@ Backlog policy:
   - Done when:
     - No stale references to pre-plan/generate CLI (`smelterl generate --product/--motherlode`).
     - No stale references to `sdk_outputs` being nested inside `capabilities`.
+
+- [ ] **Task 9.3: CLI help and error UX consistency audit**
+  - Scope: Ensure all command handlers present canonical `alloy ...` help/usage and consistent user-facing error style.
+  - Tests: Golden CLI-output tests for `--help` and representative error cases across major commands.
+  - Done when: Help/error output is command-consistent and free from legacy script-name UX leakage.
