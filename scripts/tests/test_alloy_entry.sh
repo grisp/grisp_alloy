@@ -27,10 +27,11 @@ done
 printf "\n"
 EOF
 
-    cat > "${command_dir}/ping.sh" <<'EOF'
+    cat > "${command_dir}/build-project.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "HANDLER=ping"
+echo "HANDLER=build-project"
+echo "ALLOY_MODE=${ALLOY_MODE:-}"
 printf "ARGS:"
 for arg in "$@"; do
     printf " <%s>" "$arg"
@@ -38,7 +39,41 @@ done
 printf "\n"
 EOF
 
-    chmod +x "${command_dir}/build-sdk.sh" "${command_dir}/ping.sh"
+    cat > "${command_dir}/prepare-sdk.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "HANDLER=prepare-sdk"
+echo "ALLOY_MODE=${ALLOY_MODE:-}"
+printf "ARGS:"
+for arg in "$@"; do
+    printf " <%s>" "$arg"
+done
+printf "\n"
+EOF
+
+    cat > "${command_dir}/grispio.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "HANDLER=grispio"
+printf "ARGS:"
+for arg in "$@"; do
+    printf " <%s>" "$arg"
+done
+printf "\n"
+EOF
+
+    chmod +x "${command_dir}/build-sdk.sh" "${command_dir}/build-project.sh" \
+        "${command_dir}/prepare-sdk.sh" "${command_dir}/grispio.sh"
+}
+
+alloy_test_make_sdk_entrypoint() {
+    local temp_dir="$1"
+    local repo_root
+    repo_root="$(harness_repo_root)"
+    cp "${repo_root}/alloy" "${temp_dir}/alloy"
+    chmod +x "${temp_dir}/alloy"
+    : > "${temp_dir}/ALLOY_SDK_MANIFEST"
+    echo "${temp_dir}/alloy"
 }
 
 test_alloy_version_flag_returns_success() {
@@ -53,6 +88,45 @@ test_alloy_help_flag_shows_global_usage() {
     local output
     output="$("${alloy}" --help 2>&1)"
     assert_matches "Usage: alloy" "${output}"
+}
+
+test_alloy_help_lists_only_repository_mode_commands_in_repo_mode() {
+    local alloy
+    alloy="$(harness_repo_root)/alloy"
+    local output
+    output="$("${alloy}" --help 2>&1)"
+
+    assert_matches "Commands \\(available in repo mode\\):" "${output}"
+    assert_matches "  build sdk" "${output}"
+    assert_matches "  build project" "${output}"
+    assert_matches "  build firmware" "${output}"
+    assert_matches "  serve artefacts" "${output}"
+    assert_matches "  grispio" "${output}"
+    if printf '%s\n' "${output}" | grep -Fq "  prepare sdk"; then
+        echo "prepare sdk should not be listed in repo mode help" >&2
+        return 1
+    fi
+}
+
+test_alloy_help_lists_only_sdk_mode_commands_in_sdk_mode() {
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-entry")"
+    local alloy
+    alloy="$(alloy_test_make_sdk_entrypoint "${temp_dir}")"
+
+    local output
+    output="$("${alloy}" --help 2>&1)"
+
+    assert_matches "Commands \\(available in sdk mode\\):" "${output}"
+    assert_matches "  prepare sdk" "${output}"
+    assert_matches "  build project" "${output}"
+    assert_matches "  build firmware" "${output}"
+    assert_matches "  serve artefacts" "${output}"
+    assert_matches "  grispio" "${output}"
+    if printf '%s\n' "${output}" | grep -Fq "  build sdk"; then
+        echo "build sdk should not be listed in sdk mode help" >&2
+        return 1
+    fi
 }
 
 test_alloy_unknown_global_option_before_command_fails() {
@@ -108,8 +182,8 @@ test_alloy_dispatches_single_word_command_handler() {
     alloy_test_make_command_handlers "${command_dir}"
 
     local output
-    output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" ping pong 2>&1)"
-    assert_matches "HANDLER=ping" "${output}"
+    output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" grispio pong 2>&1)"
+    assert_matches "HANDLER=grispio" "${output}"
     assert_matches "ARGS: <pong>" "${output}"
 }
 
@@ -124,4 +198,52 @@ test_alloy_forwards_help_to_command_handler_when_command_is_present() {
     local output
     output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" build sdk --help 2>&1)"
     assert_matches "ARGS: <--help>" "${output}"
+}
+
+test_alloy_rejects_prepare_sdk_in_repository_mode() {
+    local alloy
+    alloy="$(harness_repo_root)/alloy"
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-entry")"
+    local command_dir="${temp_dir}/commands"
+    alloy_test_make_command_handlers "${command_dir}"
+
+    local output status
+    output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" prepare sdk 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "prepare sdk is only available in sdk mode" "${output}"
+}
+
+test_alloy_rejects_build_sdk_in_sdk_mode() {
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-entry")"
+    local alloy
+    alloy="$(alloy_test_make_sdk_entrypoint "${temp_dir}")"
+    local command_dir="${temp_dir}/commands"
+    alloy_test_make_command_handlers "${command_dir}"
+
+    local output status
+    output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" build sdk 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "build sdk is only available in repository mode" "${output}"
+}
+
+test_alloy_allows_build_project_in_sdk_mode() {
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-entry")"
+    local alloy
+    alloy="$(alloy_test_make_sdk_entrypoint "${temp_dir}")"
+    local command_dir="${temp_dir}/commands"
+    alloy_test_make_command_handlers "${command_dir}"
+
+    local output
+    output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" build project demo 2>&1)"
+
+    assert_matches "HANDLER=build-project" "${output}"
+    assert_matches "ALLOY_MODE=sdk" "${output}"
+    assert_matches "ARGS: <demo>" "${output}"
 }

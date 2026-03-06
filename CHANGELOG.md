@@ -34,6 +34,8 @@ and this project adheres to Semantic Versioning.
   dispatch normalization (`scripts/tests/test_alloy_entry.sh`).
 - Added shared parser conformance tests covering `scripts/argparse.sh`
   count-option semantics and edge cases (`scripts/tests/test_argparse.sh`).
+- Added mode-gating CLI tests for repository/SDK command matrix behavior in
+  `scripts/tests/test_alloy_entry.sh`.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -42,3 +44,7 @@ and this project adheres to Semantic Versioning.
 - Updated `scripts/argparse.sh` to implement design-conformant `count` option
   behavior (`-d`, `-dd`, `-ddd`, `-dN`, `--debug`, `--debug=N`) with strict
   invalid-value errors and occurrence tracking.
+- Updated top-level `alloy` dispatch to enforce mode-gated command availability:
+  `build sdk` is repository-only and `prepare sdk` is SDK-only.
+- Updated top-level `alloy --help` command listing to be mode-aware (repository
+  vs SDK command availability), powered by centralized command metadata.

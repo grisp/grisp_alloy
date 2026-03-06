@@ -39,7 +39,7 @@ Backlog policy:
   - Tests: Unit tests for parser API/types and count edge cases (valid and invalid forms), including `<VAR>_OPT` occurrence tracking and `POSITIONAL` behavior.
   - Done when: `scripts/argparse.sh` supports design-defined `flag|value|accum|count` behavior with deterministic tests covering `count` mapping and failures.
 
-- [ ] **Task 1.2: Mode detection and mode-gated command matrix**
+- [x] **Task 1.2: Mode detection and mode-gated command matrix**
   - Scope: Implement repository-vs-SDK mode detection and allow/deny matrix.
   - Tests: Mode-gating tests for allowed/disallowed commands.
   - Refinement note (from Task 1.1): Matrix must explicitly enforce `build sdk` as repository-only and `prepare sdk` as SDK-only, with clear user-facing errors.
@@ -425,4 +425,5 @@ Backlog policy:
 - [ ] **Task 9.3: CLI help and error UX consistency audit**
   - Scope: Ensure all command handlers present canonical `alloy ...` help/usage and consistent user-facing error style.
   - Tests: Golden CLI-output tests for `--help` and representative error cases across major commands.
+  - Refinement note (from Task 1.2): Include mode-gating error outputs in coverage (for example disallowed `build sdk` in SDK mode and `prepare sdk` in repository mode).
   - Done when: Help/error output is command-consistent and free from legacy script-name UX leakage.
