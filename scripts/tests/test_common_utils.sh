@@ -113,6 +113,24 @@ test_common_utils_is_non_negative_integer_matches_expected_values() {
     assert_status_code 1 "bash -c 'source \"${COMMON_UTILS_SCRIPT}\"; is_non_negative_integer nope'"
 }
 
+test_common_utils_require_command_reports_missing_binary() {
+    local output status
+    output="$({ require_command definitely-not-a-command; } 2>&1)"
+    status=$?
+
+    assert_equals "127" "${status}"
+    assert_matches "Required command not found: definitely-not-a-command" "${output}"
+}
+
+test_common_utils_require_commands_requires_non_empty_argument_list() {
+    local output status
+    output="$(bash -c "source \"${COMMON_UTILS_SCRIPT}\"; require_commands" 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "require_commands requires at least one command name" "${output}"
+}
+
 test_common_utils_print_helpers_emit_plain_output_by_default() {
     local result_out note_out hint_out
     result_out="$(print_result "build complete")"

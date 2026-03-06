@@ -211,6 +211,14 @@ Before finalizing a task:
   - run relevant linters and static analysis for touched components
     (for example `shellcheck` for touched shell scripts when available;
     prefer strict mode in CI, Dialyzer for Erlang modules when applicable),
+  - fix lint warnings by changing code/tests whenever feasible,
+  - add lint-rule suppressions (`# shellcheck disable=...`, etc.) only as a
+    last resort when no practical code change can preserve required behavior,
+  - every suppression MUST include an inline reason comment explaining:
+    - why the warning is triggered,
+    - why the code is still correct/safe,
+    - why an alternative fix is not suitable in this context,
+  - never add suppressions just to silence warnings or make gates pass quickly,
 - docs:
   - update design docs for approved design changes,
   - update `CHANGELOG.md`,

@@ -67,7 +67,7 @@ Backlog policy:
   - Design update requirement: Update design docs (`docs/03_ALLOY_DESIGN.md` and `docs/01_DATA_DESIGN.md`) in the same commit to reflect directory structure and implementation contracts for `console_utils.sh`.
   - Done when: Console formatting/printing is centralized, orchestrator logging/printing paths share the new module, and design + implementation land together in one commit.
 
-- [ ] **Task 1.5: `scripts/utils/file_utils.sh`**
+- [x] **Task 1.5: `scripts/utils/file_utils.sh`**
   - Scope: Path normalization, safe copy/sync helpers, deterministic directory ops.
   - Tests: Unit tests for path and copy edge cases.
   - Refinement note (from Task 1.4): New utility modules should rely on `scripts/utils/common.sh` as their entry point (`ALLOY_ROOT`/`ALLOY_ROOT_DIR` setup + `source_required_utility`) instead of duplicating bootstrap/path-resolution logic.
@@ -78,6 +78,7 @@ Backlog policy:
 - [ ] **Task 1.6: `scripts/utils/env_utils.sh`**
   - Scope: SDK validation, cross-env setup primitives.
   - Tests: Unit tests with fixture SDK directories.
+  - Refinement note (from Task 1.5): Maintain an explicit required-host-command compatibility check path (built on `common.sh` `require_command(s)`) so missing runtime dependencies fail fast before expensive build/setup operations.
   - Done when: Required env export set is reproducible and validated.
 
 - [ ] **Task 1.7: `scripts/utils/vcs_utils.sh`**
@@ -88,6 +89,7 @@ Backlog policy:
 - [ ] **Task 1.8: `scripts/utils/sdk_utils.sh`**
   - Scope: SDK relocation checks and relocation execution.
   - Tests: Unit tests for placeholder replacement and non-writable failures.
+  - Refinement note (from Task 1.5): Reuse `file_utils.sh` primitives (`normalize_path`, `relative_path`, `make_symlink_relative`, `copy_with_exclusions`, `merge_directories`) for embed/relocation path handling instead of ad-hoc path and copy logic.
   - Done when: First-use relocation and explicit prepare flow work.
 
 - [ ] **Task 1.9: `scripts/utils/plugin_utils.sh`**
@@ -257,6 +259,7 @@ Backlog policy:
   - Tests: Command tests for directory creation and option validation.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build sdk ...` UX (not legacy script filename forms).
   - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
+  - Refinement note (from Task 1.5 review): Required-command compatibility checks must be execution-context aware: validate only host prerequisites before VM delegation, and validate VM-only prerequisites inside the VM path (do not require host-only tools inside VM or VM-only tools on host).
   - Done when: Layout matches current design and command help/usage is canonicalized.
 
 - [ ] **Task 5.2: Nugget staging (builtin/local/VCS)**

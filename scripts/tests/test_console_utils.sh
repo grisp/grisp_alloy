@@ -22,7 +22,7 @@ test_console_utils_print_helpers_emit_plain_output_by_default() {
 test_console_utils_print_helpers_emit_colors_when_supported() {
     local original_supports_color
     original_supports_color="$(declare -f console_supports_color)"
-    # shellcheck disable=SC2317
+    # shellcheck disable=SC2317  # function is invoked indirectly via print_* calls
     console_supports_color() { return 0; }
 
     local result_out note_out hint_out
@@ -40,7 +40,7 @@ test_console_utils_print_helpers_emit_colors_when_supported() {
 test_console_utils_no_color_disables_ansi_sequences() {
     local original_supports_color
     original_supports_color="$(declare -f console_supports_color)"
-    # shellcheck disable=SC2317
+    # shellcheck disable=SC2317  # function is invoked indirectly via print_* calls
     console_supports_color() { [[ -z "${NO_COLOR:-}" ]]; }
     export NO_COLOR=1
 

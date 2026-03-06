@@ -9,7 +9,7 @@ DEBUG_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/utils/console_utils.sh
 source "${DEBUG_UTILS_DIR}/console_utils.sh"
 
-# shellcheck disable=SC2034
+# shellcheck disable=SC2034  # global stack state used by enter_hidden/leave_hidden
 __ALLOY_HIDDEN_TRACE_STACK=()
 
 log_error() {

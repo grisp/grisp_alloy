@@ -1544,9 +1544,10 @@ See [§8.6.13 plugin_utils.sh](#8613-pluginutilssh) for the framework implementa
 3. **Source common utilities** - Load `scripts/utils/common.sh` (error handling, logging). Set up `ALLOY_*` environment variables.
 4. **Detect mode** - See [§5.2](#52-mode-detection). Determine repository or SDK mode.
 5. **Validate command for mode** - Check that the extracted command is available in the current mode. If not, exit with a clear error (e.g. "The `build sdk` command is only available in repository mode").
-6. **Check if Vagrant is needed** - Detect host OS. If not Linux (or if `--force-vagrant` is set), set `ALLOY_MODE` to the detected mode (`repo` or `sdk`). In SDK mode, also set `VAGRANT_DOTFILE_PATH=~/.grisp_alloy/vagrant/.vagrant` to relocate Vagrant state out of the potentially read-only SDK directory. Then enter the Vagrant flow (see [§5.3](#53-vagrant-abstraction-flow)). If Linux, continue to direct execution.
-7. **Dispatch to command script** - Map command to script path: `verb noun` -> `scripts/commands/verb-noun.sh`; single-word command `verb` -> `scripts/commands/verb.sh`. Source the script or execute it with all remaining arguments and environment.
-8. **Handle errors and cleanup** - Trap errors (`ERR`, `EXIT`). Clean up temporary files. Exit with the command script's exit code.
+6. **Validate required runtime commands for the selected execution path** - Check only the host commands required before the next phase of execution. Example: when Vagrant delegation is required (non-Linux host or `--force-vagrant`), validate host-side sync prerequisites such as `rsync` via `require_commands` from `common.sh`. Fail fast with a clear error if a required command is missing.
+7. **Check if Vagrant is needed** - Detect host OS. If not Linux (or if `--force-vagrant` is set), set `ALLOY_MODE` to the detected mode (`repo` or `sdk`). In SDK mode, also set `VAGRANT_DOTFILE_PATH=~/.grisp_alloy/vagrant/.vagrant` to relocate Vagrant state out of the potentially read-only SDK directory. Then enter the Vagrant flow (see [§5.3](#53-vagrant-abstraction-flow)). If Linux, continue to direct execution.
+8. **Dispatch to command script** - Map command to script path: `verb noun` -> `scripts/commands/verb-noun.sh`; single-word command `verb` -> `scripts/commands/verb.sh`. Source the script or execute it with all remaining arguments and environment.
+9. **Handle errors and cleanup** - Trap errors (`ERR`, `EXIT`). Clean up temporary files. Exit with the command script's exit code.
 
 ### 5.2 Mode Detection
 
@@ -3671,6 +3672,8 @@ The wrapper must export `ALLOY_ROOT_DIR`, `ALLOY_HOOK_TYPE`, `ALLOY_TRACE`, `ALL
 | `print_result MESSAGE` | Emit user-facing success/result output via `console_utils.sh`. |
 | `print_note MESSAGE` | Emit user-facing informational note output via `console_utils.sh`. |
 | `print_hint MESSAGE` | Emit user-facing usage/help hint output via `console_utils.sh`. |
+| `require_command NAME` | Verify that a required host command exists on `PATH`; return 127 if missing. |
+| `require_commands NAME...` | Verify a list of required host commands; fail on the first missing command. |
 
 **Color support:** Where common.sh or the scripts it sources produce terminal output, ANSI colors are used and automatically disabled when stdout/stderr is not a terminal or when `NO_COLOR` is set.
 
@@ -3849,7 +3852,7 @@ args_parse "$@" || exit 1
 
 | Function | Purpose |
 |----------|---------|
-| `copy_with_exclusions SRC DEST EXCLUDES...` | Recursive copy excluding specified patterns. |
+| `copy_with_exclusions SRC DEST EXCLUDES...` | Recursive copy excluding specified patterns. Uses `rsync`; fails clearly if `rsync` is unavailable. |
 | `merge_directories SRC DEST` | Merge source into destination (later files override). |
 | `normalize_path PATH` | Normalize a path (resolve `.`, `..`, remove trailing `/`). |
 | `relative_path FROM TO` | Compute relative path from one location to another. |
