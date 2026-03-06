@@ -59,7 +59,7 @@ Backlog policy:
   - Refinement note (from Task 1.3 review): Introduce explicit user-facing output helpers (`print_result`, `print_note`, `print_hint`) in `common.sh` so future tasks avoid raw `echo` for human-facing messaging and can support quiet-mode policies later without changing debug-level semantics.
   - Done when: Common failures are standardized across commands and generic bash helpers are centralized.
 
-- [ ] **Task 1.4a: `scripts/utils/console_utils.sh` extraction and logging/printing migration**
+- [x] **Task 1.4a: `scripts/utils/console_utils.sh` extraction and logging/printing migration**
   - Scope: Introduce shared console utilities module (`console_utils.sh`) for terminal/ANSI behavior and generic user-facing printing primitives.
   - Scope: Migrate print helpers from `common.sh` into `console_utils.sh`; have both `common.sh` and `debug_utils.sh` source `console_utils.sh` directly (no implicit dependency through `common.sh`).
   - Scope: Standardize include-guard pattern for sourced utility files touched by this task.
@@ -71,6 +71,8 @@ Backlog policy:
   - Scope: Path normalization, safe copy/sync helpers, deterministic directory ops.
   - Tests: Unit tests for path and copy edge cases.
   - Refinement note (from Task 1.4): New utility modules should rely on `scripts/utils/common.sh` as their entry point (`ALLOY_ROOT`/`ALLOY_ROOT_DIR` setup + `source_required_utility`) instead of duplicating bootstrap/path-resolution logic.
+  - Refinement note (from Task 1.4a): User-facing command output in new utilities/commands should use `print_result`/`print_note`/`print_hint` from `console_utils.sh` instead of direct `echo`, so quiet/silent policy can be added without rewriting call sites.
+  - Refinement note (from Task 1.4a): Any new sourced utility file should include an explicit source-guard pattern to stay idempotent when dependencies are sourced from multiple modules.
   - Done when: File operations are deterministic and error-safe.
 
 - [ ] **Task 1.6: `scripts/utils/env_utils.sh`**

@@ -43,11 +43,16 @@ and this project adheres to Semantic Versioning.
 - Added shared orchestrator/common utility entrypoint in
   `scripts/utils/common.sh`, including guardrails (`fail`, `require_var`),
   script preamble helpers (`resolve_script_dir`, `source_required_utility`,
-  `is_non_negative_integer`), and user-facing output helpers
+  `is_non_negative_integer`).
+- Added shared console utility module `scripts/utils/console_utils.sh` for
+  terminal-aware ANSI formatting and shared user-facing print helpers
   (`print_result`, `print_note`, `print_hint`).
 - Added dedicated `common.sh` unit tests in `scripts/tests/test_common_utils.sh`
   covering re-exported debug behavior, failure paths, path helpers, and output
   helper formatting.
+- Added dedicated `console_utils.sh` unit tests in
+  `scripts/tests/test_console_utils.sh` for plain/colored output behavior and
+  source idempotence checks.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -65,4 +70,13 @@ and this project adheres to Semantic Versioning.
 - Updated top-level `alloy` to source `scripts/utils/common.sh` and consume
   centralized helper functions instead of maintaining local helper duplicates.
 - Updated SDK-mode alloy fixture setup in `scripts/tests/test_alloy_entry.sh`
-  to copy `scripts/utils/common.sh` alongside required debug utilities.
+  to copy `scripts/utils/console_utils.sh` and `scripts/utils/common.sh`
+  alongside required debug utilities.
+- Updated `scripts/utils/common.sh` and `scripts/utils/debug_utils.sh` to source
+  `scripts/utils/console_utils.sh` directly, keeping logging and user-facing
+  print formatting on one shared console path.
+- Updated orchestrator logging output to support ANSI colors when terminal
+  output supports it and `NO_COLOR` is unset.
+- Updated `docs/01_DATA_DESIGN.md` and `docs/03_ALLOY_DESIGN.md` to document
+  `console_utils.sh`, include-guard expectations for sourced utilities, and the
+  revised common/debug utility contracts.

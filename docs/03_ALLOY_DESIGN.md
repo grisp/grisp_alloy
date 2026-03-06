@@ -1351,7 +1351,7 @@ Debug output is gated by the debug level (see [Log verbosity levels](#log-verbos
 
 #### Log functions
 
-**Orchestrator:** Command scripts source `common.sh` (which sources `debug_utils.sh`) and use the internal names `log_info`, `log_debug`, `log_warn`, `log_error`, `die`, `enter_hidden`, `leave_hidden` (see [§8.6.1](#861-commonsh), [§8.6.1a](#861a-debugutilssh)).
+**Orchestrator:** Command scripts source `common.sh` (which sources `console_utils.sh` and `debug_utils.sh`; `debug_utils.sh` also sources `console_utils.sh` directly) and use the internal names `log_info`, `log_debug`, `log_warn`, `log_error`, `die`, `enter_hidden`, `leave_hidden` plus user-facing print helpers `print_result`, `print_note`, `print_hint` (see [§8.6.1](#861-commonsh), [§8.6.1a](#861a-debugutilssh)).
 
 **Hook scripts:** Hooks source [hook_common.sh](#860-hookcommonsh-hook-entry-point) at the top to get the **`alloy_`-prefixed** API (from `debug_tools.sh` and other _tools.sh) and tracing. They must use only that API; if they do not source the entry point, they cannot expect any `alloy_*` functions (see [§8.6.1b](#861b-debugtoolssh)).
 
@@ -3524,6 +3524,8 @@ grisp_alloy/
 │   │   └── grispio.sh
 │   ├── utils/                    # Sourceable bash libraries
 │   │   ├── common.sh
+│   │   ├── console_utils.sh      # ANSI/terminal formatting + shared print helpers
+│   │   ├── debug_utils.sh        # Orchestrator logging/trace internals
 │   │   ├── argparse.sh
 │   │   ├── vagrant_utils.sh
 │   │   ├── vcs_utils.sh
@@ -3617,6 +3619,7 @@ The following variables are used across multiple scripts and must be set consist
 
 - **`*_tools.sh`** - Sourced **only** by hook scripts (via the single hook entry point [hook_common.sh](#860-hookcommonsh-hook-entry-point), which may source them conditionally based on `ALLOY_HOOK_TYPE`). They form the hook developer API. No function export: hooks get the API by **sourcing** the hook entry point. _tools.sh must be self-sufficient in the hook process: they have **no access** to any `*_utils.sh` (orchestrator-only). All hook-visible functions use the **`alloy_` prefix**.
 - **`*_utils.sh`** - Sourced **only** by the orchestrator or by the **wrapper** (the wrapper is considered part of the orchestrator, even when invoked by Buildroot). The wrapper sources `common.sh` (which enables tracing for the wrapper when `ALLOY_TRACE=true`) and may source `*_utils.sh` as needed. Hook scripts never source _utils.sh. Internal names (e.g. `log_info`, `enter_hidden`) are not part of the hook contract.
+- **Sourced-library idempotence** - Every sourced utility (`scripts/utils/*.sh`) must protect against multiple sourcing in the same process with an include guard variable and early return, so shared dependencies can be sourced directly without recursion or redefinition side effects.
 
 **Path helpers (path_utils vs path_tools vs scripts/tools):** The script that builds or verifies the toolchain is the **pre_build hook** of the toolchain nugget (see step 8 in the SDK build flow). Hooks run with only the hook API: they source `hook_common.sh` and get `*_tools.sh`; they do **not** source `*_utils.sh`. So path helpers needed by the toolchain pre_build hook (or any other hook) must be exposed as **`path_tools.sh`** in `scripts/utils/` with **`alloy_`-prefixed** functions (e.g. `alloy_path_resolve`, `alloy_path_join`), and `hook_common.sh` must source it so that hooks (including the toolchain nugget's pre_build) can call them. Use **`path_utils.sh`** with internal names only for path logic used **exclusively** by orchestrator command scripts or the wrapper (e.g. path handling in the main entry point or in non-hook scripts). Do not put a path **library** in `scripts/tools/`: that directory is for **self-contained runnable tools** (escripts, binaries) invoked as commands, not for sourced bash libraries. The same principle applies to **patch** functions: they are used by the toolchain nugget's pre_build hook (and potentially other hooks) to apply patches to source trees, so they must be provided as **`patch_tools.sh`** with **`alloy_`-prefixed** functions (e.g. `alloy_apply_patches`, `alloy_reverse_patch`), sourced by `hook_common.sh` for hook types that need them (e.g. `pre_build`), not as `patch_utils.sh`.
 
@@ -3654,7 +3657,7 @@ The wrapper must export `ALLOY_ROOT_DIR`, `ALLOY_HOOK_TYPE`, `ALLOY_TRACE`, `ALL
 
 #### 8.6.1 common.sh
 
-**Purpose:** Error handling, environment setup, temporary directory management, and process cleanup. Sourced by all orchestrator command scripts **and by the hook wrapper** (`script_hook.sh`): the wrapper is considered part of the orchestrator (even when invoked by Buildroot). **Tracing and debug level:** When sourced, `common.sh` applies the current `ALLOY_TRACE` and `ALLOY_DEBUG` from the environment (if set) so that wrappers invoked with those variables already set get the correct behaviour. In addition, `common.sh` **exposes functions** so that the orchestrator can set tracing and debug level **after** parsing command arguments: the command script sources `common.sh` early, parses `--trace` and `--debug[=N]`, then calls these functions to enable tracing and set the debug level. That way the same entry point handles both "env already set" (e.g. Buildroot wrapper) and "set from CLI" (orchestrator command script). Hook scripts do **not** source `common.sh`; they source [hook_common.sh](#860-hookcommonsh-hook-entry-point) to get the `alloy_*` API and tracing for the hook process.
+**Purpose:** Error handling, environment setup, temporary directory management, and process cleanup. Sourced by all orchestrator command scripts **and by the hook wrapper** (`script_hook.sh`): the wrapper is considered part of the orchestrator (even when invoked by Buildroot). `common.sh` sources `console_utils.sh` and `debug_utils.sh` as its foundational dependencies. **Tracing and debug level:** When sourced, `common.sh` applies the current `ALLOY_TRACE` and `ALLOY_DEBUG` from the environment (if set) so that wrappers invoked with those variables already set get the correct behaviour. In addition, `common.sh` **exposes functions** so that the orchestrator can set tracing and debug level **after** parsing command arguments: the command script sources `common.sh` early, parses `--trace` and `--debug[=N]`, then calls these functions to enable tracing and set the debug level. That way the same entry point handles both "env already set" (e.g. Buildroot wrapper) and "set from CLI" (orchestrator command script). Hook scripts do **not** source `common.sh`; they source [hook_common.sh](#860-hookcommonsh-hook-entry-point) to get the `alloy_*` API and tracing for the hook process.
 
 **Key functions:**
 
@@ -3665,12 +3668,30 @@ The wrapper must export `ALLOY_ROOT_DIR`, `ALLOY_HOOK_TYPE`, `ALLOY_TRACE`, `ALL
 | `cleanup` | Remove registered temporary directories (called via trap on exit). |
 | `set_trace true` or `set_trace false` | Enable or disable bash `set -x` for the current process. The orchestrator calls this after argument parsing when `--trace` was passed. Also updates and exports `ALLOY_TRACE` so child processes inherit it. |
 | `set_debug_level N` | Set the log verbosity level for the current process (`ALLOY_DEBUG=N`, exported). The orchestrator calls this after argument parsing when `--debug` or `-d` was passed. Ensures `log_info`, `log_debug`, etc. (from debug_utils.sh) respect the new level. |
+| `print_result MESSAGE` | Emit user-facing success/result output via `console_utils.sh`. |
+| `print_note MESSAGE` | Emit user-facing informational note output via `console_utils.sh`. |
+| `print_hint MESSAGE` | Emit user-facing usage/help hint output via `console_utils.sh`. |
 
 **Color support:** Where common.sh or the scripts it sources produce terminal output, ANSI colors are used and automatically disabled when stdout/stderr is not a terminal or when `NO_COLOR` is set.
 
+#### 8.6.1a1 console_utils.sh
+
+**Purpose:** Shared console formatting/printing primitives for orchestrator-side scripts. Defines terminal-capability checks, ANSI style application, and shared user-facing print helpers. This module is sourced directly by both `common.sh` and `debug_utils.sh` so logging and printing share one formatting path without introducing a `debug_utils.sh -> common.sh` dependency.
+
+**Key functions:**
+
+| Function | Purpose |
+|----------|---------|
+| `console_supports_color [stdout|stderr]` | Return success when ANSI colors are allowed for the selected stream (interactive terminal and `NO_COLOR` unset). |
+| `console_format_text STREAM STYLE MESSAGE` | Apply style-based ANSI formatting when enabled, otherwise return plain text. |
+| `console_print_to STREAM STYLE MESSAGE` | Print formatted text to stdout/stderr with newline. |
+| `print_result MESSAGE` | User-facing result/success output helper. |
+| `print_note MESSAGE` | User-facing informational output helper. |
+| `print_hint MESSAGE` | User-facing hint/help output helper. |
+
 #### 8.6.1a debug_utils.sh
 
-**Purpose:** Orchestrator-internal logging and bash trace control. Defines the implementation used by the orchestrator (internal names: `log_*`, `enter_hidden`, etc.). **Not** sourced by hook scripts or by `hook_common.sh`; hooks have no access to _utils.sh. See [§8.6](#86-shared-utilities) for the boundary.
+**Purpose:** Orchestrator-internal logging and bash trace control. Defines the implementation used by the orchestrator (internal names: `log_*`, `enter_hidden`, etc.). `debug_utils.sh` sources `console_utils.sh` directly for ANSI/terminal-aware formatting and remains independent from `common.sh`. **Not** sourced by hook scripts or by `hook_common.sh`; hooks have no access to _utils.sh. See [§8.6](#86-shared-utilities) for the boundary.
 
 **Key functions (internal names):**
 

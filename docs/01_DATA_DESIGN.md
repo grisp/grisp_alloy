@@ -121,9 +121,10 @@ scripts/
 │   ├── serve-artefacts.sh
 │   └── grispio.sh
 ├── utils/                 # Sourceable utilities
-│   ├── common.sh          # Error handling, path helpers, temp dirs; sources debug_utils.sh
+│   ├── common.sh          # Error handling, path helpers, temp dirs; sources console_utils.sh + debug_utils.sh
+│   ├── console_utils.sh   # Terminal/ANSI formatting and shared print helpers (print_result/note/hint)
 │   ├── hook_common.sh     # Hook entry point: sourced by each hook; sources *_tools.sh, sets set -x / debug level
-│   ├── debug_utils.sh     # Orchestrator-internal: log_*, enter_hidden, leave_hidden, die
+│   ├── debug_utils.sh     # Orchestrator-internal: log_*, enter_hidden, leave_hidden, die; sources console_utils.sh
 │   ├── debug_tools.sh     # Hook API: alloy_log_*, alloy_enter_hidden, alloy_leave_hidden, alloy_die
 │   ├── argparse.sh        # Command-line argument parsing
 │   ├── vagrant_utils.sh   # Vagrant VM lifecycle and delegation

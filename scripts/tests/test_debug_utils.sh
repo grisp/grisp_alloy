@@ -11,6 +11,7 @@ source "${DEBUG_UTILS_SCRIPT}"
 debug_utils_test_reset() {
     set +x
     unset ALLOY_TRACE || true
+    unset NO_COLOR || true
     ALLOY_DEBUG=0
     export ALLOY_DEBUG
     __ALLOY_HIDDEN_TRACE_STACK=()
@@ -55,6 +56,46 @@ test_debug_utils_log_level_filtering() {
     debug2="$(log_debug "hello" 2>&1)"
     assert_matches "INFO: hello" "${info2}"
     assert_matches "DEBUG: hello" "${debug2}"
+}
+
+test_debug_utils_log_output_uses_ansi_colors_when_supported() {
+    debug_utils_test_reset
+    set_debug_level 2
+
+    local original_supports_color
+    original_supports_color="$(declare -f console_supports_color)"
+    console_supports_color() { return 0; }
+
+    local info_out warn_out error_out debug_out
+    info_out="$(log_info "hello" 2>&1)"
+    warn_out="$(log_warn "warn" 2>&1)"
+    error_out="$(log_error "err" 2>&1)"
+    debug_out="$(log_debug "dbg" 2>&1)"
+
+    eval "${original_supports_color}"
+
+    assert_equals $'\033[36mINFO: hello\033[0m' "${info_out}"
+    assert_equals $'\033[33mWARN: warn\033[0m' "${warn_out}"
+    assert_equals $'\033[31mERROR: err\033[0m' "${error_out}"
+    assert_equals $'\033[90mDEBUG: dbg\033[0m' "${debug_out}"
+}
+
+test_debug_utils_no_color_disables_colored_logs() {
+    debug_utils_test_reset
+    set_debug_level 2
+
+    local original_supports_color
+    original_supports_color="$(declare -f console_supports_color)"
+    console_supports_color() { [[ -z "${NO_COLOR:-}" ]]; }
+    export NO_COLOR=1
+
+    local warn_out
+    warn_out="$(log_warn "warn" 2>&1)"
+
+    unset NO_COLOR || true
+    eval "${original_supports_color}"
+
+    assert_equals "WARN: warn" "${warn_out}"
 }
 
 test_debug_utils_set_trace_toggles_xtrace_and_env() {
@@ -151,4 +192,9 @@ test_debug_utils_sourcing_applies_trace_from_environment() {
 
     assert_equals "0" "${on_status}"
     assert_equals "0" "${off_status}"
+}
+
+test_debug_utils_is_safe_to_source_multiple_times() {
+    local script="${DEBUG_UTILS_SCRIPT}"
+    assert_status_code 0 "bash -c 'source \"${script}\"; source \"${script}\"; log_warn ok >/dev/null'"
 }
