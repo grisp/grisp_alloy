@@ -73,6 +73,7 @@ alloy_test_make_sdk_entrypoint() {
     cp "${repo_root}/alloy" "${temp_dir}/alloy"
     chmod +x "${temp_dir}/alloy"
     mkdir -p "${temp_dir}/scripts/utils"
+    cp "${repo_root}/scripts/utils/common.sh" "${temp_dir}/scripts/utils/common.sh"
     cp "${repo_root}/scripts/utils/debug_utils.sh" "${temp_dir}/scripts/utils/debug_utils.sh"
     : > "${temp_dir}/ALLOY_SDK_MANIFEST"
     echo "${temp_dir}/alloy"

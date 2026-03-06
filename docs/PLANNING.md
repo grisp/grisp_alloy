@@ -51,7 +51,7 @@ Backlog policy:
   - Refinement note (from Task 1.1): Move debug/trace behavior now embedded in top-level `alloy` into shared utilities to avoid duplicated logic.
   - Done when: Output format and verbosity match design contracts and top-level entrypoint consumes shared debug utilities.
 
-- [ ] **Task 1.4: `scripts/utils/common.sh`**
+- [x] **Task 1.4: `scripts/utils/common.sh`**
   - Scope: Shared guardrails (`die`, `require_var`, script preamble helpers).
   - Tests: Unit tests for failure paths and messaging.
   - Refinement note (from Task 1.1): Consolidate generic entrypoint helpers (`fail`, path resolution, validation helpers) into shared common utilities where appropriate.
@@ -59,9 +59,18 @@ Backlog policy:
   - Refinement note (from Task 1.3 review): Introduce explicit user-facing output helpers (`print_result`, `print_note`, `print_hint`) in `common.sh` so future tasks avoid raw `echo` for human-facing messaging and can support quiet-mode policies later without changing debug-level semantics.
   - Done when: Common failures are standardized across commands and generic bash helpers are centralized.
 
+- [ ] **Task 1.4a: `scripts/utils/console_utils.sh` extraction and logging/printing migration**
+  - Scope: Introduce shared console utilities module (`console_utils.sh`) for terminal/ANSI behavior and generic user-facing printing primitives.
+  - Scope: Migrate print helpers from `common.sh` into `console_utils.sh`; have both `common.sh` and `debug_utils.sh` source `console_utils.sh` directly (no implicit dependency through `common.sh`).
+  - Scope: Standardize include-guard pattern for sourced utility files touched by this task.
+  - Tests: Add/update unit tests for console helpers and for colored/plain output behavior in both logging and print paths.
+  - Design update requirement: Update design docs (`docs/03_ALLOY_DESIGN.md` and `docs/01_DATA_DESIGN.md`) in the same commit to reflect directory structure and implementation contracts for `console_utils.sh`.
+  - Done when: Console formatting/printing is centralized, orchestrator logging/printing paths share the new module, and design + implementation land together in one commit.
+
 - [ ] **Task 1.5: `scripts/utils/file_utils.sh`**
   - Scope: Path normalization, safe copy/sync helpers, deterministic directory ops.
   - Tests: Unit tests for path and copy edge cases.
+  - Refinement note (from Task 1.4): New utility modules should rely on `scripts/utils/common.sh` as their entry point (`ALLOY_ROOT`/`ALLOY_ROOT_DIR` setup + `source_required_utility`) instead of duplicating bootstrap/path-resolution logic.
   - Done when: File operations are deterministic and error-safe.
 
 - [ ] **Task 1.6: `scripts/utils/env_utils.sh`**
