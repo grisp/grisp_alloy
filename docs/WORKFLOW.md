@@ -30,6 +30,11 @@ Goals:
 - Changelog discipline:
   - keep traceability notes in the task context file during development and
     update `CHANGELOG.md` before finalizing the commit.
+  - record the final commit outcome, not intermediate drafts/rewrites that
+    happened during task implementation.
+- Context signal over volume:
+  - keep history files compact and decision-focused,
+  - include only durable information useful for future review/debugging.
 - No test gaming:
   - never change tests only to force a green run.
 - Deterministic verification:
@@ -115,14 +120,37 @@ For every task, execute these steps in order.
      - when approved, update design docs in same commit as code.
 
 11. Finalize context file.
-   - Record what was implemented, issues encountered, resolutions, rationale,
-     test evidence, and any design updates.
-   - Keep only durable review/debug information (no noisy transcripts).
+   - Record only durable information:
+     - objective/outcome,
+     - key decisions and rationale,
+     - unexpected issues/divergences and resolution,
+     - concise validation evidence and residual risks.
+   - Write sections from the final-state perspective of the commit.
+     Do not describe within-task intermediate versions unless an unexpected
+     issue materially affected the final design, tests, or risks.
+   - Avoid chronological transcripts and low-signal planning leftovers.
 
 12. Finalize records and commit preparation.
    - Update root `CHANGELOG.md` using Keep a Changelog:
      - https://keepachangelog.com/en/1.1.0/
-   - Prepare clear commit message (scope + tests).
+   - MUST create a fresh `.git/ALLOY_COMMIT_MSG` for the current task with a
+     clear commit message
+     (scope + tests). Do not duplicate commit-message text in the history
+     context file.
+   - Commit-message content MUST focus on final task outcomes (behavior,
+     architecture, tests). Avoid administrative noise (for example: marking
+     task status, updating changelog/history files) unless that process change
+     is itself part of the task outcome.
+   - MUST commit using this file:
+     `git commit -F .git/ALLOY_COMMIT_MSG`
+   - Example draft command:
+     `cat > .git/ALLOY_COMMIT_MSG <<'EOF'
+     feat(scope): short summary
+
+     - key change 1
+     - key change 2
+     - tests: <commands run>
+     EOF`
    - Mark task DONE in `docs/PLANNING.md`.
 
 13. Report completion to human manager.
@@ -141,7 +169,7 @@ A task is DONE only if all are true:
 - full relevant suites rerun after code changes,
 - design docs updated when behavior/spec changed,
 - `CHANGELOG.md` updated,
-- commit message prepared,
+- `.git/ALLOY_COMMIT_MSG` prepared,
 - completion report provided to human manager.
 
 ## Commit Quality Policy
@@ -158,15 +186,20 @@ Before finalizing a task:
   - relevant unit/integration/golden/property suites pass,
 - static checks:
   - run relevant linters and static analysis for touched components
-    (for example Dialyzer for Erlang modules when applicable),
+    (for example `shellcheck` for touched shell scripts when available;
+    prefer strict mode in CI, Dialyzer for Erlang modules when applicable),
 - docs:
   - update design docs for approved design changes,
   - update `CHANGELOG.md`,
+- commit preparation:
+  - `.git/ALLOY_COMMIT_MSG` exists, is non-empty, and reflects the current
+    task (check: `test -s .git/ALLOY_COMMIT_MSG`),
 - context history quality:
   - task id is present and matches `docs/PLANNING.md`,
   - filename is prefixed with UTC timestamp for deterministic ordering,
-  - no commit SHA is required in-context (file is committed together with code),
   - context includes decisions/rationale/test evidence,
+  - context and changelog describe final commit state (not implementation
+    churn within the same task),
   - context excludes low-value noise (full terminal transcripts, duplicated diffs).
 
 ## Context History Signal/Noise Rules
@@ -182,8 +215,11 @@ Include (high signal):
 Exclude (noise):
 - full command logs/transcripts,
 - copied large code blocks already in the repository,
-- repetitive step-by-step notes without decisions,
+- repetitive step-by-step notes without decisions or deviations,
 - speculative alternatives that did not influence implementation.
+- proposed commit messages (store ephemeral drafts in `.git/` instead).
+- within-task rewrites described as change-chains (`A -> B -> C`) when only the
+  final result matters.
 
 Rule of thumb:
 - if a detail does not help future review, regression investigation, or safe
@@ -203,34 +239,23 @@ Every context file using this format must contain at least:
    - Date,
    - Author/Agent identifier,
    - Related task id (from `docs/PLANNING.md`) and design anchors.
-   - `Commit SHA`: omit in this file (not available pre-commit and redundant
-     because this file is part of the commit).
 3. `## Objective`
    - problem statement and intended outcome.
 4. `## Design References`
    - exact section links used.
 5. `## Code References (Initial)`
    - relevant modules/files/functions before changes.
-6. `## Focused Investigation Notes`
-   - findings, ambiguities, risks.
-7. `## Implementation Plan`
-   - concrete implementation steps.
-8. `## Expected File Changes`
-   - explicit list of files expected to be touched and why.
-9. `## Test Plan`
-   - baseline suites,
-   - new/updated tests,
-   - final full-suite validation plan.
-10. `## Execution Log`
-   - chronological development notes,
-   - failures and resolutions.
-11. `## Design Changes`
+6. `## Key Decisions`
+   - implementation choices and rationale.
+7. `## Unexpected Issues And Resolution`
+   - only divergences, failures, or ambiguities that affected implementation.
+8. `## Validation Evidence`
+   - concise baseline/final command evidence and outcomes.
+9. `## Design Changes`
    - `None` or approved changes + rationale + decision link/summary.
-12. `## Final Validation`
-    - test runs and outcomes,
-    - residual risks.
-13. `## Commit Preparation`
-    - changelog entries,
-    - proposed commit message.
-14. `## Completion Summary`
+10. `## Residual Risks / Follow-ups`
+    - what remains uncertain or intentionally deferred.
+11. `## Changed Artifacts`
+    - concise list of touched files/areas by purpose.
+12. `## Completion Summary`
     - concise handover for future agents/reviewers.
