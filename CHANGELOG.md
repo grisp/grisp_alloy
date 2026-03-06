@@ -36,6 +36,10 @@ and this project adheres to Semantic Versioning.
   count-option semantics and edge cases (`scripts/tests/test_argparse.sh`).
 - Added mode-gating CLI tests for repository/SDK command matrix behavior in
   `scripts/tests/test_alloy_entry.sh`.
+- Added shared orchestrator debug utilities in
+  `scripts/utils/debug_utils.sh` (`log_*`, `set_debug_level`, `set_trace`,
+  `enter_hidden`, `leave_hidden`, `die`) with dedicated tests in
+  `scripts/tests/test_debug_utils.sh`.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -48,3 +52,5 @@ and this project adheres to Semantic Versioning.
   `build sdk` is repository-only and `prepare sdk` is SDK-only.
 - Updated top-level `alloy --help` command listing to be mode-aware (repository
   vs SDK command availability), powered by centralized command metadata.
+- Updated top-level `alloy` to source and use shared debug utilities for
+  `ALLOY_DEBUG` and `ALLOY_TRACE` handling.

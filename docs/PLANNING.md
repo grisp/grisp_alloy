@@ -45,7 +45,7 @@ Backlog policy:
   - Refinement note (from Task 1.1): Matrix must explicitly enforce `build sdk` as repository-only and `prepare sdk` as SDK-only, with clear user-facing errors.
   - Done when: Invalid command-in-mode combinations (including `build sdk` in SDK mode and `prepare sdk` in repository mode) fail with clear errors.
 
-- [ ] **Task 1.3: `scripts/utils/debug_utils.sh`**
+- [x] **Task 1.3: `scripts/utils/debug_utils.sh`**
   - Scope: Logging, debug levels, trace toggles, hidden-section helpers.
   - Tests: Unit tests for log level filtering and trace behavior.
   - Refinement note (from Task 1.1): Move debug/trace behavior now embedded in top-level `alloy` into shared utilities to avoid duplicated logic.
@@ -55,6 +55,8 @@ Backlog policy:
   - Scope: Shared guardrails (`die`, `require_var`, script preamble helpers).
   - Tests: Unit tests for failure paths and messaging.
   - Refinement note (from Task 1.1): Consolidate generic entrypoint helpers (`fail`, path resolution, validation helpers) into shared common utilities where appropriate.
+  - Refinement note (from Task 1.3): `common.sh` should source and re-export `scripts/utils/debug_utils.sh` behavior so command scripts/wrappers share one debug/trace implementation path.
+  - Refinement note (from Task 1.3 review): Introduce explicit user-facing output helpers (`print_result`, `print_note`, `print_hint`) in `common.sh` so future tasks avoid raw `echo` for human-facing messaging and can support quiet-mode policies later without changing debug-level semantics.
   - Done when: Common failures are standardized across commands and generic bash helpers are centralized.
 
 - [ ] **Task 1.5: `scripts/utils/file_utils.sh`**
