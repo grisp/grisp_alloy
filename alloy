@@ -2,6 +2,7 @@
 set -euo pipefail
 
 usage() {
+    local current_mode="${ALLOY_MODE:-repo}"
     cat <<'EOF'
 Usage: alloy [GLOBAL_OPTIONS] verb [noun] [COMMAND_OPTIONS] [ARGUMENTS]
 
@@ -17,15 +18,67 @@ Global options:
   -P, --provision            Force Vagrant provisioning before execution
       --forward-env PATTERN  Forward extra environment variable patterns
       --forward-env=PATTERN  Forward extra environment variable patterns
-
-Commands (design target):
-  build sdk
-  build project
-  build firmware
-  prepare sdk
-  serve artefacts
-  grispio
 EOF
+    echo
+    echo "Commands (available in ${current_mode} mode):"
+    print_commands_for_mode "${current_mode}"
+}
+
+declare -a COMMAND_MATRIX=(
+    "build sdk|repo"
+    "build project|repo,sdk"
+    "build firmware|repo,sdk"
+    "prepare sdk|sdk"
+    "serve artefacts|repo,sdk"
+    "grispio|repo,sdk"
+)
+
+command_allowed_in_mode() {
+    local command_key="$1"
+    local mode="$2"
+    local entry key modes
+    for entry in "${COMMAND_MATRIX[@]}"; do
+        key="${entry%%|*}"
+        modes="${entry#*|}"
+        if [[ "${key}" == "${command_key}" ]]; then
+            [[ ",${modes}," == *",${mode},"* ]]
+            return
+        fi
+    done
+    return 1
+}
+
+mode_label() {
+    case "$1" in
+        repo) echo "repository" ;;
+        sdk) echo "sdk" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+allowed_modes_for_command() {
+    local command_key="$1"
+    local entry key modes
+    for entry in "${COMMAND_MATRIX[@]}"; do
+        key="${entry%%|*}"
+        modes="${entry#*|}"
+        if [[ "${key}" == "${command_key}" ]]; then
+            echo "${modes}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+print_commands_for_mode() {
+    local mode="$1"
+    local entry key
+    for entry in "${COMMAND_MATRIX[@]}"; do
+        key="${entry%%|*}"
+        if command_allowed_in_mode "${key}" "${mode}"; then
+            echo "  ${key}"
+        fi
+    done
 }
 
 version() {
@@ -276,6 +329,15 @@ if [[ -z "${COMMAND_SCRIPT}" ]]; then
         exit 0
     fi
     fail "Unknown command: ${COMMAND_VERB}${COMMAND_NOUN:+ ${COMMAND_NOUN}}"
+fi
+
+COMMAND_KEY="${COMMAND_VERB}${COMMAND_NOUN:+ ${COMMAND_NOUN}}"
+if ! command_allowed_in_mode "${COMMAND_KEY}" "${ALLOY_MODE}"; then
+    allowed_modes="$(allowed_modes_for_command "${COMMAND_KEY}" || true)"
+    if [[ -n "${allowed_modes}" ]] && [[ "${allowed_modes}" != *","* ]]; then
+        fail "${COMMAND_KEY} is only available in $(mode_label "${allowed_modes}") mode"
+    fi
+    fail "${COMMAND_KEY} is not available in ${ALLOY_MODE} mode"
 fi
 
 if [[ "${GLOBAL_HELP}" == true ]]; then
