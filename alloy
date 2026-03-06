@@ -85,36 +85,6 @@ version() {
     echo "alloy dev"
 }
 
-fail() {
-    echo "ERROR: $*" >&2
-    exit 2
-}
-
-is_non_negative_integer() {
-    [[ "$1" =~ ^[0-9]+$ ]]
-}
-
-resolve_script_dir() {
-    local source_path="$1"
-    while [[ -L "${source_path}" ]]; do
-        local source_dir
-        source_dir="$(cd "$(dirname "${source_path}")" && pwd -P)"
-        source_path="$(readlink "${source_path}")"
-        if [[ "${source_path}" != /* ]]; then
-            source_path="${source_dir}/${source_path}"
-        fi
-    done
-    cd "$(dirname "${source_path}")" && pwd -P
-}
-
-source_required_utility() {
-    local utility_relpath="$1"
-    local utility_path="${ALLOY_ROOT}/${utility_relpath}"
-    [[ -f "${utility_path}" ]] || fail "Missing required utility: ${utility_path}"
-    # shellcheck disable=SC1090
-    source "${utility_path}"
-}
-
 GLOBAL_DEBUG=0
 GLOBAL_TRACE=false
 GLOBAL_DEV_MODE=false
@@ -252,20 +222,14 @@ extract_command() {
     return 0
 }
 
-export_boolean_env() {
-    local name="$1"
-    local enabled="$2"
-    if [[ "${enabled}" == true ]]; then
-        export "${name}=true"
-    else
-        unset "${name}" || true
-    fi
-}
-
-ALLOY_ROOT="$(resolve_script_dir "${BASH_SOURCE[0]}")"
+ALLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export ALLOY_ROOT
 
-source_required_utility "scripts/utils/debug_utils.sh"
+# shellcheck source=scripts/utils/common.sh
+source "${ALLOY_ROOT}/scripts/utils/common.sh"
+ALLOY_ROOT="$(resolve_script_dir "${BASH_SOURCE[0]}")"
+ALLOY_ROOT_DIR="${ALLOY_ROOT}"
+export ALLOY_ROOT ALLOY_ROOT_DIR
 
 if [[ -f "${ALLOY_ROOT}/ALLOY_SDK_MANIFEST" ]]; then
     ALLOY_MODE="sdk"
