@@ -43,6 +43,10 @@ Goals:
   - any design change must be justified, discussed, and documented.
 - Persistent task memory:
   - each task maintains a context file for future agents/reviewers.
+- Progressive planning refinement:
+  - after each completed task, refine future planning items with newly
+    discovered constraints/notes so critical implementation details are not
+    forgotten.
 
 ## Task Status Convention
 
@@ -134,13 +138,15 @@ For every task, execute these steps in order.
    - Update root `CHANGELOG.md` using Keep a Changelog:
      - https://keepachangelog.com/en/1.1.0/
    - MUST create a fresh `.git/ALLOY_COMMIT_MSG` for the current task with a
-     clear commit message
-     (scope + tests). Do not duplicate commit-message text in the history
-     context file.
+     clear commit message (scope + final outcomes). Do not duplicate
+     commit-message text in the history context file.
    - Commit-message content MUST focus on final task outcomes (behavior,
-     architecture, tests). Avoid administrative noise (for example: marking
-     task status, updating changelog/history files) unless that process change
-     is itself part of the task outcome.
+     architecture, key user-visible effects). Avoid administrative noise
+     (for example: marking task status, updating changelog/history files)
+     unless that process change is itself part of the task outcome.
+   - Commit-message content MUST NOT include acceptance criteria or validation
+     logs (for example: `tests: ...`, gate names, PASS/FAIL statements).
+     Validation evidence belongs in task context and completion reporting.
    - MUST commit using this file:
      `git commit -F .git/ALLOY_COMMIT_MSG`
    - Example draft command:
@@ -149,16 +155,32 @@ For every task, execute these steps in order.
 
      - key change 1
      - key change 2
-     - tests: <commands run>
      EOF`
    - Mark task DONE in `docs/PLANNING.md`.
 
-13. Report completion to human manager.
+13. Refine future planning items.
+   - Review `docs/PLANNING.md` and update relevant future tasks with
+     implementation knowledge discovered in the completed task.
+   - Scope is flexible: update any future task that benefits from the
+     refinement, not only immediately next tasks.
+   - Allowed without extra approval:
+     - add clarification notes,
+     - add dependencies/order notes,
+     - add missing acceptance details,
+     - add clearly missing tasks.
+   - Requires human-manager approval:
+     - major scope rewrites,
+     - phase-wide reprioritization/resequencing,
+     - design-behavior changes not already approved.
+   - Keep refinements concise and evidence-based.
+
+14. Report completion to human manager.
    - Include:
      - task completed,
      - baseline and final test results,
      - design changes (if any),
-     - residual risks/follow-ups.
+     - residual risks/follow-ups,
+     - planning refinements applied for future tasks.
 
 ## Definition of Done (Per Task)
 
@@ -170,6 +192,7 @@ A task is DONE only if all are true:
 - design docs updated when behavior/spec changed,
 - `CHANGELOG.md` updated,
 - `.git/ALLOY_COMMIT_MSG` prepared,
+- planning refinement pass completed for future tasks (or explicitly `None`),
 - completion report provided to human manager.
 
 ## Commit Quality Policy
@@ -191,6 +214,9 @@ Before finalizing a task:
 - docs:
   - update design docs for approved design changes,
   - update `CHANGELOG.md`,
+- planning:
+  - refine relevant future tasks in `docs/PLANNING.md` based on discovered
+    implementation constraints (or explicitly record `None` in task context),
 - commit preparation:
   - `.git/ALLOY_COMMIT_MSG` exists, is non-empty, and reflects the current
     task (check: `test -s .git/ALLOY_COMMIT_MSG`),

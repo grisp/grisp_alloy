@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: alloy [GLOBAL_OPTIONS] verb [noun] [COMMAND_OPTIONS] [ARGUMENTS]
+
+Global options:
+  -h, --help                 Show help (global or command-level)
+  -v, --version              Show alloy version
+  -d, -dd, -ddd              Increment debug level
+  -dN, --debug[=N]           Set debug level to N (non-negative integer)
+      --trace                Enable bash trace mode for orchestrator scripts
+      --dev                  Enable development mode
+  -F, --force-vagrant        Force Vagrant execution
+  -K, --keep-vagrant         Keep Vagrant VM running after completion
+  -P, --provision            Force Vagrant provisioning before execution
+      --forward-env PATTERN  Forward extra environment variable patterns
+      --forward-env=PATTERN  Forward extra environment variable patterns
+
+Commands (design target):
+  build sdk
+  build project
+  build firmware
+  prepare sdk
+  serve artefacts
+  grispio
+EOF
+}
+
+version() {
+    echo "alloy dev"
+}
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 2
+}
+
+is_non_negative_integer() {
+    [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+resolve_script_dir() {
+    local source_path="$1"
+    while [[ -L "${source_path}" ]]; do
+        local source_dir
+        source_dir="$(cd "$(dirname "${source_path}")" && pwd -P)"
+        source_path="$(readlink "${source_path}")"
+        if [[ "${source_path}" != /* ]]; then
+            source_path="${source_dir}/${source_path}"
+        fi
+    done
+    cd "$(dirname "${source_path}")" && pwd -P
+}
+
+GLOBAL_DEBUG=0
+GLOBAL_TRACE=false
+GLOBAL_DEV_MODE=false
+GLOBAL_FORCE_VAGRANT=false
+GLOBAL_KEEP_VAGRANT=false
+GLOBAL_PROVISION=false
+GLOBAL_HELP=false
+GLOBAL_VERSION=false
+declare -a GLOBAL_FORWARD_ENV_PATTERNS=()
+declare -a REMAINING_ARGS=()
+
+parse_global_options() {
+    while [[ $# -gt 0 ]]; do
+        local token="$1"
+        shift
+        case "${token}" in
+            --)
+                REMAINING_ARGS+=("$@")
+                break
+                ;;
+            --debug)
+                GLOBAL_DEBUG=$((GLOBAL_DEBUG + 1))
+                ;;
+            --debug=*)
+                local value="${token#*=}"
+                is_non_negative_integer "${value}" || fail "Invalid --debug value: ${value}"
+                GLOBAL_DEBUG="${value}"
+                ;;
+            --trace)
+                GLOBAL_TRACE=true
+                ;;
+            --dev)
+                GLOBAL_DEV_MODE=true
+                ;;
+            --force-vagrant)
+                GLOBAL_FORCE_VAGRANT=true
+                ;;
+            --keep-vagrant)
+                GLOBAL_KEEP_VAGRANT=true
+                ;;
+            --provision)
+                GLOBAL_PROVISION=true
+                ;;
+            --forward-env)
+                [[ $# -gt 0 ]] || fail "--forward-env requires a value"
+                GLOBAL_FORWARD_ENV_PATTERNS+=("$1")
+                shift
+                ;;
+            --forward-env=*)
+                local pattern="${token#*=}"
+                [[ -n "${pattern}" ]] || fail "--forward-env requires a value"
+                GLOBAL_FORWARD_ENV_PATTERNS+=("${pattern}")
+                ;;
+            --help)
+                GLOBAL_HELP=true
+                ;;
+            --version)
+                GLOBAL_VERSION=true
+                ;;
+            -h)
+                GLOBAL_HELP=true
+                ;;
+            -v)
+                GLOBAL_VERSION=true
+                ;;
+            -F)
+                GLOBAL_FORCE_VAGRANT=true
+                ;;
+            -K)
+                GLOBAL_KEEP_VAGRANT=true
+                ;;
+            -P)
+                GLOBAL_PROVISION=true
+                ;;
+            -d[0-9]*)
+                local short_value="${token#-d}"
+                is_non_negative_integer "${short_value}" || fail "Invalid -d value: ${short_value}"
+                GLOBAL_DEBUG="${short_value}"
+                ;;
+            -d*)
+                if [[ "${token}" =~ ^-d+$ ]]; then
+                    local count="${#token}"
+                    GLOBAL_DEBUG=$((GLOBAL_DEBUG + count - 1))
+                else
+                    local short_flags="${token#-}"
+                    local recognized=true
+                    local i
+                    for ((i=0; i<${#short_flags}; i++)); do
+                        local ch="${short_flags:${i}:1}"
+                        case "${ch}" in
+                            d) GLOBAL_DEBUG=$((GLOBAL_DEBUG + 1)) ;;
+                            F) GLOBAL_FORCE_VAGRANT=true ;;
+                            K) GLOBAL_KEEP_VAGRANT=true ;;
+                            P) GLOBAL_PROVISION=true ;;
+                            h) GLOBAL_HELP=true ;;
+                            v) GLOBAL_VERSION=true ;;
+                            *)
+                                recognized=false
+                                break
+                                ;;
+                        esac
+                    done
+                    if [[ "${recognized}" == false ]]; then
+                        REMAINING_ARGS+=("${token}")
+                    fi
+                fi
+                ;;
+            *)
+                REMAINING_ARGS+=("${token}")
+                ;;
+        esac
+    done
+}
+
+extract_command() {
+    local first_non_option=-1
+    local i
+    for ((i=0; i<${#REMAINING_ARGS[@]}; i++)); do
+        if [[ "${REMAINING_ARGS[$i]}" != -* ]]; then
+            first_non_option="${i}"
+            break
+        fi
+    done
+
+    if [[ "${first_non_option}" -lt 0 ]]; then
+        return 1
+    fi
+
+    if [[ "${first_non_option}" -gt 0 ]]; then
+        fail "Unknown global option: ${REMAINING_ARGS[0]}"
+    fi
+
+    COMMAND_VERB="${REMAINING_ARGS[0]}"
+    COMMAND_ARGS=("${REMAINING_ARGS[@]:1}")
+    return 0
+}
+
+export_boolean_env() {
+    local name="$1"
+    local enabled="$2"
+    if [[ "${enabled}" == true ]]; then
+        export "${name}=true"
+    else
+        unset "${name}" || true
+    fi
+}
+
+ALLOY_ROOT="$(resolve_script_dir "${BASH_SOURCE[0]}")"
+export ALLOY_ROOT
+
+if [[ -f "${ALLOY_ROOT}/ALLOY_SDK_MANIFEST" ]]; then
+    ALLOY_MODE="sdk"
+    ALLOY_BUILD_DIR="${HOME}/.grisp_alloy/build"
+    ALLOY_ARTEFACT_DIR="${HOME}/.grisp_alloy/artefacts"
+    ALLOY_CACHE_DIR="${HOME}/.grisp_alloy/cache"
+else
+    ALLOY_MODE="repo"
+    ALLOY_BUILD_DIR="${ALLOY_ROOT}/_build"
+    ALLOY_ARTEFACT_DIR="${ALLOY_ROOT}/artefacts"
+    ALLOY_CACHE_DIR="${ALLOY_ROOT}/_cache"
+fi
+
+export ALLOY_MODE ALLOY_BUILD_DIR ALLOY_ARTEFACT_DIR ALLOY_CACHE_DIR
+
+parse_global_options "$@"
+
+if [[ "${GLOBAL_VERSION}" == true ]]; then
+    version
+    exit 0
+fi
+
+if ! extract_command; then
+    if [[ "${GLOBAL_HELP}" == true ]]; then
+        usage
+        exit 0
+    fi
+    if [[ ${#REMAINING_ARGS[@]} -gt 0 ]] && [[ "${REMAINING_ARGS[0]}" == -* ]]; then
+        fail "Unknown global option: ${REMAINING_ARGS[0]}"
+    fi
+    usage
+    fail "No command provided"
+fi
+
+export ALLOY_DEBUG="${GLOBAL_DEBUG}"
+export_boolean_env "ALLOY_TRACE" "${GLOBAL_TRACE}"
+export_boolean_env "ALLOY_DEV_MODE" "${GLOBAL_DEV_MODE}"
+export_boolean_env "ALLOY_FORCE_VAGRANT" "${GLOBAL_FORCE_VAGRANT}"
+export_boolean_env "ALLOY_KEEP_VAGRANT" "${GLOBAL_KEEP_VAGRANT}"
+export_boolean_env "ALLOY_PROVISION" "${GLOBAL_PROVISION}"
+
+if [[ ${#GLOBAL_FORWARD_ENV_PATTERNS[@]} -gt 0 ]]; then
+    forward_env_joined="$(IFS=,; echo "${GLOBAL_FORWARD_ENV_PATTERNS[*]}")"
+    if [[ -n "${ALLOY_FORWARD_ENV:-}" ]]; then
+        export ALLOY_FORWARD_ENV="${ALLOY_FORWARD_ENV},${forward_env_joined}"
+    else
+        export ALLOY_FORWARD_ENV="${forward_env_joined}"
+    fi
+fi
+
+COMMANDS_DIR="${ALLOY_COMMANDS_DIR:-${ALLOY_ROOT}/scripts/commands}"
+COMMAND_SCRIPT=""
+COMMAND_NOUN=""
+
+if [[ ${#COMMAND_ARGS[@]} -gt 0 ]] && [[ "${COMMAND_ARGS[0]}" != -* ]]; then
+    POSSIBLE_NOUN="${COMMAND_ARGS[0]}"
+    if [[ -f "${COMMANDS_DIR}/${COMMAND_VERB}-${POSSIBLE_NOUN}.sh" ]]; then
+        COMMAND_NOUN="${POSSIBLE_NOUN}"
+        COMMAND_SCRIPT="${COMMANDS_DIR}/${COMMAND_VERB}-${COMMAND_NOUN}.sh"
+        COMMAND_ARGS=("${COMMAND_ARGS[@]:1}")
+    fi
+fi
+
+if [[ -z "${COMMAND_SCRIPT}" ]] && [[ -f "${COMMANDS_DIR}/${COMMAND_VERB}.sh" ]]; then
+    COMMAND_SCRIPT="${COMMANDS_DIR}/${COMMAND_VERB}.sh"
+fi
+
+if [[ -z "${COMMAND_SCRIPT}" ]]; then
+    if [[ "${GLOBAL_HELP}" == true ]]; then
+        usage
+        exit 0
+    fi
+    fail "Unknown command: ${COMMAND_VERB}${COMMAND_NOUN:+ ${COMMAND_NOUN}}"
+fi
+
+if [[ "${GLOBAL_HELP}" == true ]]; then
+    COMMAND_ARGS=(--help "${COMMAND_ARGS[@]}")
+fi
+
+if [[ -x "${COMMAND_SCRIPT}" ]]; then
+    exec "${COMMAND_SCRIPT}" "${COMMAND_ARGS[@]}"
+fi
+exec bash "${COMMAND_SCRIPT}" "${COMMAND_ARGS[@]}"
