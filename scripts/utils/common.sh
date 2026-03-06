@@ -41,6 +41,10 @@ source_required_utility() {
     source "${utility_path}"
 }
 
+if ! source_required_utility "scripts/utils/console_utils.sh"; then
+    return 2
+fi
+
 if ! source_required_utility "scripts/utils/debug_utils.sh"; then
     return 2
 fi
@@ -72,33 +76,5 @@ export_boolean_env() {
         export "${name}=true"
     else
         unset "${name}" || true
-    fi
-}
-
-common_supports_color() {
-    [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]
-}
-
-print_result() {
-    if common_supports_color; then
-        printf '\033[32m%s\033[0m\n' "$*"
-    else
-        printf '%s\n' "$*"
-    fi
-}
-
-print_note() {
-    if common_supports_color; then
-        printf '\033[36m%s\033[0m\n' "$*"
-    else
-        printf '%s\n' "$*"
-    fi
-}
-
-print_hint() {
-    if common_supports_color; then
-        printf '\033[33m%s\033[0m\n' "$*"
-    else
-        printf '%s\n' "$*"
     fi
 }

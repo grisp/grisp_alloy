@@ -1,25 +1,34 @@
 #!/usr/bin/env bash
 
+if [[ "${__ALLOY_DEBUG_UTILS_SH_LOADED:-0}" == "1" ]]; then
+    return 0
+fi
+__ALLOY_DEBUG_UTILS_SH_LOADED=1
+
+DEBUG_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/utils/console_utils.sh
+source "${DEBUG_UTILS_DIR}/console_utils.sh"
+
 # shellcheck disable=SC2034
 __ALLOY_HIDDEN_TRACE_STACK=()
 
 log_error() {
-    printf 'ERROR: %s\n' "$*" >&2
+    console_print_to stderr error "ERROR: $*"
 }
 
 log_warn() {
-    printf 'WARN: %s\n' "$*" >&2
+    console_print_to stderr warn "WARN: $*"
 }
 
 log_info() {
     if [[ ${ALLOY_DEBUG:-0} -ge 1 ]]; then
-        printf 'INFO: %s\n' "$*"
+        console_print_to stdout info "INFO: $*"
     fi
 }
 
 log_debug() {
     if [[ ${ALLOY_DEBUG:-0} -ge 2 ]]; then
-        printf 'DEBUG: %s\n' "$*" >&2
+        console_print_to stderr debug "DEBUG: $*"
     fi
 }
 
