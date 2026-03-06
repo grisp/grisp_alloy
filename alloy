@@ -107,6 +107,14 @@ resolve_script_dir() {
     cd "$(dirname "${source_path}")" && pwd -P
 }
 
+source_required_utility() {
+    local utility_relpath="$1"
+    local utility_path="${ALLOY_ROOT}/${utility_relpath}"
+    [[ -f "${utility_path}" ]] || fail "Missing required utility: ${utility_path}"
+    # shellcheck disable=SC1090
+    source "${utility_path}"
+}
+
 GLOBAL_DEBUG=0
 GLOBAL_TRACE=false
 GLOBAL_DEV_MODE=false
@@ -257,6 +265,8 @@ export_boolean_env() {
 ALLOY_ROOT="$(resolve_script_dir "${BASH_SOURCE[0]}")"
 export ALLOY_ROOT
 
+source_required_utility "scripts/utils/debug_utils.sh"
+
 if [[ -f "${ALLOY_ROOT}/ALLOY_SDK_MANIFEST" ]]; then
     ALLOY_MODE="sdk"
     ALLOY_BUILD_DIR="${HOME}/.grisp_alloy/build"
@@ -290,8 +300,12 @@ if ! extract_command; then
     fail "No command provided"
 fi
 
-export ALLOY_DEBUG="${GLOBAL_DEBUG}"
-export_boolean_env "ALLOY_TRACE" "${GLOBAL_TRACE}"
+set_debug_level "${GLOBAL_DEBUG}" || fail "Invalid debug level: ${GLOBAL_DEBUG}"
+if [[ "${GLOBAL_TRACE}" == true ]]; then
+    set_trace true
+else
+    set_trace false
+fi
 export_boolean_env "ALLOY_DEV_MODE" "${GLOBAL_DEV_MODE}"
 export_boolean_env "ALLOY_FORCE_VAGRANT" "${GLOBAL_FORCE_VAGRANT}"
 export_boolean_env "ALLOY_KEEP_VAGRANT" "${GLOBAL_KEEP_VAGRANT}"

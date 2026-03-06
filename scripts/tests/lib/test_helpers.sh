@@ -24,6 +24,11 @@ harness_make_temp_dir() {
     mktemp -d "${TMPDIR:-/tmp}/${prefix}.XXXXXX"
 }
 
+harness_make_temp_file() {
+    local prefix="${1:-grisp-alloy-tests}"
+    mktemp "${TMPDIR:-/tmp}/${prefix}.XXXXXX"
+}
+
 harness_require_command() {
     local command_name="${1:-}"
     if [[ -z "${command_name}" ]]; then
