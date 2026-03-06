@@ -34,7 +34,7 @@ Backlog policy:
   - Tests: CLI parse unit tests for global options and unknown-option errors.
   - Done when: Entry script routes to command handlers with normalized argv/env.
 
-- [ ] **Task 1.1a: `scripts/argparse.sh` conformance to design contract**
+- [x] **Task 1.1a: `scripts/argparse.sh` conformance to design contract**
   - Scope: Bring shared parser behavior in line with `docs/03_ALLOY_DESIGN.md` §8.6.2, including `count` option type and required count semantics (`-d`, `-dd`, `-ddd`, `-dN`, `--debug`, `--debug=N`).
   - Tests: Unit tests for parser API/types and count edge cases (valid and invalid forms), including `<VAR>_OPT` occurrence tracking and `POSITIONAL` behavior.
   - Done when: `scripts/argparse.sh` supports design-defined `flag|value|accum|count` behavior with deterministic tests covering `count` mapping and failures.
@@ -243,6 +243,7 @@ Backlog policy:
   - Scope: Build directory structure (`plan/`, `targets/`, `staging/`, `motherlode/`).
   - Tests: Command tests for directory creation and option validation.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build sdk ...` UX (not legacy script filename forms).
+  - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
   - Done when: Layout matches current design and command help/usage is canonicalized.
 
 - [ ] **Task 5.2: Nugget staging (builtin/local/VCS)**
@@ -306,6 +307,7 @@ Backlog policy:
   - Scope: Parse options, resolve SDK mode/repository mode behavior.
   - Tests: Command tests for `--sdk` and mode combinations.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build project ...` UX (not legacy script filename forms).
+  - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
   - Done when: Project command starts with a validated SDK context and command help/usage is canonicalized.
 
 - [ ] **Task 6.2: Plugin detection and build dispatch**
@@ -339,6 +341,7 @@ Backlog policy:
   - Scope: Parse project specs, `--name`, output flags, params, variant.
   - Tests: Parser unit tests with mixed option/project ordering.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build firmware ...` UX (not legacy script filename forms).
+  - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
   - Done when: Parsed model is deterministic, validated, and command help/usage is canonicalized.
 
 - [ ] **Task 7.2: Main context load and guard checks**
