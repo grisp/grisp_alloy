@@ -24,7 +24,7 @@ Backlog policy:
 
 ## Phase 1: CLI and Shared Utilities
 
-- [ ] **Task 1.0: Test harness bootstrap and baseline gates**
+- [x] **Task 1.0: Test harness bootstrap and baseline gates**
   - Scope: Establish shared test helpers/fixtures for shell and Erlang tests, and define baseline/full-suite commands used by workflow gates.
   - Tests: Self-tests for helper wrappers and fixture setup sanity checks.
   - Done when: Every subsequent task can reuse one canonical harness pattern and run baseline/full verification deterministically.
