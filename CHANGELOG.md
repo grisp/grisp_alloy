@@ -53,6 +53,12 @@ and this project adheres to Semantic Versioning.
 - Added dedicated `console_utils.sh` unit tests in
   `scripts/tests/test_console_utils.sh` for plain/colored output behavior and
   source idempotence checks.
+- Added `scripts/utils/file_utils.sh` with shared path/copy primitives:
+  `normalize_path`, `relative_path`, `copy_with_exclusions`,
+  `merge_directories`, and `make_symlink_relative`.
+- Added dedicated file utility tests in `scripts/tests/test_file_utils.sh`
+  covering path normalization, relative path derivation, exclusion-aware copy,
+  merge override behavior, and symlink relativization.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -77,6 +83,13 @@ and this project adheres to Semantic Versioning.
   print formatting on one shared console path.
 - Updated orchestrator logging output to support ANSI colors when terminal
   output supports it and `NO_COLOR` is unset.
+- Updated file-copy behavior in `scripts/utils/file_utils.sh` to use a single
+  `rsync`-based implementation with explicit runtime dependency validation.
+- Updated top-level `alloy` startup flow to validate host-side runtime
+  dependencies for Vagrant-delegated execution paths (currently `rsync`) before
+  delegation begins.
+- Updated `scripts/utils/common.sh` with reusable runtime dependency guards
+  (`require_command`, `require_commands`).
 - Updated `docs/01_DATA_DESIGN.md` and `docs/03_ALLOY_DESIGN.md` to document
   `console_utils.sh`, include-guard expectations for sourced utilities, and the
   revised common/debug utility contracts.

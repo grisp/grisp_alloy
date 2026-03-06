@@ -222,6 +222,19 @@ extract_command() {
     return 0
 }
 
+check_required_runtime_commands() {
+    local -a required_commands=()
+    if [[ "${GLOBAL_FORCE_VAGRANT}" == true ]] || [[ "${OSTYPE:-}" != linux* ]]; then
+        required_commands+=(rsync)
+    fi
+
+    if [[ ${#required_commands[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    require_commands "${required_commands[@]}" || return 2
+}
+
 ALLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export ALLOY_ROOT
 
@@ -263,6 +276,8 @@ if ! extract_command; then
     usage
     fail "No command provided"
 fi
+
+check_required_runtime_commands || exit 2
 
 set_debug_level "${GLOBAL_DEBUG}" || fail "Invalid debug level: ${GLOBAL_DEBUG}"
 if [[ "${GLOBAL_TRACE}" == true ]]; then

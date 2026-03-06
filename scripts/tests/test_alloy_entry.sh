@@ -80,6 +80,16 @@ alloy_test_make_sdk_entrypoint() {
     echo "${temp_dir}/alloy"
 }
 
+alloy_test_make_minimal_path_without_rsync() {
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-path")"
+    local bin_dir="${temp_dir}/bin"
+    mkdir -p "${bin_dir}"
+    ln -s "$(command -v bash)" "${bin_dir}/bash"
+    ln -s "$(command -v dirname)" "${bin_dir}/dirname"
+    echo "${bin_dir}"
+}
+
 test_alloy_version_flag_returns_success() {
     local alloy
     alloy="$(harness_repo_root)/alloy"
@@ -137,6 +147,20 @@ test_alloy_unknown_global_option_before_command_fails() {
     local alloy
     alloy="$(harness_repo_root)/alloy"
     assert_status_code 2 "\"${alloy}\" --unknown-global build sdk"
+}
+
+test_alloy_fails_early_when_required_commands_are_missing() {
+    local alloy
+    alloy="$(harness_repo_root)/alloy"
+    local minimal_path
+    minimal_path="$(alloy_test_make_minimal_path_without_rsync)"
+
+    local output status
+    output="$(PATH="${minimal_path}" "${alloy}" --force-vagrant build project 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Required command not found: rsync" "${output}"
 }
 
 test_alloy_dispatches_verb_noun_with_normalized_global_env() {

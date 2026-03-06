@@ -37,7 +37,7 @@ source_required_utility() {
         echo "ERROR: Missing required utility: ${utility_path}" >&2
         return 2
     fi
-    # shellcheck disable=SC1090
+    # shellcheck disable=SC1090  # dynamic path under ALLOY_ROOT is intentional for utility loading
     source "${utility_path}"
 }
 
@@ -77,4 +77,29 @@ export_boolean_env() {
     else
         unset "${name}" || true
     fi
+}
+
+require_command() {
+    local command_name="${1:-}"
+    if [[ -z "${command_name}" ]]; then
+        log_error "require_command requires a command name"
+        return 2
+    fi
+
+    if ! command -v "${command_name}" >/dev/null 2>&1; then
+        log_error "Required command not found: ${command_name}"
+        return 127
+    fi
+}
+
+require_commands() {
+    if [[ $# -eq 0 ]]; then
+        log_error "require_commands requires at least one command name"
+        return 2
+    fi
+
+    local command_name
+    for command_name in "$@"; do
+        require_command "${command_name}" || return $?
+    done
 }
