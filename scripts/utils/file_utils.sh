@@ -9,6 +9,10 @@ FILE_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/utils/common.sh
 source "${FILE_UTILS_DIR}/common.sh"
 
+# normalize_path PATH
+# Print a lexical normalization of PATH, collapsing `.` segments, duplicate separators, and resolvable `..`.
+# Env/side effects: does not touch the filesystem and does not resolve symlinks.
+# Errors: returns 2 and logs when PATH is empty.
 normalize_path() {
     local input_path="${1:-}"
     if [[ -z "${input_path}" ]]; then
@@ -66,6 +70,10 @@ normalize_path() {
     printf '%s\n' "${normalized}"
 }
 
+# relative_path FROM TO
+# Print the relative path from FROM to TO after lexical normalization.
+# Env/side effects: none.
+# Errors: returns 2 and logs for missing arguments or mixed absolute/relative inputs; propagates normalize_path failures.
 relative_path() {
     local from_path="${1:-}"
     local to_path="${2:-}"
@@ -127,6 +135,10 @@ relative_path() {
     printf '%s\n' "${result}"
 }
 
+# copy_with_exclusions SRC DEST [EXCLUDE_PATTERN...]
+# Copy SRC into DEST, skipping any entries matched by the optional rsync-style exclusion patterns.
+# Env/side effects: creates DEST when needed and writes files there; requires rsync on PATH.
+# Errors: returns 2 for missing arguments or missing SRC, 127 when rsync is unavailable, and otherwise propagates copy failures.
 copy_with_exclusions() {
     local src="${1:-}"
     local dest="${2:-}"
@@ -170,6 +182,10 @@ copy_with_exclusions() {
     rsync "${rsync_args[@]}" "${src%/}/" "${dest%/}/"
 }
 
+# merge_directories SRC DEST
+# Overlay the contents of SRC onto DEST using copy_with_exclusions semantics without exclusion patterns.
+# Env/side effects: creates or updates files under DEST.
+# Errors: returns 2 for invalid arguments or missing SRC directory; otherwise propagates copy_with_exclusions failures.
 merge_directories() {
     local src="${1:-}"
     local dest="${2:-}"
@@ -185,6 +201,10 @@ merge_directories() {
     copy_with_exclusions "${src}" "${dest}"
 }
 
+# make_symlink_relative LINK_FILE LINK_TARGET
+# Create or replace LINK_FILE with a symlink whose target is stored relative to LINK_FILE's directory.
+# Env/side effects: creates parent directories for LINK_FILE and rewrites the symlink on disk.
+# Errors: returns 2 and logs for missing arguments; propagates path-normalization, relative-path, and ln failures.
 make_symlink_relative() {
     local link_file="${1:-}"
     local link_target="${2:-}"

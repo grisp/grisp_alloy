@@ -9,6 +9,10 @@ ENV_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/utils/common.sh
 source "${ENV_UTILS_DIR}/common.sh"
 
+# env_utils_prepend_path DIR_PATH
+# Prepend DIR_PATH to PATH exactly once when the directory exists.
+# Env/side effects: mutates exported PATH in the current shell.
+# Errors: returns 0 for missing/non-directory inputs so callers can use it opportunistically.
 env_utils_prepend_path() {
     local dir_path="${1:-}"
     if [[ -z "${dir_path}" ]] || [[ ! -d "${dir_path}" ]]; then
@@ -22,6 +26,10 @@ env_utils_prepend_path() {
     export PATH
 }
 
+# env_utils_find_triplet SDK_DIR
+# Resolve the target GNU triplet for SDK_DIR and print it to stdout.
+# Env/side effects: reads ALLOY_CONFIG_TARGET_ARCH_TRIPLET and scans SDK_DIR/host/bin when needed; no exports.
+# Errors: returns 2 for missing arguments, 1 when no usable `*-gcc` prefix can be discovered.
 env_utils_find_triplet() {
     local sdk_dir="${1:-}"
     if [[ -z "${sdk_dir}" ]]; then
@@ -50,6 +58,10 @@ env_utils_find_triplet() {
     return 1
 }
 
+# env_utils_find_first_executable CANDIDATE...
+# Print the first executable path from CANDIDATE... to stdout.
+# Env/side effects: none.
+# Errors: returns 1 and logs when no candidate is executable.
 env_utils_find_first_executable() {
     local candidate
     for candidate in "$@"; do
@@ -63,6 +75,10 @@ env_utils_find_first_executable() {
     return 1
 }
 
+# env_utils_require_executable PATH [LABEL]
+# Validate that PATH names an executable file.
+# Env/side effects: none.
+# Errors: returns 2 when PATH is empty, 1 when the executable is missing, and logs LABEL-qualified failures.
 env_utils_require_executable() {
     local executable_path="${1:-}"
     local label="${2:-required executable}"
@@ -78,6 +94,10 @@ env_utils_require_executable() {
     fi
 }
 
+# env_utils_resolve_sysroot SDK_DIR TARGET_TRIPLET
+# Print the preferred target sysroot path for SDK_DIR, preferring host/<triplet>/sysroot and falling back to staging/.
+# Env/side effects: none.
+# Errors: returns 2 for missing arguments, 1 when neither expected sysroot layout exists.
 env_utils_resolve_sysroot() {
     local sdk_dir="${1:-}"
     local target_triplet="${2:-}"
@@ -103,6 +123,10 @@ env_utils_resolve_sysroot() {
     return 1
 }
 
+# env_utils_detect_otp_version TARGET_ERLANG_DIR
+# Print the OTP/ERTS version suffix discovered from TARGET_ERLANG_DIR/erts-*.
+# Env/side effects: none.
+# Errors: returns 2 for missing arguments, 1 when no ERTS directory is present.
 env_utils_detect_otp_version() {
     local target_erlang_dir="${1:-}"
     if [[ -z "${target_erlang_dir}" ]]; then
@@ -125,6 +149,10 @@ env_utils_detect_otp_version() {
     return 1
 }
 
+# env_utils_read_elf_signature FILE_PATH CLASS_REF MACHINE_REF
+# Parse FILE_PATH with READELF and write the ELF class and machine strings into the provided nameref variables.
+# Env/side effects: reads READELF from the current environment; updates caller variables through namerefs.
+# Errors: returns 2 for missing arguments, 1 when FILE_PATH is not a readable ELF header for the configured reader.
 env_utils_read_elf_signature() {
     local file_path="${1:-}"
     local -n class_ref="$2"
@@ -164,6 +192,10 @@ env_utils_read_elf_signature() {
     return 0
 }
 
+# env_utils_expected_elf_signature_from_triplet TARGET_TRIPLET CLASS_REF MACHINE_REF
+# Map TARGET_TRIPLET to the expected ELF class and machine strings via nameref outputs.
+# Env/side effects: updates caller variables through namerefs; no exports.
+# Errors: returns 2 for missing arguments, 1 when TARGET_TRIPLET has no supported mapping.
 env_utils_expected_elf_signature_from_triplet() {
     local target_triplet="${1:-}"
     local -n class_ref="$2"
@@ -201,6 +233,10 @@ env_utils_expected_elf_signature_from_triplet() {
     esac
 }
 
+# env_utils_probe_expected_elf_signature CLASS_REF MACHINE_REF
+# Compile a trivial program with the configured cross compiler and derive the expected ELF signature via nameref outputs.
+# Env/side effects: requires CC and READELF to be set, creates and deletes a temporary directory under TMPDIR.
+# Errors: propagates mktemp dependency failures and returns 1 when probing cannot produce a readable ELF header.
 env_utils_probe_expected_elf_signature() {
     # shellcheck disable=SC2034  # nameref is the output channel for the caller
     local -n out_class_ref="$1"
@@ -227,6 +263,10 @@ env_utils_probe_expected_elf_signature() {
     return "${cleanup_status}"
 }
 
+# env_utils_path_has_marker FILE_PATH ROOT_DIR [MARKER_NAME]
+# Return 0 when FILE_PATH is inside a directory tree rooted at ROOT_DIR that contains MARKER_NAME in its ancestry.
+# Env/side effects: reads the filesystem only; no exports.
+# Errors: returns 1 when no marker is found.
 env_utils_path_has_marker() {
     local file_path="${1:-}"
     local root_dir="${2:-}"
@@ -249,6 +289,10 @@ env_utils_path_has_marker() {
     return 1
 }
 
+# validate_sdk_dir SDK_DIR
+# Verify that SDK_DIR exists and contains the minimum layout required by command flows (`host/` and `images/`).
+# Env/side effects: filesystem read-only; no exports.
+# Errors: returns 2 for missing arguments, 1 for invalid/missing SDK layouts, and logs clear path-specific failures.
 validate_sdk_dir() {
     local sdk_dir="${1:-}"
     if [[ -z "${sdk_dir}" ]]; then
@@ -272,6 +316,10 @@ validate_sdk_dir() {
     return 0
 }
 
+# setup_cross_env SDK_DIR
+# Export the cross-compilation, pkg-config, and Erlang build environment derived from SDK_DIR.
+# Env/side effects: expects SDK_DIR to be a validated, relocated SDK and may read ALLOY_CONFIG_* exports from a sourced alloy_context.sh; updates PATH and exports CC/CXX/.../HOST_ERLANG/TARGET_ERLANG plus related build variables.
+# Errors: returns 2 for missing arguments or missing required host commands, 1 for invalid SDK contents/tool paths, and stops at the first failed dependency or layout check.
 setup_cross_env() {
     local sdk_dir="${1:-}"
     if [[ -z "${sdk_dir}" ]]; then
@@ -426,6 +474,10 @@ setup_cross_env() {
     return 0
 }
 
+# validate_release_target_arch RELEASE_DIR [OVERLAY_DIR]
+# Ensure every ELF file under RELEASE_DIR and optional OVERLAY_DIR matches the target architecture configured by setup_cross_env.
+# Env/side effects: expects READELF plus cross-env variables to already be set; reads the filesystem and toolchain, but does not modify files.
+# Errors: returns 2 for missing arguments or missing cross-env prerequisites, 1 for missing directories or architecture mismatches, and logs the offending file plus expected/actual ELF signature.
 validate_release_target_arch() {
     local release_dir="${1:-}"
     local overlay_dir="${2:-}"

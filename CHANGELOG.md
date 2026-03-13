@@ -65,6 +65,9 @@ and this project adheres to Semantic Versioning.
 - Added dedicated env utility tests in `scripts/tests/test_env_utils.sh`
   covering SDK layout validation, triplet detection, cross-env exports,
   required-host-command failures, and wrong-architecture ELF rejection.
+- Added compact interface documentation comments to reusable functions in
+  `scripts/utils/common.sh`, `console_utils.sh`, `debug_utils.sh`,
+  `file_utils.sh`, and `env_utils.sh`.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -102,3 +105,7 @@ and this project adheres to Semantic Versioning.
 - Updated legacy `scripts/grisp-env.sh` to delegate SDK validation and
   cross-compilation exports to `scripts/utils/env_utils.sh` while preserving
   current sourced-wrapper behavior for existing callers.
+- Updated `docs/WORKFLOW.md` to require compact interface comments for
+  exported/reusable functions in sourceable shell utilities and to require
+  documentation updates whenever callable interfaces change so docs do not
+  drift from implementation.

@@ -12,26 +12,46 @@ source "${DEBUG_UTILS_DIR}/console_utils.sh"
 # shellcheck disable=SC2034  # global stack state used by enter_hidden/leave_hidden
 __ALLOY_HIDDEN_TRACE_STACK=()
 
+# log_error MESSAGE...
+# Print an error-prefixed message to stderr.
+# Env/side effects: writes to stderr; no shell state changes.
+# Errors: propagates console_print_to return codes.
 log_error() {
     console_print_to stderr error "ERROR: $*"
 }
 
+# log_warn MESSAGE...
+# Print a warning-prefixed message to stderr.
+# Env/side effects: writes to stderr; no exports.
+# Errors: propagates console_print_to return codes.
 log_warn() {
     console_print_to stderr warn "WARN: $*"
 }
 
+# log_info MESSAGE...
+# Print an informational message when ALLOY_DEBUG is at least 1.
+# Env/side effects: reads ALLOY_DEBUG and may write to stdout; does not mutate the environment.
+# Errors: returns 0 when suppressed; otherwise propagates console_print_to return codes.
 log_info() {
     if [[ ${ALLOY_DEBUG:-0} -ge 1 ]]; then
         console_print_to stdout info "INFO: $*"
     fi
 }
 
+# log_debug MESSAGE...
+# Print a debug message when ALLOY_DEBUG is at least 2.
+# Env/side effects: reads ALLOY_DEBUG and may write to stderr; does not export variables.
+# Errors: returns 0 when suppressed; otherwise propagates console_print_to return codes.
 log_debug() {
     if [[ ${ALLOY_DEBUG:-0} -ge 2 ]]; then
         console_print_to stderr debug "DEBUG: $*"
     fi
 }
 
+# die [EXIT_CODE] MESSAGE...
+# Log MESSAGE as an error and terminate the current shell or script with EXIT_CODE (default 1).
+# Env/side effects: writes to stderr and exits; callers should only use it in contexts where exiting is intended.
+# Errors: this function is terminal and does not return on success.
 die() {
     local code=1
     if [[ $# -gt 0 ]] && [[ "$1" =~ ^[0-9]+$ ]]; then
@@ -42,6 +62,10 @@ die() {
     exit "${code}"
 }
 
+# set_debug_level LEVEL
+# Validate LEVEL as a non-negative integer and export it as ALLOY_DEBUG.
+# Env/side effects: updates exported ALLOY_DEBUG; does not toggle xtrace.
+# Errors: returns 2 and logs on invalid LEVEL input.
 set_debug_level() {
     local level="${1:-0}"
     if ! [[ "${level}" =~ ^[0-9]+$ ]]; then
@@ -52,6 +76,10 @@ set_debug_level() {
     export ALLOY_DEBUG
 }
 
+# set_trace ENABLED
+# Enable or disable bash xtrace and synchronize the exported ALLOY_TRACE flag.
+# Env/side effects: mutates shell tracing state (`set -x` / `set +x`) and ALLOY_TRACE.
+# Errors: returns 2 and logs when ENABLED is not a recognized boolean-like token.
 set_trace() {
     local enabled="${1:-false}"
     case "${enabled}" in
@@ -70,6 +98,10 @@ set_trace() {
     esac
 }
 
+# enter_hidden
+# Temporarily disable xtrace while remembering whether it was active.
+# Env/side effects: appends state to __ALLOY_HIDDEN_TRACE_STACK and may disable xtrace.
+# Errors: returns 0; intended to pair with leave_hidden even around early returns.
 enter_hidden() {
     if [[ "$-" == *x* ]]; then
         __ALLOY_HIDDEN_TRACE_STACK+=(1)
@@ -79,6 +111,10 @@ enter_hidden() {
     fi
 }
 
+# leave_hidden
+# Restore the xtrace state captured by the most recent enter_hidden call.
+# Env/side effects: pops __ALLOY_HIDDEN_TRACE_STACK and may re-enable xtrace.
+# Errors: returns 0 when the stack is empty; otherwise restores the recorded trace state.
 leave_hidden() {
     local stack_size="${#__ALLOY_HIDDEN_TRACE_STACK[@]}"
     if [[ "${stack_size}" -eq 0 ]]; then
