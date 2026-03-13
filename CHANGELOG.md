@@ -59,6 +59,12 @@ and this project adheres to Semantic Versioning.
 - Added dedicated file utility tests in `scripts/tests/test_file_utils.sh`
   covering path normalization, relative path derivation, exclusion-aware copy,
   merge override behavior, and symlink relativization.
+- Added `scripts/utils/env_utils.sh` with SDK validation, deterministic
+  cross-compilation environment setup, and release/overlay ELF target
+  architecture validation helpers.
+- Added dedicated env utility tests in `scripts/tests/test_env_utils.sh`
+  covering SDK layout validation, triplet detection, cross-env exports,
+  required-host-command failures, and wrong-architecture ELF rejection.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -93,3 +99,6 @@ and this project adheres to Semantic Versioning.
 - Updated `docs/01_DATA_DESIGN.md` and `docs/03_ALLOY_DESIGN.md` to document
   `console_utils.sh`, include-guard expectations for sourced utilities, and the
   revised common/debug utility contracts.
+- Updated legacy `scripts/grisp-env.sh` to delegate SDK validation and
+  cross-compilation exports to `scripts/utils/env_utils.sh` while preserving
+  current sourced-wrapper behavior for existing callers.
