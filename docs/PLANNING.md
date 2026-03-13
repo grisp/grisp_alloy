@@ -75,7 +75,7 @@ Backlog policy:
   - Refinement note (from Task 1.4a): Any new sourced utility file should include an explicit source-guard pattern to stay idempotent when dependencies are sourced from multiple modules.
   - Done when: File operations are deterministic and error-safe.
 
-- [ ] **Task 1.6: `scripts/utils/env_utils.sh`**
+- [x] **Task 1.6: `scripts/utils/env_utils.sh`**
   - Scope: SDK validation, cross-env setup primitives.
   - Tests: Unit tests with fixture SDK directories.
   - Refinement note (from Task 1.5): Maintain an explicit required-host-command compatibility check path (built on `common.sh` `require_command(s)`) so missing runtime dependencies fail fast before expensive build/setup operations.
@@ -334,11 +334,13 @@ Backlog policy:
 - [ ] **Task 6.3: Cross-compilation environment setup**
   - Scope: Use SDK host/staging toolchains and environment exports.
   - Tests: Unit/integration tests validating exported toolchain vars.
+  - Refinement note (from Task 1.6): Reuse `scripts/utils/env_utils.sh` as the single source for SDK validation, triplet discovery, toolchain exports, and target-architecture probing; keep `scripts/grisp-env.sh` as a compatibility wrapper only until legacy callers are removed.
   - Done when: Plugin builds consume consistent cross env.
 
 - [ ] **Task 6.4: Release scrubbing and architecture validation**
   - Scope: Strip/reduce release artifacts and verify target architecture.
   - Tests: Integration tests with valid and wrong-arch binaries.
+  - Refinement note (from Task 1.6): Run `validate_release_target_arch` after release scrubbing and include both release and overlay staging trees in coverage so wrong-architecture NIFs or helper binaries fail before packaging.
   - Done when: Wrong-arch content fails early.
 
 - [ ] **Task 6.5: Project manifest generation**
