@@ -108,6 +108,20 @@ For every task, execute these steps in order.
    - Keep scope constrained to the selected task.
    - Favor small, explicit, readable changes.
    - Avoid unrelated refactors unless necessary for correctness.
+   - For reusable/exported functions and similar callable interfaces
+     (for example shell functions, Erlang functions, or other developer-facing
+     helper APIs), keep the implementation-facing documentation in sync with
+     the code.
+   - Whenever a function/interface is added or modified, its documentation
+     MUST be added, updated, and validated in the same change so there is no
+     drift between behavior and documentation.
+   - For sourceable shell utilities, every exported/reusable function MUST have
+     a compact interface comment immediately above it describing:
+     - purpose,
+     - arguments,
+     - stdout/return behavior,
+     - required environment inputs and side effects,
+     - error handling / failure mode.
 
 8. Handle failures with discipline.
    - Do not modify tests unless the test itself is clearly wrong.

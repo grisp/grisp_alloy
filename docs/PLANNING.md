@@ -81,25 +81,34 @@ Backlog policy:
   - Refinement note (from Task 1.5): Maintain an explicit required-host-command compatibility check path (built on `common.sh` `require_command(s)`) so missing runtime dependencies fail fast before expensive build/setup operations.
   - Done when: Required env export set is reproducible and validated.
 
+- [x] **Task 1.6a: Sourceable utility function interface documentation**
+  - Scope: Add compact developer-facing interface comments for exported functions in `scripts/utils/*.sh`, covering purpose, arguments, outputs/return values, environment assumptions/side effects, and error handling.
+  - Tests: Shell syntax/lint and baseline/full workflow gates.
+  - Done when: Reusable shell utility functions are self-describing enough for both human maintainers and AI agents to use correctly without re-reading implementations.
+
 - [ ] **Task 1.7: `scripts/utils/vcs_utils.sh`**
   - Scope: Clone/fetch/checkout/dirty/ref validation helpers.
   - Tests: Unit tests with local git fixtures.
+  - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: VCS source resolution is deterministic and safe.
 
 - [ ] **Task 1.8: `scripts/utils/sdk_utils.sh`**
   - Scope: SDK relocation checks and relocation execution.
   - Tests: Unit tests for placeholder replacement and non-writable failures.
   - Refinement note (from Task 1.5): Reuse `file_utils.sh` primitives (`normalize_path`, `relative_path`, `make_symlink_relative`, `copy_with_exclusions`, `merge_directories`) for embed/relocation path handling instead of ad-hoc path and copy logic.
+  - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: First-use relocation and explicit prepare flow work.
 
 - [ ] **Task 1.9: `scripts/utils/plugin_utils.sh`**
   - Scope: Plugin load, detect, call, and typed-read wrappers.
   - Tests: Unit tests with mock plugins.
+  - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: Plugin API dispatch is strict and predictable.
 
 - [ ] **Task 1.10: `scripts/utils/security_utils.sh`**
   - Scope: Security pack resolve/validate/info/env primitives.
   - Tests: Unit tests with fake secpack executables.
+  - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: Security pack path and command validation are stable.
 
 ## Phase 2: Tools (`scripts/tools`)
