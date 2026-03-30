@@ -73,6 +73,11 @@ and this project adheres to Semantic Versioning.
 - Added dedicated VCS utility tests in `scripts/tests/test_vcs_utils.sh`
   covering clone/update/reclone behavior, dirty-check policy, provenance
   output, `.alloy_repo_info` writing, and source idempotence.
+- Added `scripts/utils/sdk_utils.sh` with SDK relocation detection, first-use
+  text-path fixup, and the `ensure_sdk_relocated` auto-relocation gate.
+- Added dedicated SDK relocation tests in `scripts/tests/test_sdk_utils.sh`
+  covering placeholder/stale-path fixup, writable vs non-writable SDK roots,
+  and the explicit `prepare sdk` command flow.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -124,3 +129,5 @@ and this project adheres to Semantic Versioning.
 - Updated `docs/WORKFLOW.md` to require the agent to stop at commit
   preparation and ask the user to perform the signed commit whenever signing is
   required.
+- Updated `scripts/commands/prepare-sdk.sh` to execute the documented SDK-mode
+  relocation flow instead of failing as an unimplemented placeholder.

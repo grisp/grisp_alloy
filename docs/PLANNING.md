@@ -92,7 +92,7 @@ Backlog policy:
   - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: VCS source resolution is deterministic and safe.
 
-- [ ] **Task 1.8: `scripts/utils/sdk_utils.sh`**
+- [x] **Task 1.8: `scripts/utils/sdk_utils.sh`**
   - Scope: SDK relocation checks and relocation execution.
   - Tests: Unit tests for placeholder replacement and non-writable failures.
   - Refinement note (from Task 1.5): Reuse `file_utils.sh` primitives (`normalize_path`, `relative_path`, `make_symlink_relative`, `copy_with_exclusions`, `merge_directories`) for embed/relocation path handling instead of ad-hoc path and copy logic.
@@ -335,6 +335,7 @@ Backlog policy:
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build project ...` UX (not legacy script filename forms).
   - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
   - Refinement note (from Task 1.7): Normalize `--allow-dirty` and `ALLOY_ALLOW_DIRTY` here so downstream VCS/project-source helpers receive an explicit dirty-policy boolean instead of reading ambient environment state.
+  - Refinement note (from Task 1.8): Before sourcing SDK context or calling build plugins, invoke `ensure_sdk_relocated` on the selected SDK root so first-use relocation and read-only failure messaging stay centralized in `sdk_utils.sh`.
   - Done when: Project command starts with a validated SDK context and command help/usage is canonicalized.
 
 - [ ] **Task 6.2: Plugin detection and build dispatch**
@@ -376,6 +377,7 @@ Backlog policy:
 - [ ] **Task 7.2: Main context load and guard checks**
   - Scope: Source main context and enforce `ALLOY_IS_AUXILIARY=false`.
   - Tests: Guard tests for auxiliary-context failure.
+  - Refinement note (from Task 1.8): Ensure SDK relocation is checked through `sdk_utils.sh::ensure_sdk_relocated` before sourcing `alloy_context.sh`, so firmware builds reuse the same first-use relocation path and read-only error handling as project builds.
   - Done when: Firmware build is blocked outside main context.
 
 - [ ] **Task 7.3: Project artifact resolution and extraction**
