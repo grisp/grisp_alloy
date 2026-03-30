@@ -105,7 +105,7 @@ Backlog policy:
   - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: Plugin API dispatch is strict and predictable.
 
-- [ ] **Task 1.10: `scripts/utils/security_utils.sh`**
+- [x] **Task 1.10: `scripts/utils/security_utils.sh`**
   - Scope: Security pack resolve/validate/info/env primitives.
   - Tests: Unit tests with fake secpack executables.
   - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
@@ -389,6 +389,7 @@ Backlog policy:
 - [ ] **Task 7.4: Overlay and filesystem priorities merge**
   - Scope: Merge nugget/project/security/CLI overlays and priorities.
   - Tests: Integration tests for merge order and conflict handling.
+  - Refinement note (from Task 1.10): Create the security-pack overlay staging directory before calling `security_generate_overlay`, treat exit 2 as a silent skip, and let pack stderr surface unchanged on exit 1 so overlay failures stay attributable to the pack command.
   - Done when: Final overlay and priority fragments are deterministic.
 
 - [ ] **Task 7.5: Parameter and capability validation**
@@ -421,6 +422,7 @@ Backlog policy:
 - [ ] **Task 8.1: Security utility integration in firmware flow**
   - Scope: Wire `security_resolve_pack`, `security_info`, `security_export_env`.
   - Tests: Integration tests with fixture secpack implementations.
+  - Refinement note (from Task 1.10): Consume `security_info` and `security_export_env` as already-filtered key=value streams from `security_utils.sh`; prefix manifest metadata as `security_pack_<key>=<value>` and treat `security_export_env` exit 2 as a no-op.
   - Done when: Security metadata/env flow is stable and validated.
 
 - [ ] **Task 8.2: `security_tools.sh` hook-facing API**

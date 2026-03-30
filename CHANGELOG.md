@@ -83,6 +83,13 @@ and this project adheres to Semantic Versioning.
 - Added dedicated plugin utility tests in `scripts/tests/test_plugin_utils.sh`
   covering sorted plugin loading, tracked plugin types, dispatch failures, and
   `plugin_read` parsing semantics.
+- Added `scripts/utils/security_utils.sh` with security-pack path resolution,
+  early `capabilities` validation, filtered `info` / `env` key=value helpers,
+  and overlay command delegation for orchestrator-side security-pack flows.
+- Added dedicated security utility tests in
+  `scripts/tests/test_security_utils.sh` covering file-vs-directory pack
+  resolution, invalid pack rejection, key validation, `info` / `env` parsing,
+  and overlay unsupported/success paths.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
