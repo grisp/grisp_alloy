@@ -11,6 +11,7 @@ samples/hello_grisp/rebar.lock
 .DS_Store
 .pki-key
 .grispio.token
+.tool-versions
 
 # Threse files keep reapearing, and it is not clear why.
 system_common/board/grisp-common/skeleton/var/tmp

@@ -46,6 +46,27 @@ ${body}
 EOF
 }
 
+test_manifest_tool_shows_usage_when_no_command_is_provided() {
+    local output status
+    output="$({ manifest_tool_test_run; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Usage: manifest-tool <command> \\[options\\]" "${output}"
+    assert_matches "Commands:" "${output}"
+    assert_matches "validate-root" "${output}"
+    assert_matches "get" "${output}"
+}
+
+test_manifest_tool_help_flag_shows_usage() {
+    local output
+    output="$(manifest_tool_test_run --help)"
+
+    assert_matches "Usage: manifest-tool <command> \\[options\\]" "${output}"
+    assert_matches "Read a top-level field" "${output}"
+    assert_matches "Validate the manifest root tuple shape" "${output}"
+}
+
 test_manifest_tool_validate_root_accepts_sdk_manifest() {
     local temp_dir manifest_path output
     temp_dir="$(harness_make_temp_dir "manifest-tool")"
@@ -169,4 +190,124 @@ test_manifest_tool_validate_root_requires_manifest_argument() {
 
     assert_equals "2" "${status}"
     assert_matches "requires --manifest PATH" "${output}"
+}
+
+test_manifest_tool_get_reads_binary_field_as_plain_output() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{target_arch, <<"arm-buildroot-linux-gnueabihf">>}]}.' 
+
+    output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field target_arch)"
+
+    assert_equals "arm-buildroot-linux-gnueabihf" "${output}"
+}
+
+test_manifest_tool_get_reads_atom_field_as_plain_output() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}]}.' 
+
+    output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field id)"
+
+    assert_equals "my_app" "${output}"
+}
+
+test_manifest_tool_get_reads_integer_field_as_plain_output() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{priority, 42}]}.' 
+
+    output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field priority)"
+
+    assert_equals "42" "${output}"
+}
+
+test_manifest_tool_get_reads_atom_lists_as_plain_output() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_FIRMWARE_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{firmware_manifest, <<"1.0">>, [{variants, [plain, secure, encrypted]}]}.' 
+
+    output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field variants)"
+
+    assert_equals "plain secure encrypted" "${output}"
+}
+
+test_manifest_tool_get_reads_nested_fields_in_erlang_format() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_FIRMWARE_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{firmware_manifest, <<"1.0">>, [{capabilities, [{variants, [plain, secure]}]}]}.' 
+
+    output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field capabilities --format erlang)"
+
+    assert_equals "[{variants,[plain,secure]}]" "${output}"
+}
+
+test_manifest_tool_get_rejects_nested_plain_output() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_FIRMWARE_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{firmware_manifest, <<"1.0">>, [{capabilities, [{variants, [plain, secure]}]}]}.' 
+
+    output="$({ manifest_tool_test_run get --manifest "${manifest_path}" --field capabilities; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "use --format erlang" "${output}"
+}
+
+test_manifest_tool_get_reports_missing_fields() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}]}.' 
+
+    output="$({ manifest_tool_test_run get --manifest "${manifest_path}" --field target_arch; } 2>&1)"
+    status=$?
+
+    assert_equals "1" "${status}"
+    assert_matches "Field not found: target_arch" "${output}"
+}
+
+test_manifest_tool_get_rejects_unknown_formats() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{product, demo}]}.' 
+
+    output="$({ manifest_tool_test_run get --manifest "${manifest_path}" --field product --format json; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "unsupported format 'json'" "${output}"
+}
+
+test_manifest_tool_get_preserves_parse_errors() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{product, demo}]'
+
+    output="$({ manifest_tool_test_run get --manifest "${manifest_path}" --field product; } 2>&1)"
+    status=$?
+
+    assert_equals "3" "${status}"
+    assert_matches "Failed to parse manifest" "${output}"
+}
+
+test_manifest_tool_get_preserves_structural_errors() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, "1.0", [{id, my_app}]}.' 
+
+    output="$({ manifest_tool_test_run get --manifest "${manifest_path}" --field id; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "version must be a binary" "${output}"
 }

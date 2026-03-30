@@ -4,13 +4,36 @@
 
 main(Args) ->
     case Args of
+        [] ->
+            print_usage(standard_error),
+            halt(2);
+        ["--help"] ->
+            print_usage(standard_io),
+            halt(0);
+        ["-h"] ->
+            print_usage(standard_io),
+            halt(0);
         ["validate-root" | RestArgs] ->
             run_validate_root(RestArgs);
-        [] ->
-            exit_with(2, "manifest-tool requires a command~n");
+        ["get" | RestArgs] ->
+            run_get(RestArgs);
         [Command | _] ->
             exit_with(2, "manifest-tool command not implemented yet: ~ts~n", [Command])
     end.
+
+print_usage(Device) ->
+    io:format(
+        Device,
+        "Usage: manifest-tool <command> [options]~n~n"
+        "Commands:~n"
+        "  get            Read a top-level field from any Alloy manifest.~n"
+        "  validate-root  Validate the manifest root tuple shape and manifest type.~n~n"
+        "Examples:~n"
+        "  manifest-tool get --manifest ALLOY_SDK_MANIFEST --field product~n"
+        "  manifest-tool get --manifest ALLOY_FIRMWARE_MANIFEST --field capabilities --format erlang~n"
+        "  manifest-tool validate-root --manifest ALLOY_PROJECT_MANIFEST~n",
+        []
+    ).
 
 run_validate_root(Args) ->
     case parse_validate_root_args(Args, undefined) of
@@ -18,6 +41,31 @@ run_validate_root(Args) ->
             case read_manifest_root(ManifestPath) of
                 {ok, Tag, _Version, _Fields} ->
                     io:format("~ts~n", [atom_to_binary(Tag, utf8)]);
+                {error, {structural, Reason}} ->
+                    exit_with(2, "~ts~n", [format_structural_reason(Reason)]);
+                {error, {parse, Reason}} ->
+                    exit_with(3, "~ts~n", [format_parse_reason(ManifestPath, Reason)])
+            end;
+        {error, Reason} ->
+            exit_with(2, "~ts~n", [Reason])
+    end.
+
+run_get(Args) ->
+    case parse_get_args(Args, undefined, undefined, plain) of
+        {ok, ManifestPath, FieldName, Format} ->
+            case read_manifest_root(ManifestPath) of
+                {ok, _Tag, _Version, Fields} ->
+                    case lookup_manifest_field(FieldName, Fields) of
+                        {ok, Value} ->
+                            case render_field_output(Value, Format) of
+                                {ok, Output} ->
+                                    io:format("~ts~n", [Output]);
+                                {error, Reason} ->
+                                    exit_with(2, "~ts~n", [Reason])
+                            end;
+                        error ->
+                            exit_with(1, "Field not found: ~ts~n", [FieldName])
+                    end;
                 {error, {structural, Reason}} ->
                     exit_with(2, "~ts~n", [format_structural_reason(Reason)]);
                 {error, {parse, Reason}} ->
@@ -37,6 +85,28 @@ parse_validate_root_args(["--manifest" | _], _) ->
     {error, <<"validate-root requires --manifest PATH">>};
 parse_validate_root_args([Unknown | _], _) ->
     {error, iolist_to_binary(io_lib:format("validate-root: unknown argument '~ts'", [Unknown]))}.
+
+parse_get_args([], ManifestPath, FieldName, Format)
+        when ManifestPath =/= undefined, FieldName =/= undefined ->
+    {ok, ManifestPath, FieldName, Format};
+parse_get_args([], _ManifestPath, _FieldName, _Format) ->
+    {error, <<"get requires --manifest PATH and --field FIELD_NAME">>};
+parse_get_args(["--manifest", ManifestPath | RestArgs], undefined, FieldName, Format) ->
+    parse_get_args(RestArgs, ManifestPath, FieldName, Format);
+parse_get_args(["--field", FieldName | RestArgs], ManifestPath, undefined, Format) ->
+    parse_get_args(RestArgs, ManifestPath, FieldName, Format);
+parse_get_args(["--format", "erlang" | RestArgs], ManifestPath, FieldName, _Format) ->
+    parse_get_args(RestArgs, ManifestPath, FieldName, erlang);
+parse_get_args(["--format", "plain" | RestArgs], ManifestPath, FieldName, _Format) ->
+    parse_get_args(RestArgs, ManifestPath, FieldName, plain);
+parse_get_args(["--manifest" | _], _ManifestPath, _FieldName, _Format) ->
+    {error, <<"get requires --manifest PATH and --field FIELD_NAME">>};
+parse_get_args(["--field" | _], _ManifestPath, _FieldName, _Format) ->
+    {error, <<"get requires --manifest PATH and --field FIELD_NAME">>};
+parse_get_args(["--format", Format | _], _ManifestPath, _FieldName, _CurrentFormat) ->
+    {error, iolist_to_binary(io_lib:format("get: unsupported format '~ts'", [Format]))};
+parse_get_args([Unknown | _], _ManifestPath, _FieldName, _Format) ->
+    {error, iolist_to_binary(io_lib:format("get: unknown argument '~ts'", [Unknown]))}.
 
 read_manifest_root(ManifestPath) ->
     case file:consult(ManifestPath) of
@@ -70,6 +140,47 @@ validate_manifest_root({_Tag, _Version, Fields}) when not is_list(Fields) ->
 validate_manifest_root(_Term) ->
     {error, {structural, invalid_manifest_root}}.
 
+lookup_manifest_field(FieldName, Fields) ->
+    FieldBinary = unicode:characters_to_binary(FieldName),
+    lookup_manifest_field(FieldBinary, Fields, error).
+
+lookup_manifest_field(_FieldName, [], Result) ->
+    Result;
+lookup_manifest_field(FieldName, [{Key, Value} | Rest], _Result)
+        when is_atom(Key) ->
+    case atom_to_binary(Key, utf8) of
+        FieldName ->
+            {ok, Value};
+        _Other ->
+            lookup_manifest_field(FieldName, Rest, error)
+    end;
+lookup_manifest_field(FieldName, [_Other | Rest], Result) ->
+    lookup_manifest_field(FieldName, Rest, Result).
+
+render_field_output(Value, erlang) ->
+    {ok, iolist_to_binary(io_lib:format("~tp", [Value]))};
+render_field_output(Value, plain) when is_binary(Value) ->
+    {ok, Value};
+render_field_output(Value, plain) when is_atom(Value) ->
+    {ok, atom_to_binary(Value, utf8)};
+render_field_output(Value, plain) when is_integer(Value) ->
+    {ok, integer_to_binary(Value)};
+render_field_output(Value, plain) when is_list(Value) ->
+    case lists:all(fun erlang:is_atom/1, Value) of
+        true ->
+            {ok,
+                list_to_binary(
+                    string:join(
+                        [binary_to_list(atom_to_binary(Item, utf8)) || Item <- Value],
+                        " "
+                    )
+                )};
+        false ->
+            {error, <<"Plain output does not support nested lists or proplists; use --format erlang">>}
+    end;
+render_field_output(_Value, plain) ->
+    {error, <<"Plain output supports only binaries, atoms, integers, and lists of atoms; use --format erlang">>}.
+
 format_structural_reason({unsupported_manifest_tag, Tag}) ->
     iolist_to_binary(
         io_lib:format(
@@ -96,9 +207,6 @@ format_parse_reason(ManifestPath, Reason) ->
     iolist_to_binary(
         io_lib:format("Failed to parse manifest '~ts': ~tp", [ManifestPath, Reason])
     ).
-
-exit_with(Status, Format) ->
-    exit_with(Status, Format, []).
 
 exit_with(Status, Format, Args) ->
     io:format(standard_error, Format, Args),

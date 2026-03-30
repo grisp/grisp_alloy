@@ -118,7 +118,7 @@ Backlog policy:
   - Tests: Unit tests for valid/invalid root structures.
   - Done when: Tool can read all manifest types reliably.
 
-- [ ] **Task 2.2: `manifest-tool get`**
+- [x] **Task 2.2: `manifest-tool get`**
   - Scope: Field retrieval with plain and Erlang output modes.
   - Tests: Unit tests for nested and missing fields.
   - Refinement note (from Task 2.1): Reuse the shared manifest root reader/validator from `manifest-tool` so `get` keeps the same parse-vs-structural error split (exit 3 for parse errors, exit 2 for invalid root shape/tag) before it handles field lookup.
@@ -132,6 +132,7 @@ Backlog policy:
 - [ ] **Task 2.4: `manifest-tool verify`**
   - Scope: Integrity verification against embedded section.
   - Tests: Positive and tampered-manifest tests.
+  - Refinement note (from Task 2.2): Build `verify` on the same reader/field-access helpers now used by `validate-root` and `get`, so integrity mismatches can keep exit `1` distinct from parse (`3`) and structural (`2`) failures.
   - Done when: Corruption is always detected with clear failure reason.
 
 - [ ] **Task 2.5: `manifest-tool merge` for firmware manifest**

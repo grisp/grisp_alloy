@@ -97,6 +97,14 @@ and this project adheres to Semantic Versioning.
   `scripts/tests/test_manifest_tool.sh` covering valid SDK/project/firmware
   roots, malformed term files, multiple-term files, and invalid root-shape
   failures.
+- Added `manifest-tool get` support for top-level field lookup with plain
+  output for binaries/atoms/integers/lists of atoms and `--format erlang` for
+  raw Erlang term output.
+- Added descriptive top-level `manifest-tool` usage output for the no-command
+  path and `--help`, including the currently available commands and examples.
+- Expanded `scripts/tests/test_manifest_tool.sh` to cover `get` output modes,
+  missing fields, unsupported plain rendering for nested values, and preserved
+  parse/structural exit-code behavior.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
