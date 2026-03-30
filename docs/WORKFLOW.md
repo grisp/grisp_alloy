@@ -161,6 +161,11 @@ For every task, execute these steps in order.
    - Commit-message content MUST NOT include acceptance criteria or validation
      logs (for example: `tests: ...`, gate names, PASS/FAIL statements).
      Validation evidence belongs in task context and completion reporting.
+   - If the repository or user workflow requires signed commits, the agent MUST
+     stop after preparing `.git/ALLOY_COMMIT_MSG`, the staged changes, and the
+     completion report, then ask the human manager to run the signed commit.
+     The agent must not weaken or bypass signing requirements in repository or
+     test configuration just to complete the commit non-interactively.
    - MUST commit using this file:
      `git commit -F .git/ALLOY_COMMIT_MSG`
    - Example draft command:
@@ -206,6 +211,8 @@ A task is DONE only if all are true:
 - design docs updated when behavior/spec changed,
 - `CHANGELOG.md` updated,
 - `.git/ALLOY_COMMIT_MSG` prepared,
+- when signed commits are required, the user has been asked to perform the
+  signed commit after reviewing the prepared staged changes and commit message,
 - planning refinement pass completed for future tasks (or explicitly `None`),
 - completion report provided to human manager.
 

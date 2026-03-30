@@ -86,7 +86,7 @@ Backlog policy:
   - Tests: Shell syntax/lint and baseline/full workflow gates.
   - Done when: Reusable shell utility functions are self-describing enough for both human maintainers and AI agents to use correctly without re-reading implementations.
 
-- [ ] **Task 1.7: `scripts/utils/vcs_utils.sh`**
+- [x] **Task 1.7: `scripts/utils/vcs_utils.sh`**
   - Scope: Clone/fetch/checkout/dirty/ref validation helpers.
   - Tests: Unit tests with local git fixtures.
   - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
@@ -274,6 +274,7 @@ Backlog policy:
 - [ ] **Task 5.2: Nugget staging (builtin/local/VCS)**
   - Scope: Stage all nugget inputs into build motherlode.
   - Tests: Integration tests with mixed source types.
+  - Refinement note (from Task 1.7): Resolve `--allow-dirty` and `ALLOY_ALLOW_DIRTY` in the command layer, then pass an explicit `true|false` dirty-policy argument into `vcs_clone_or_validate` for staged VCS sources.
   - Done when: Staging is reproducible and conflict-safe.
 
 - [ ] **Task 5.3: Smelterl binary management**
@@ -333,6 +334,7 @@ Backlog policy:
   - Tests: Command tests for `--sdk` and mode combinations.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build project ...` UX (not legacy script filename forms).
   - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
+  - Refinement note (from Task 1.7): Normalize `--allow-dirty` and `ALLOY_ALLOW_DIRTY` here so downstream VCS/project-source helpers receive an explicit dirty-policy boolean instead of reading ambient environment state.
   - Done when: Project command starts with a validated SDK context and command help/usage is canonicalized.
 
 - [ ] **Task 6.2: Plugin detection and build dispatch**

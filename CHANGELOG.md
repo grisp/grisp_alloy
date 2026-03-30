@@ -68,6 +68,11 @@ and this project adheres to Semantic Versioning.
 - Added compact interface documentation comments to reusable functions in
   `scripts/utils/common.sh`, `console_utils.sh`, `debug_utils.sh`,
   `file_utils.sh`, and `env_utils.sh`.
+- Added `scripts/utils/vcs_utils.sh` with git-backed clone/validation helpers,
+  provenance extraction, and `.alloy_repo_info` generation.
+- Added dedicated VCS utility tests in `scripts/tests/test_vcs_utils.sh`
+  covering clone/update/reclone behavior, dirty-check policy, provenance
+  output, `.alloy_repo_info` writing, and source idempotence.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -109,3 +114,13 @@ and this project adheres to Semantic Versioning.
   exported/reusable functions in sourceable shell utilities and to require
   documentation updates whenever callable interfaces change so docs do not
   drift from implementation.
+- Updated `docs/03_ALLOY_DESIGN.md` so the VCS utility contract uses an
+  explicit `ALLOW_DIRTY` argument, documents the safe dirty-ref behavior, and
+  treats `ALLOY_ALLOW_DIRTY=true` as an Alloy command-level default for
+  `build sdk` and `build project`.
+- Updated `scripts/tests/test_vcs_utils.sh` to isolate fixture git commands
+  from host-global git config instead of writing `commit.gpgsign=false` into
+  the temporary repositories.
+- Updated `docs/WORKFLOW.md` to require the agent to stop at commit
+  preparation and ask the user to perform the signed commit whenever signing is
+  required.

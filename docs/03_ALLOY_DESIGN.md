@@ -241,7 +241,7 @@ alloy build sdk PRODUCT_NUGGET [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `-n PATH`, `--nugget-path PATH` | Additional nugget source (local directory or VCS URL). Repeatable. |
-| `--allow-dirty` | Allow nugget sources that are VCS checkouts (local or cloned) to have uncommitted changes. By default, the orchestrator fails if a repository has a dirty working tree. Use for local development when you have uncommitted edits. See [Nugget staging](#54-nugget-staging-flow) (VCS URL / working tree cleanliness). |
+| `--allow-dirty` | Allow nugget sources that are VCS checkouts (local or cloned) to have uncommitted changes. By default, the orchestrator fails if a repository has a dirty working tree. Use for local development when you have uncommitted edits. Can also be enabled by setting `ALLOY_ALLOW_DIRTY=true`; the command-line flag takes precedence. See [Nugget staging](#54-nugget-staging-flow) (VCS URL / working tree cleanliness). |
 | `--include-sources` | Include redistributable source code in SDK legal-info. |
 | `--clean` / `-c` | Remove the entire build directory before building, redoing everything from scratch (Buildroot, smelterl generation, hooks). |
 | `--clean-package PKG` / `-c PKG` | Remove a specific Buildroot package and rebuild it. Use when a single package needs rebuilding without cleaning the whole tree. **Expert option:** Buildroot does not track inter-package dependencies, so incorrect use may produce inconsistent results. |
@@ -309,7 +309,7 @@ alloy build project PROJECT_SOURCE [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--allow-dirty` | Allow the project source (when it is a local directory that is a VCS checkout or when cloned from a VCS URL) to have uncommitted changes. By default, the orchestrator fails if the repository has a dirty working tree. Use for local development when you have uncommitted edits. |
+| `--allow-dirty` | Allow the project source (when it is a local directory that is a VCS checkout or when cloned from a VCS URL) to have uncommitted changes. By default, the orchestrator fails if the repository has a dirty working tree. Use for local development when you have uncommitted edits. Can also be enabled by setting `ALLOY_ALLOW_DIRTY=true`; the command-line flag takes precedence. |
 | `--profile PROFILE` | Build profile name. Repeatable for multi-profile builds (e.g. `--profile prod --profile debug`). Default: `default`. |
 | `--sdk SDK_REF` | SDK reference: name prefix, path to `.tar.gz`, or directory. Resolved via [artefact resolution](#artefact-resolution) (repository mode only; required if no SDK installed). |
 
@@ -1798,7 +1798,7 @@ The host-side artefact path depends on mode:
 **Per-path staging:**
 
 - **Local directory:** Rsync to `${ALLOY_BUILD_DIR}/motherlode/<dirname>/`. If multiple paths share the same basename, append a numeric suffix (`<dirname>_2`, `<dirname>_3`).
-- **VCS URL:** Clone (or validate existing clone) to `${ALLOY_BUILD_DIR}/motherlode/<reponame>/` using `vcs_utils.sh`. Extract `reponame` from URL. Validate ref, URL match, and working tree cleanliness (unless `--allow-dirty`). If URL mismatch, reclone.
+- **VCS URL:** Clone (or validate existing clone) to `${ALLOY_BUILD_DIR}/motherlode/<reponame>/` using `vcs_utils.sh`. Extract `reponame` from URL. Validate ref, URL match, and working tree cleanliness unless dirty repositories are explicitly allowed for the command (via `--allow-dirty` or `ALLOY_ALLOW_DIRTY=true`). If URL mismatch, reclone.
 
 **Result:** All nugget repositories are available under a single directory (`motherlode/`). This directory is passed to smelterl as `--motherlode` and to Buildroot as `ALLOY_MOTHERLODE`.
 
@@ -3833,7 +3833,7 @@ args_parse "$@" || exit 1
 
 | Function | Purpose |
 |----------|---------|
-| `vcs_clone_or_validate VCS_TYPE URL REF TARGET_DIR` | Clone if missing; validate if existing (URL match, ref match, cleanliness). |
+| `vcs_clone_or_validate VCS_TYPE URL REF TARGET_DIR ALLOW_DIRTY` | Clone if missing; validate if existing (URL match, ref match, cleanliness) while treating dirty-check policy as an explicit caller-controlled argument. |
 | `vcs_get_provenance TARGET_DIR` | Extract VCS metadata: URL, commit, describe, dirty flag. |
 | `write_alloy_repo_info REPO_ROOT` | If `REPO_ROOT` is a VCS checkout (e.g. git), capture URL, commit, describe, dirty and write `.alloy_repo_info` at `REPO_ROOT` per [Data Design - Alloy repository info file](01_DATA_DESIGN.md#alloy-repository-info-file-alloy_repo_info). If not a checkout, do nothing. Used by the Vagrant flow before syncing repository content so smelterl in the VM can get provenance without `.git`. |
 
@@ -3841,8 +3841,9 @@ args_parse "$@" || exit 1
 
 1. **URL mismatch detection** - If cached repo's remote URL differs from requested, reclone.
 2. **Ref/branch validation** - Verify current checkout matches requested ref; fetch and checkout if mismatched.
-3. **Working tree cleanliness** - Fail if dirty (unless `--allow-dirty`).
-4. **Missing directory** - Clone fresh.
+3. **Working tree cleanliness** - Fail if dirty unless the caller passes `ALLOW_DIRTY=true`.
+4. **Dirty ref protection** - When a checkout is dirty and `ALLOW_DIRTY=true`, validation may keep the checkout only when it is already at the requested commit; it must not discard edits to force a different ref.
+5. **Missing directory** - Clone fresh.
 
 #### 8.6.5 file_utils.sh
 
