@@ -99,7 +99,7 @@ Backlog policy:
   - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
   - Done when: First-use relocation and explicit prepare flow work.
 
-- [ ] **Task 1.9: `scripts/utils/plugin_utils.sh`**
+- [x] **Task 1.9: `scripts/utils/plugin_utils.sh`**
   - Scope: Plugin load, detect, call, and typed-read wrappers.
   - Tests: Unit tests with mock plugins.
   - Refinement note (from Task 1.6a): Document every exported function with a compact interface comment describing purpose, arguments, stdout/return behavior, environment assumptions/side effects, and failure mode.
@@ -341,6 +341,7 @@ Backlog policy:
 - [ ] **Task 6.2: Plugin detection and build dispatch**
   - Scope: Detect project type and call plugin build/info hooks.
   - Tests: Unit tests with mock plugin fixtures.
+  - Refinement note (from Task 1.9): Rebuild the project loader on top of `plugin_utils.sh` (`plugin_load`, `plugin_has`, `plugin_call`, `plugin_read`) instead of extending the older hard-coded dispatch pattern in `scripts/plugins/project.sh`.
   - Done when: Plugin selection and dispatch are deterministic.
 
 - [ ] **Task 6.3: Cross-compilation environment setup**

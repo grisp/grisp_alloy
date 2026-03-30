@@ -78,6 +78,11 @@ and this project adheres to Semantic Versioning.
 - Added dedicated SDK relocation tests in `scripts/tests/test_sdk_utils.sh`
   covering placeholder/stale-path fixup, writable vs non-writable SDK roots,
   and the explicit `prepare sdk` command flow.
+- Added `scripts/utils/plugin_utils.sh` with deterministic plugin loading,
+  function dispatch, capability checks, and typed `key=value` reads.
+- Added dedicated plugin utility tests in `scripts/tests/test_plugin_utils.sh`
+  covering sorted plugin loading, tracked plugin types, dispatch failures, and
+  `plugin_read` parsing semantics.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -131,3 +136,6 @@ and this project adheres to Semantic Versioning.
   required.
 - Updated `scripts/commands/prepare-sdk.sh` to execute the documented SDK-mode
   relocation flow instead of failing as an unimplemented placeholder.
+- Updated `docs/PLANNING.md` so the later project-plugin integration task
+  explicitly builds on `plugin_utils.sh` instead of the older hard-coded
+  project loader pattern.
