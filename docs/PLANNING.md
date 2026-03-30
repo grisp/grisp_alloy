@@ -113,7 +113,7 @@ Backlog policy:
 
 ## Phase 2: Tools (`scripts/tools`)
 
-- [ ] **Task 2.1: `manifest-tool` term reader and root validation**
+- [x] **Task 2.1: `manifest-tool` term reader and root validation**
   - Scope: Parse and validate root tuple formats for SDK/project/firmware manifests.
   - Tests: Unit tests for valid/invalid root structures.
   - Done when: Tool can read all manifest types reliably.
@@ -121,6 +121,7 @@ Backlog policy:
 - [ ] **Task 2.2: `manifest-tool get`**
   - Scope: Field retrieval with plain and Erlang output modes.
   - Tests: Unit tests for nested and missing fields.
+  - Refinement note (from Task 2.1): Reuse the shared manifest root reader/validator from `manifest-tool` so `get` keeps the same parse-vs-structural error split (exit 3 for parse errors, exit 2 for invalid root shape/tag) before it handles field lookup.
   - Done when: `get` behavior is deterministic and documented.
 
 - [ ] **Task 2.3: `manifest-tool hash` and canonicalization integration**

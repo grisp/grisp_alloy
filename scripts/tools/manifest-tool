@@ -1,0 +1,105 @@
+#!/usr/bin/env escript
+%%! -noshell
+-mode(compile).
+
+main(Args) ->
+    case Args of
+        ["validate-root" | RestArgs] ->
+            run_validate_root(RestArgs);
+        [] ->
+            exit_with(2, "manifest-tool requires a command~n");
+        [Command | _] ->
+            exit_with(2, "manifest-tool command not implemented yet: ~ts~n", [Command])
+    end.
+
+run_validate_root(Args) ->
+    case parse_validate_root_args(Args, undefined) of
+        {ok, ManifestPath} ->
+            case read_manifest_root(ManifestPath) of
+                {ok, Tag, _Version, _Fields} ->
+                    io:format("~ts~n", [atom_to_binary(Tag, utf8)]);
+                {error, {structural, Reason}} ->
+                    exit_with(2, "~ts~n", [format_structural_reason(Reason)]);
+                {error, {parse, Reason}} ->
+                    exit_with(3, "~ts~n", [format_parse_reason(ManifestPath, Reason)])
+            end;
+        {error, Reason} ->
+            exit_with(2, "~ts~n", [Reason])
+    end.
+
+parse_validate_root_args([], ManifestPath) when ManifestPath =/= undefined ->
+    {ok, ManifestPath};
+parse_validate_root_args([], undefined) ->
+    {error, <<"validate-root requires --manifest PATH">>};
+parse_validate_root_args(["--manifest", ManifestPath | RestArgs], undefined) ->
+    parse_validate_root_args(RestArgs, ManifestPath);
+parse_validate_root_args(["--manifest" | _], _) ->
+    {error, <<"validate-root requires --manifest PATH">>};
+parse_validate_root_args([Unknown | _], _) ->
+    {error, iolist_to_binary(io_lib:format("validate-root: unknown argument '~ts'", [Unknown]))}.
+
+read_manifest_root(ManifestPath) ->
+    case file:consult(ManifestPath) of
+        {ok, [Term]} ->
+            validate_manifest_root(Term);
+        {ok, []} ->
+            {error, {parse, empty_manifest}};
+        {ok, _Terms} ->
+            {error, {parse, multiple_terms}};
+        {error, Reason} ->
+            {error, {parse, Reason}}
+    end.
+
+validate_manifest_root({Tag, Version, Fields})
+        when is_atom(Tag), is_binary(Version), is_list(Fields) ->
+    case lists:member(Tag, [sdk_manifest, project_manifest, firmware_manifest]) of
+        false ->
+            {error, {structural, {unsupported_manifest_tag, Tag}}};
+        true ->
+            case lists:all(fun erlang:is_tuple/1, Fields) of
+                true ->
+                    {ok, Tag, Version, Fields};
+                false ->
+                    {error, {structural, manifest_fields_must_be_tuples}}
+            end
+    end;
+validate_manifest_root({_Tag, Version, _Fields}) when not is_binary(Version) ->
+    {error, {structural, manifest_version_must_be_binary}};
+validate_manifest_root({_Tag, _Version, Fields}) when not is_list(Fields) ->
+    {error, {structural, manifest_fields_must_be_list}};
+validate_manifest_root(_Term) ->
+    {error, {structural, invalid_manifest_root}}.
+
+format_structural_reason({unsupported_manifest_tag, Tag}) ->
+    iolist_to_binary(
+        io_lib:format(
+            "Manifest root must use one of sdk_manifest, project_manifest, or firmware_manifest; got ~tp",
+            [Tag]
+        )
+    );
+format_structural_reason(manifest_version_must_be_binary) ->
+    <<"Manifest root version must be a binary">>;
+format_structural_reason(manifest_fields_must_be_list) ->
+    <<"Manifest root fields must be a list">>;
+format_structural_reason(manifest_fields_must_be_tuples) ->
+    <<"Manifest root fields must contain only tuples">>;
+format_structural_reason(invalid_manifest_root) ->
+    <<"Manifest root must be {Tag, Version, Fields}">>.
+
+format_parse_reason(ManifestPath, empty_manifest) ->
+    iolist_to_binary(io_lib:format("Failed to parse manifest '~ts': file is empty", [ManifestPath]));
+format_parse_reason(ManifestPath, multiple_terms) ->
+    iolist_to_binary(
+        io_lib:format("Failed to parse manifest '~ts': expected exactly one Erlang term", [ManifestPath])
+    );
+format_parse_reason(ManifestPath, Reason) ->
+    iolist_to_binary(
+        io_lib:format("Failed to parse manifest '~ts': ~tp", [ManifestPath, Reason])
+    ).
+
+exit_with(Status, Format) ->
+    exit_with(Status, Format, []).
+
+exit_with(Status, Format, Args) ->
+    io:format(standard_error, Format, Args),
+    halt(Status).

@@ -90,6 +90,13 @@ and this project adheres to Semantic Versioning.
   `scripts/tests/test_security_utils.sh` covering file-vs-directory pack
   resolution, invalid pack rejection, key validation, `info` / `env` parsing,
   and overlay unsupported/success paths.
+- Added initial Erlang `scripts/tools/manifest-tool` escript with the Task 2.1
+  manifest reader/root validator and a focused `validate-root` command for
+  SDK/project/firmware manifest root tuples.
+- Added dedicated manifest-tool tests in
+  `scripts/tests/test_manifest_tool.sh` covering valid SDK/project/firmware
+  roots, malformed term files, multiple-term files, and invalid root-shape
+  failures.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
