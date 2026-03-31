@@ -8,6 +8,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added an initial `smelterl/` OTP project skeleton with a real escript
+  entrypoint, CLI dispatch, `plan` command handler, and Common Test coverage
+  for `plan` option validation and stderr/status behavior.
 - Added end-to-end artefact-server tests covering direct HTTP serving,
   manual-TLS HTTPS serving, and tar-member serving from `<name>.tar`.
 - Added focused shell tests covering the artefact-server CLI validation
@@ -29,6 +32,13 @@ and this project adheres to Semantic Versioning.
 - Added top-level `alloy` entry script with global option parsing (`--help`,
   `--version`, `--debug`, `--trace`, `--dev`, Vagrant flags, `--forward-env`),
   repository/SDK mode detection, and command dispatch.
+
+### Changed
+- Simplified the initial `smelterl` first-pass CLI handling so Dialyzer passes
+  without impossible-branch warnings.
+- Updated the AI workflow and Smelterl test-harness documentation to make
+  Common Test and zero-warning Dialyzer explicit completion requirements for
+  touched Erlang code.
 - Added `scripts/commands/` command handler wrappers for:
   - `build-sdk`
   - `build-project`

@@ -1,0 +1,16 @@
+{application, smelterl, [
+    {description, "GRiSP Alloy smelterl skeleton"},
+    {vsn, "0.1.0"},
+    {modules, [
+        smelterl,
+        smelterl_cli,
+        smelterl_command,
+        smelterl_cmd_plan
+    ]},
+    {registered, []},
+    {applications, [kernel, stdlib]},
+    {env, [
+        {version, "0.1.0"},
+        {command_handlers, [{plan, smelterl_cmd_plan}]}
+    ]}
+]}.

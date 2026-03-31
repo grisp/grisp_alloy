@@ -1,0 +1,116 @@
+-module(smelterl_cmd_plan_SUITE).
+
+-include_lib("common_test/include/ct.hrl").
+
+-export([all/0]).
+-export([
+    global_help_lists_plan_command/1,
+    command_help_shows_plan_usage/1,
+    plan_requires_product/1,
+    plan_requires_motherlode/1,
+    plan_requires_output_plan/1,
+    plan_rejects_unknown_argument/1,
+    valid_plan_args_report_not_implemented/1
+]).
+
+all() ->
+    [
+        global_help_lists_plan_command,
+        command_help_shows_plan_usage,
+        plan_requires_product,
+        plan_requires_motherlode,
+        plan_requires_output_plan,
+        plan_rejects_unknown_argument,
+        valid_plan_args_report_not_implemented
+    ].
+
+global_help_lists_plan_command(_Config) ->
+    {Status, Output} = run_main(["--help"]),
+    assert_equal(0, Status),
+    assert_contains(Output, <<"Usage: smelterl">>),
+    assert_contains(Output, <<"  plan">>).
+
+command_help_shows_plan_usage(_Config) ->
+    {Status, Output} = run_main(["plan", "--help"]),
+    assert_equal(0, Status),
+    assert_contains(Output, <<"Usage: smelterl plan [OPTIONS]">>),
+    assert_contains(Output, <<"--output-plan PATH">>).
+
+plan_requires_product(_Config) ->
+    {Status, Output} = run_main(["plan", "--motherlode", "/tmp/motherlode", "--output-plan", "/tmp/build_plan.term"]),
+    assert_equal(2, Status),
+    assert_contains(Output, <<"plan requires --product.">>).
+
+plan_requires_motherlode(_Config) ->
+    {Status, Output} = run_main(["plan", "--product", "demo", "--output-plan", "/tmp/build_plan.term"]),
+    assert_equal(2, Status),
+    assert_contains(Output, <<"plan requires --motherlode.">>).
+
+plan_requires_output_plan(_Config) ->
+    {Status, Output} = run_main(["plan", "--product", "demo", "--motherlode", "/tmp/motherlode"]),
+    assert_equal(2, Status),
+    assert_contains(Output, <<"plan requires --output-plan.">>).
+
+plan_rejects_unknown_argument(_Config) ->
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", "/tmp/motherlode",
+        "--output-plan", "/tmp/build_plan.term",
+        "--bogus"
+    ]),
+    assert_equal(2, Status),
+    assert_contains(Output, <<"plan: unknown argument '--bogus'">>).
+
+valid_plan_args_report_not_implemented(_Config) ->
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", "/tmp/motherlode",
+        "--output-plan", "/tmp/build_plan.term",
+        "--output-plan-env", "/tmp/build_plan.env",
+        "--extra-config", "FOO=bar",
+        "--extra-config", "BAZ=qux",
+        "--verbose"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(Output, <<"plan execution not implemented yet.">>).
+
+run_main(Argv) ->
+    ScriptDir = filename:dirname(code:which(?MODULE)),
+    SmelterlEbin = filename:join(filename:dirname(ScriptDir), "ebin"),
+    Eval = io_lib:format("halt(smelterl:main(~tp)).", [Argv]),
+    Port =
+        open_port(
+            {spawn_executable, os:find_executable("erl")},
+            [
+                binary,
+                exit_status,
+                stderr_to_stdout,
+                use_stdio,
+                {args, ["-noshell", "-pa", SmelterlEbin, "-eval", lists:flatten(Eval)]}
+            ]
+        ),
+    collect_port_output(Port, []).
+
+collect_port_output(Port, Acc) ->
+    receive
+        {Port, {data, Data}} ->
+            collect_port_output(Port, [Data | Acc]);
+        {Port, {exit_status, Status}} ->
+            {Status, iolist_to_binary(lists:reverse(Acc))}
+    end.
+
+assert_contains(Haystack, Needle) ->
+    case binary:match(Haystack, Needle) of
+        nomatch ->
+            ct:fail("Expected ~tp to contain ~tp", [Haystack, Needle]);
+        _ ->
+            ok
+    end.
+
+assert_equal(Expected, Actual) ->
+    case Actual of
+        Expected -> ok;
+        _ -> ct:fail("Expected ~tp, got ~tp", [Expected, Actual])
+    end.

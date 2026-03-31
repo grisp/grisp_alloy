@@ -130,6 +130,8 @@ For every task, execute these steps in order.
 9. Iterate with focused tests; complete with full suites.
    - During implementation: run targeted tests.
    - Before completion: rerun all full suites.
+   - For touched Erlang code, Common Test MUST pass and Dialyzer MUST report
+     zero warnings before the task is considered complete.
 
 10. Handle design changes through human approval.
    - If design gaps/contradictions are found:
@@ -208,6 +210,8 @@ A task is DONE only if all are true:
 - context file exists and is fully updated,
 - tests added/updated and passing,
 - full relevant suites rerun after code changes,
+- for touched Erlang code, Common Test passes and Dialyzer reports zero
+  warnings,
 - design docs updated when behavior/spec changed,
 - `CHANGELOG.md` updated,
 - `.git/ALLOY_COMMIT_MSG` prepared,
@@ -228,10 +232,13 @@ A task is DONE only if all are true:
 Before finalizing a task:
 - tests:
   - relevant unit/integration/golden/property suites pass,
+  - for touched Erlang code, run the relevant Common Test suite and require it
+    to pass,
 - static checks:
   - run relevant linters and static analysis for touched components
     (for example `shellcheck` for touched shell scripts when available;
     prefer strict mode in CI, Dialyzer for Erlang modules when applicable),
+  - for touched Erlang code, run Dialyzer and require zero warnings,
   - fix lint warnings by changing code/tests whenever feasible,
   - add lint-rule suppressions (`# shellcheck disable=...`, etc.) only as a
     last resort when no practical code change can preserve required behavior,

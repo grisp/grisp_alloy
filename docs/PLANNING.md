@@ -155,7 +155,7 @@ Backlog policy:
 
 ## Phase 3: Smelterl Plan Pipeline (One-Time Resolution)
 
-- [ ] **Task 3.1: `smelterl_cmd_plan` skeleton and option validation**
+- [x] **Task 3.1: `smelterl_cmd_plan` skeleton and option validation**
   - Scope: Command handler with strict required option checks.
   - Tests: Command-option unit tests, stderr/status behavior.
   - Done when: `plan` entry behavior is stable and test-covered.
@@ -163,6 +163,7 @@ Backlog policy:
 - [ ] **Task 3.2: `smelterl_motherlode` load + schema checks**
   - Scope: `.nuggets` and `.nugget` parsing with defaults merge.
   - Tests: Parsing/unit tests for malformed and valid registries.
+  - Refinement note (from Task 3.1): Implement loading behind the new `smelterl` / `smelterl_cli` / `smelterl_cmd_plan` skeleton so `plan` can transition from validated stub to real pipeline without changing the public CLI shape again.
   - Done when: Motherlode map is complete and validated.
 
 - [ ] **Task 3.3: `smelterl_tree` main+aux tree construction**
