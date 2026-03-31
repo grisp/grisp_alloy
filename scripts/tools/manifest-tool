@@ -17,6 +17,8 @@ main(Args) ->
             run_validate_root(RestArgs);
         ["get" | RestArgs] ->
             run_get(RestArgs);
+        ["merge" | RestArgs] ->
+            run_merge(RestArgs);
         ["verify" | RestArgs] ->
             run_verify(RestArgs);
         ["hash" | RestArgs] ->
@@ -31,11 +33,13 @@ print_usage(Device) ->
         "Usage: manifest-tool <command> [options]~n~n"
         "Commands:~n"
         "  get            Read a top-level field from any Alloy manifest.~n"
+        "  merge          Merge an SDK manifest and project manifests into a firmware manifest.~n"
         "  verify         Verify the embedded integrity hash of any Alloy manifest.~n"
         "  hash           Recompute and update the integrity hash of any Alloy manifest.~n"
         "  validate-root  Validate the manifest root tuple shape and manifest type.~n~n"
         "Examples:~n"
         "  manifest-tool get --manifest ALLOY_SDK_MANIFEST --field product~n"
+        "  manifest-tool merge --sdk-manifest ALLOY_SDK_MANIFEST --project-manifests 'build/projects/*/ALLOY_PROJECT_MANIFEST' --firmware-info firmware_variant=plain --output ALLOY_FIRMWARE_MANIFEST~n"
         "  manifest-tool get --manifest ALLOY_FIRMWARE_MANIFEST --field capabilities --format erlang~n"
         "  manifest-tool verify --manifest ALLOY_PROJECT_MANIFEST~n"
         "  manifest-tool hash --manifest ALLOY_PROJECT_MANIFEST~n"
@@ -128,6 +132,24 @@ run_hash(Args) ->
             exit_with(2, "~ts~n", [Reason])
     end.
 
+run_merge(Args) ->
+    case parse_merge_args(Args, undefined, undefined, [], undefined) of
+        {ok, SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, OutputPath} ->
+            case build_firmware_manifest(SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs) of
+                {ok, ManifestTerm} ->
+                    case write_manifest(OutputPath, ManifestTerm) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            exit_with(2, "Failed to write manifest '~ts': ~tp~n", [OutputPath, Reason])
+                    end;
+                {error, {Status, Message}} ->
+                    exit_with(Status, "~ts~n", [Message])
+            end;
+        {error, Reason} ->
+            exit_with(2, "~ts~n", [Reason])
+    end.
+
 parse_validate_root_args([], ManifestPath) when ManifestPath =/= undefined ->
     {ok, ManifestPath};
 parse_validate_root_args([], undefined) ->
@@ -184,6 +206,653 @@ parse_hash_args(["--manifest" | _], _) ->
     {error, <<"hash requires --manifest PATH">>};
 parse_hash_args([Unknown | _], _) ->
     {error, iolist_to_binary(io_lib:format("hash: unknown argument '~ts'", [Unknown]))}.
+
+parse_merge_args([], SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, OutputPath)
+        when SdkManifestPath =/= undefined,
+             ProjectManifestSpec =/= undefined,
+             OutputPath =/= undefined ->
+    {ok, SdkManifestPath, ProjectManifestSpec, lists:reverse(FirmwareInfoArgs), OutputPath};
+parse_merge_args([], _SdkManifestPath, _ProjectManifestSpec, _FirmwareInfoArgs, _OutputPath) ->
+    {error, <<"merge requires --sdk-manifest PATH, --project-manifests GLOB, and --output PATH">>};
+parse_merge_args(["--sdk-manifest", SdkManifestPath | RestArgs], undefined, ProjectManifestSpec, FirmwareInfoArgs, OutputPath) ->
+    parse_merge_args(RestArgs, SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, OutputPath);
+parse_merge_args(["--project-manifests", ProjectManifestSpec | RestArgs], SdkManifestPath, undefined, FirmwareInfoArgs, OutputPath) ->
+    parse_merge_args(RestArgs, SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, OutputPath);
+parse_merge_args(["--firmware-info", FirmwareInfo | RestArgs], SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, OutputPath) ->
+    parse_merge_args(RestArgs, SdkManifestPath, ProjectManifestSpec, [FirmwareInfo | FirmwareInfoArgs], OutputPath);
+parse_merge_args(["--output", OutputPath | RestArgs], SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, undefined) ->
+    parse_merge_args(RestArgs, SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs, OutputPath);
+parse_merge_args(["--sdk-manifest" | _], _SdkManifestPath, _ProjectManifestSpec, _FirmwareInfoArgs, _OutputPath) ->
+    {error, <<"merge requires --sdk-manifest PATH, --project-manifests GLOB, and --output PATH">>};
+parse_merge_args(["--project-manifests" | _], _SdkManifestPath, _ProjectManifestSpec, _FirmwareInfoArgs, _OutputPath) ->
+    {error, <<"merge requires --sdk-manifest PATH, --project-manifests GLOB, and --output PATH">>};
+parse_merge_args(["--firmware-info" | _], _SdkManifestPath, _ProjectManifestSpec, _FirmwareInfoArgs, _OutputPath) ->
+    {error, <<"merge requires --firmware-info KEY=VALUE">>};
+parse_merge_args(["--output" | _], _SdkManifestPath, _ProjectManifestSpec, _FirmwareInfoArgs, _OutputPath) ->
+    {error, <<"merge requires --sdk-manifest PATH, --project-manifests GLOB, and --output PATH">>};
+parse_merge_args([Unknown | _], _SdkManifestPath, _ProjectManifestSpec, _FirmwareInfoArgs, _OutputPath) ->
+    {error, iolist_to_binary(io_lib:format("merge: unknown argument '~ts'", [Unknown]))}.
+
+build_firmware_manifest(SdkManifestPath, ProjectManifestSpec, FirmwareInfoArgs) ->
+    FirmwareManifestVersion = <<"1.0">>,
+    maybe
+        {ok, {SdkVersion, SdkFields}} ?= load_expected_manifest(
+            SdkManifestPath,
+            sdk_manifest,
+            <<"SDK manifest">>
+        ),
+        {ok, ProjectManifestPaths} ?= expand_project_manifest_paths(ProjectManifestSpec),
+        {ok, ProjectManifests} ?= load_project_manifests(ProjectManifestPaths),
+        {ok, ok} ?= verify_input_manifest(
+            SdkManifestPath,
+            sdk_manifest,
+            SdkVersion,
+            SdkFields
+        ),
+        {ok, ok} ?= verify_project_manifests(ProjectManifests),
+        {ok, ok} ?= validate_manifest_versions(
+            FirmwareManifestVersion,
+            [{SdkManifestPath, SdkVersion} | [{Path, Version} || {Path, Version, _Fields} <- ProjectManifests]]
+        ),
+        {ok, FirmwareInfo} ?= parse_firmware_info(FirmwareInfoArgs),
+        {ok, {Repositories, RewrittenSdkFields, RewrittenProjectFields}} ?=
+            consolidate_manifest_repositories(SdkFields, ProjectManifests),
+        {ok, EmbeddedProjects} ?=
+            embed_project_manifests(RewrittenProjectFields, maps:get(project_roots, FirmwareInfo)),
+        {ok, append_integrity_to_manifest(
+            firmware_manifest,
+            FirmwareManifestVersion,
+            build_firmware_manifest_fields(
+                FirmwareInfo,
+                Repositories,
+                RewrittenSdkFields,
+                EmbeddedProjects
+            )
+        )}
+    end.
+
+load_expected_manifest(ManifestPath, ExpectedTag, Label) ->
+    case read_manifest_root(ManifestPath) of
+        {ok, ExpectedTag, Version, Fields} ->
+            {ok, {Version, Fields}};
+        {ok, ActualTag, _Version, _Fields} ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "~ts '~ts' must have root tag ~tp; got ~tp",
+                            [Label, ManifestPath, ExpectedTag, ActualTag]
+                        )
+                    )}};
+        {error, {structural, Reason}} ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "Invalid ~ts '~ts': ~ts",
+                            [Label, ManifestPath, format_structural_reason(Reason)]
+                        )
+                    )}};
+        {error, {parse, Reason}} ->
+            {error, {3, format_parse_reason(ManifestPath, Reason)}}
+    end.
+
+expand_project_manifest_paths(ProjectManifestSpec) ->
+    ProjectManifestPaths0 =
+        case filelib:wildcard(ProjectManifestSpec) of
+            [] ->
+                case filelib:is_regular(ProjectManifestSpec) of
+                    true ->
+                        [ProjectManifestSpec];
+                    false ->
+                        []
+                end;
+            Matches ->
+                Matches
+        end,
+    case lists:usort(ProjectManifestPaths0) of
+        [] ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "merge: project manifest pattern matched no files: ~ts",
+                            [ProjectManifestSpec]
+                        )
+                    )}};
+        ProjectManifestPaths ->
+            {ok, ProjectManifestPaths}
+    end.
+
+load_project_manifests(ProjectManifestPaths) ->
+    load_project_manifests(ProjectManifestPaths, []).
+
+load_project_manifests([], Acc) ->
+    {ok, lists:reverse(Acc)};
+load_project_manifests([ProjectManifestPath | RestPaths], Acc) ->
+    case load_expected_manifest(ProjectManifestPath, project_manifest, <<"Project manifest">>) of
+        {ok, {Version, Fields}} ->
+            load_project_manifests(RestPaths, [{ProjectManifestPath, Version, Fields} | Acc]);
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+verify_project_manifests([]) ->
+    {ok, ok};
+verify_project_manifests([{ProjectManifestPath, Version, Fields} | RestProjectManifests]) ->
+    case verify_input_manifest(ProjectManifestPath, project_manifest, Version, Fields) of
+        {ok, ok} ->
+            verify_project_manifests(RestProjectManifests);
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+verify_input_manifest(ManifestPath, Tag, Version, Fields) ->
+    case verify_manifest(Tag, Version, Fields, false) of
+        {ok, _Summary} ->
+            {ok, ok};
+        {error, {integrity, Reason}} ->
+            {error,
+                {1,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "Manifest integrity verification failed for '~ts': ~ts",
+                            [ManifestPath, format_integrity_reason(Reason)]
+                        )
+                    )}};
+        {error, {structural, Reason}} ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "Invalid manifest integrity metadata in '~ts': ~ts",
+                            [ManifestPath, format_structural_reason(Reason)]
+                        )
+                    )}}
+    end.
+
+validate_manifest_versions(FirmwareManifestVersion, SourceVersions) ->
+    Offenders =
+        [{ManifestPath, Version} ||
+            {ManifestPath, Version} <- SourceVersions,
+            not manifest_versions_compatible(Version, FirmwareManifestVersion)],
+    case Offenders of
+        [] ->
+            {ok, ok};
+        _ ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "Manifest version incompatibility with firmware manifest version ~ts: ~ts",
+                            [
+                                FirmwareManifestVersion,
+                                string:join(
+                                    [
+                                        binary_to_list(
+                                            iolist_to_binary(
+                                                io_lib:format("~ts (~ts)", [ManifestPath, Version])
+                                            )
+                                        )
+                                     || {ManifestPath, Version} <- Offenders
+                                    ],
+                                    ", "
+                                )
+                            ]
+                        )
+                    )}}
+    end.
+
+manifest_versions_compatible(SourceVersion, FirmwareManifestVersion) ->
+    manifest_version_major(SourceVersion) =:= manifest_version_major(FirmwareManifestVersion).
+
+manifest_version_major(Version) when is_binary(Version) ->
+    case split_binary_once(Version, <<".">>) of
+        [Major, _Rest] ->
+            Major;
+        error ->
+            Version;
+        [Major] ->
+            Major
+    end.
+
+parse_firmware_info(FirmwareInfoArgs) ->
+    parse_firmware_info(
+        FirmwareInfoArgs,
+        #{
+            firmware_name => undefined,
+            firmware_version => undefined,
+            firmware_variant => undefined,
+            security_pack => [],
+            parameters => [],
+            project_roots => #{}
+        }
+    ).
+
+parse_firmware_info([], FirmwareInfo) ->
+    case maps:get(firmware_variant, FirmwareInfo) of
+        undefined ->
+            {error, {2, <<"merge requires --firmware-info firmware_variant=VALUE">>}};
+        _FirmwareVariant ->
+            {ok, FirmwareInfo}
+    end;
+parse_firmware_info([FirmwareInfoArg | RestArgs], FirmwareInfo0) ->
+    maybe
+        [Key, Value] ?= split_key_value(FirmwareInfoArg),
+        {ok, FirmwareInfo} ?= parse_firmware_info_entry(Key, Value, FirmwareInfo0),
+        parse_firmware_info(RestArgs, FirmwareInfo)
+    else
+        error ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("merge: firmware-info requires KEY=VALUE; got '~ts'", [FirmwareInfoArg])
+                    )}};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+parse_firmware_info_entry(<<"firmware_name">>, Value, FirmwareInfo) ->
+    {ok, FirmwareInfo#{firmware_name => Value}};
+parse_firmware_info_entry(<<"firmware_version">>, Value, FirmwareInfo) ->
+    {ok, FirmwareInfo#{firmware_version => Value}};
+parse_firmware_info_entry(<<"firmware_variant">>, Value, FirmwareInfo) ->
+    case parse_identifier_atom(Value, <<"firmware variant">>) of
+        {ok, FirmwareVariant} ->
+            {ok, FirmwareInfo#{firmware_variant => FirmwareVariant}};
+        {error, _Reason} = Error ->
+            Error
+    end;
+parse_firmware_info_entry(<<"security_pack_", Key/binary>>, Value, FirmwareInfo) when Key =/= <<>> ->
+    SecurityPackInfo = maps:get(security_pack, FirmwareInfo),
+    {ok, FirmwareInfo#{security_pack => SecurityPackInfo ++ [{Key, Value}]}};
+parse_firmware_info_entry(<<"project_root_", ProjectIdBinary/binary>>, Value, FirmwareInfo) when ProjectIdBinary =/= <<>> ->
+    case parse_identifier_atom(ProjectIdBinary, <<"project id">>) of
+        {ok, ProjectId} ->
+            case Value of
+                <<"/", _/binary>> ->
+                    {ok, FirmwareInfo#{project_roots => maps:put(ProjectId, Value, maps:get(project_roots, FirmwareInfo))}};
+                _ ->
+                    {error,
+                        {2,
+                            iolist_to_binary(
+                                io_lib:format(
+                                    "merge: project_root_~ts must be an absolute path",
+                                    [ProjectIdBinary]
+                                )
+                            )}}
+            end;
+        {error, _Reason} = Error ->
+            Error
+    end;
+parse_firmware_info_entry(<<"param_", ParamSpec/binary>>, Value, FirmwareInfo) when ParamSpec =/= <<>> ->
+    case parse_parameter_spec(ParamSpec, Value) of
+        {ok, ParameterEntry} ->
+            Parameters = maps:get(parameters, FirmwareInfo),
+            {ok, FirmwareInfo#{parameters => Parameters ++ [ParameterEntry]}};
+        {error, _Reason} = Error ->
+            Error
+    end;
+parse_firmware_info_entry(Key, _Value, _FirmwareInfo) ->
+    {error,
+        {2,
+            iolist_to_binary(
+                io_lib:format("merge: unsupported firmware-info key '~ts'", [Key])
+            )}}.
+
+split_key_value(Value) ->
+    split_binary_once(unicode:characters_to_binary(Value), <<"=">>).
+
+parse_identifier_atom(Value, Label) ->
+    case re:run(Value, <<"^[a-z][a-z0-9_]*$">>, [{capture, none}]) of
+        match ->
+            {ok, binary_to_atom(Value, utf8)};
+        nomatch ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("merge: invalid ~ts '~ts'", [Label, Value])
+                    )}}
+    end.
+
+parse_parameter_spec(ParamSpec, Value) ->
+    maybe
+        [ParamNameBinary, TypeBinary] ?= split_binary_once(ParamSpec, <<":">>),
+        true ?= byte_size(ParamNameBinary) > 0 andalso byte_size(TypeBinary) > 0,
+        {ok, ParamName} ?= parse_identifier_atom(ParamNameBinary, <<"parameter name">>),
+        {ok, ParamValue} ?= parse_parameter_value(TypeBinary, Value),
+        {ok, {ParamName, ParamValue}}
+    else
+        error ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "merge: invalid parameter specification 'param_~ts'",
+                            [ParamSpec]
+                        )
+                    )}};
+        false ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format(
+                            "merge: invalid parameter specification 'param_~ts'",
+                            [ParamSpec]
+                        )
+                    )}};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+parse_parameter_value(<<"string">>, Value) ->
+    {ok, Value};
+parse_parameter_value(<<"integer">>, Value) ->
+    try
+        {ok, binary_to_integer(Value)}
+    catch
+        error:badarg ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("merge: invalid integer parameter value '~ts'", [Value])
+                    )}}
+    end;
+parse_parameter_value(<<"boolean">>, <<"true">>) ->
+    {ok, true};
+parse_parameter_value(<<"boolean">>, <<"false">>) ->
+    {ok, false};
+parse_parameter_value(<<"boolean">>, Value) ->
+    {error,
+        {2,
+            iolist_to_binary(
+                io_lib:format("merge: invalid boolean parameter value '~ts'", [Value])
+            )}};
+parse_parameter_value(Type, _Value) ->
+    {error,
+        {2,
+            iolist_to_binary(
+                io_lib:format("merge: unsupported parameter type '~ts'", [Type])
+            )}}.
+
+consolidate_manifest_repositories(SdkFields, ProjectManifests) ->
+    maybe
+        {ok, {RepositoryState1, SdkRepositoryMap}} ?=
+            register_manifest_repositories(SdkFields, new_repository_state(), <<"SDK manifest">>),
+        RewrittenSdkFields =
+            rewrite_repository_references(
+                strip_manifest_fields(SdkFields, [integrity, repositories]),
+                SdkRepositoryMap
+            ),
+        {ok, {RepositoryState2, RewrittenProjects}} ?=
+            rewrite_project_manifests(ProjectManifests, RepositoryState1, []),
+        {ok, {repository_state_entries(RepositoryState2), RewrittenSdkFields, RewrittenProjects}}
+    end.
+
+rewrite_project_manifests([], RepositoryState, Acc) ->
+    {ok, {RepositoryState, lists:reverse(Acc)}};
+rewrite_project_manifests([{ProjectManifestPath, _Version, ProjectFields} | RestProjectManifests], RepositoryState0, Acc) ->
+    maybe
+        {ok, {RepositoryState, ProjectRepositoryMap}} ?=
+            register_manifest_repositories(
+                ProjectFields,
+                RepositoryState0,
+                iolist_to_binary(io_lib:format("Project manifest '~ts'", [ProjectManifestPath]))
+            ),
+        RewrittenProjectFields =
+            rewrite_repository_references(
+                strip_manifest_fields(ProjectFields, [integrity, repositories]),
+                ProjectRepositoryMap
+            ),
+        rewrite_project_manifests(
+            RestProjectManifests,
+            RepositoryState,
+            [{ProjectManifestPath, RewrittenProjectFields} | Acc]
+        )
+    end.
+
+new_repository_state() ->
+    #{entries => [], url_map => #{}, used_ids => #{}}.
+
+repository_state_entries(RepositoryState) ->
+    maps:get(entries, RepositoryState).
+
+register_manifest_repositories(Fields, RepositoryState, SourceLabel) ->
+    case lookup_repositories_section(Fields) of
+        {ok, RepositoryEntries} ->
+            register_repository_entries(RepositoryEntries, RepositoryState, #{}, SourceLabel);
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+lookup_repositories_section(Fields) ->
+    case lookup_field_occurrences(repositories, Fields) of
+        [] ->
+            {ok, []};
+        [{repositories, RepositoryEntries}] when is_list(RepositoryEntries) ->
+            {ok, RepositoryEntries};
+        [{repositories, _RepositoryEntries}] ->
+            {error, {2, <<"Manifest repositories section must be a list">>}};
+        [_First, _Second | _Rest] ->
+            {error, {2, <<"Manifest must contain at most one repositories section">>}}
+    end.
+
+register_repository_entries([], RepositoryState, RepositoryMap, _SourceLabel) ->
+    {ok, {RepositoryState, RepositoryMap}};
+register_repository_entries([{RepoId, RepoFields} | RestEntries], RepositoryState0, RepositoryMap0, SourceLabel)
+        when is_atom(RepoId), is_list(RepoFields) ->
+    case lookup_field(url, RepoFields) of
+        {ok, Url} when is_binary(Url) ->
+            {RepositoryState, NewRepoId} = register_repository_entry(RepoId, Url, RepoFields, RepositoryState0),
+            register_repository_entries(RestEntries, RepositoryState, maps:put(RepoId, NewRepoId, RepositoryMap0), SourceLabel);
+        {ok, _Url} ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("~ts repository ~tp has a non-binary url field", [SourceLabel, RepoId])
+                    )}};
+        error ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("~ts repository ~tp is missing a url field", [SourceLabel, RepoId])
+                    )}}
+    end;
+register_repository_entries([RepositoryEntry | _RestEntries], _RepositoryState, _RepositoryMap, SourceLabel) ->
+    {error,
+        {2,
+            iolist_to_binary(
+                io_lib:format("~ts has an invalid repository entry: ~0tp", [SourceLabel, RepositoryEntry])
+            )}}.
+
+register_repository_entry(RepoId, Url, RepoFields, RepositoryState0) ->
+    UrlMap = maps:get(url_map, RepositoryState0),
+    UsedIds = maps:get(used_ids, RepositoryState0),
+    Entries = maps:get(entries, RepositoryState0),
+    case maps:get(Url, UrlMap, undefined) of
+        undefined ->
+            NewRepoId = unique_repository_id(RepoId, UsedIds),
+            {RepositoryState0#{
+                entries => Entries ++ [{NewRepoId, RepoFields}],
+                url_map => maps:put(Url, NewRepoId, UrlMap),
+                used_ids => maps:put(NewRepoId, true, UsedIds)
+            }, NewRepoId};
+        ExistingRepoId ->
+            {RepositoryState0, ExistingRepoId}
+    end.
+
+unique_repository_id(RepoId, UsedIds) ->
+    case maps:is_key(RepoId, UsedIds) of
+        false ->
+            RepoId;
+        true ->
+            unique_repository_id(RepoId, UsedIds, 2)
+    end.
+
+unique_repository_id(RepoId, UsedIds, Suffix) ->
+    CandidateRepoId =
+        binary_to_atom(
+            iolist_to_binary(io_lib:format("~ts~B", [atom_to_binary(RepoId, utf8), Suffix])),
+            utf8
+        ),
+    case maps:is_key(CandidateRepoId, UsedIds) of
+        false ->
+            CandidateRepoId;
+        true ->
+            unique_repository_id(RepoId, UsedIds, Suffix + 1)
+    end.
+
+strip_manifest_fields(Fields, Keys) ->
+    [Field || {Key, _Value} = Field <- Fields, not lists:member(Key, Keys)].
+
+rewrite_repository_references(Value, RepositoryMap) when is_list(Value) ->
+    [rewrite_repository_references(Item, RepositoryMap) || Item <- Value];
+rewrite_repository_references({repository, RepoId}, RepositoryMap) when is_atom(RepoId) ->
+    {repository, maps:get(RepoId, RepositoryMap, RepoId)};
+rewrite_repository_references({smelterl_repository, RepoId}, RepositoryMap) when is_atom(RepoId) ->
+    {smelterl_repository, maps:get(RepoId, RepositoryMap, RepoId)};
+rewrite_repository_references(Tuple, RepositoryMap) when is_tuple(Tuple) ->
+    list_to_tuple(
+        [rewrite_repository_references(Item, RepositoryMap) || Item <- tuple_to_list(Tuple)]
+    );
+rewrite_repository_references(Value, _RepositoryMap) ->
+    Value.
+
+embed_project_manifests(ProjectFieldsList, ProjectRoots) ->
+    embed_project_manifests(ProjectFieldsList, ProjectRoots, #{}, []).
+
+embed_project_manifests([], _ProjectRoots, _SeenProjectIds, Acc) ->
+    {ok, lists:reverse(Acc)};
+embed_project_manifests([{ProjectManifestPath, ProjectFields} | RestProjectFields], ProjectRoots, SeenProjectIds, Acc) ->
+    case lookup_field(id, ProjectFields) of
+        {ok, ProjectId} when is_atom(ProjectId) ->
+            case maps:is_key(ProjectId, SeenProjectIds) of
+                true ->
+                    {error,
+                        {2,
+                            iolist_to_binary(
+                                io_lib:format("merge: duplicate project id '~ts'", [atom_to_binary(ProjectId, utf8)])
+                            )}};
+                false ->
+                    case maps:get(ProjectId, ProjectRoots, undefined) of
+                        undefined ->
+                            {error,
+                                {2,
+                                    iolist_to_binary(
+                                        io_lib:format(
+                                            "merge: missing --firmware-info project_root_~ts=PATH for project manifest '~ts'",
+                                            [atom_to_binary(ProjectId, utf8), ProjectManifestPath]
+                                        )
+                                    )}};
+                        ProjectRoot ->
+                            embed_project_manifests(
+                                RestProjectFields,
+                                ProjectRoots,
+                                maps:put(ProjectId, true, SeenProjectIds),
+                                [ProjectFields ++ [{project_root, ProjectRoot}] | Acc]
+                            )
+                    end
+            end;
+        {ok, _ProjectId} ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("Project manifest '~ts' has a non-atom id field", [ProjectManifestPath])
+                    )}};
+        error ->
+            {error,
+                {2,
+                    iolist_to_binary(
+                        io_lib:format("Project manifest '~ts' is missing required id field", [ProjectManifestPath])
+                    )}}
+    end.
+
+build_firmware_manifest_fields(FirmwareInfo, Repositories, SdkFields, EmbeddedProjects) ->
+    FirmwareName = resolve_firmware_name(FirmwareInfo, SdkFields, EmbeddedProjects),
+    FirmwareVersion = resolve_firmware_version(FirmwareInfo, SdkFields),
+    SecurityPackField =
+        case maps:get(security_pack, FirmwareInfo) of
+            [] ->
+                {security_pack, none};
+            SecurityPackInfo ->
+                {security_pack, SecurityPackInfo}
+        end,
+    ParameterFields =
+        case maps:get(parameters, FirmwareInfo) of
+            [] ->
+                [];
+            Parameters ->
+                [{parameters, Parameters}]
+        end,
+    [
+        {build_date, current_utc_timestamp()},
+        {firmware_name, FirmwareName},
+        {firmware_version, FirmwareVersion},
+        {firmware_variant, maps:get(firmware_variant, FirmwareInfo)},
+        SecurityPackField
+    ] ++
+        ParameterFields ++
+        [
+            {repositories, Repositories},
+            {sdk, SdkFields},
+            {projects, EmbeddedProjects}
+        ].
+
+resolve_firmware_name(FirmwareInfo, SdkFields, EmbeddedProjects) ->
+    case maps:get(firmware_name, FirmwareInfo) of
+        undefined ->
+            ProjectSegments =
+                [
+                    iolist_to_binary([lookup_binary_field(name, ProjectFields), <<"-">>, lookup_binary_field(version, ProjectFields)])
+                 || ProjectFields <- EmbeddedProjects
+                ],
+            JoinedProjectSegments =
+                case ProjectSegments of
+                    [] ->
+                        <<"firmware">>;
+                    _ ->
+                        iolist_to_binary(string:join([binary_to_list(Segment) || Segment <- ProjectSegments], "+"))
+                end,
+            iolist_to_binary(
+                [
+                    <<"firmware-">>,
+                    JoinedProjectSegments,
+                    <<"-">>,
+                    lookup_binary_field(product, SdkFields),
+                    <<"-">>,
+                    lookup_binary_field(product_version, SdkFields)
+                ]
+            );
+        FirmwareName ->
+            FirmwareName
+    end.
+
+resolve_firmware_version(FirmwareInfo, SdkFields) ->
+    case maps:get(firmware_version, FirmwareInfo) of
+        undefined ->
+            lookup_binary_field(product_version, SdkFields);
+        FirmwareVersion ->
+            FirmwareVersion
+    end.
+
+lookup_binary_field(Key, Fields) ->
+    case lookup_field(Key, Fields) of
+        {ok, Value} when is_binary(Value) ->
+            Value;
+        {ok, Value} ->
+            iolist_to_binary(io_lib:format("~0tp", [Value]));
+        error ->
+            <<"unknown">>
+    end.
+
+current_utc_timestamp() ->
+    unicode:characters_to_binary(
+        calendar:system_time_to_rfc3339(erlang:system_time(second), [{offset, "Z"}, {unit, second}])
+    ).
+
+append_integrity_to_manifest(Tag, Version, Fields) ->
+    Digest = manifest_digest({Tag, Version, Fields}),
+    {Tag, Version, append_integrity_field(Fields, Digest)}.
 
 read_manifest_root(ManifestPath) ->
     case file:consult(ManifestPath) of
@@ -383,6 +1052,23 @@ with_required_integrity_field(Key, IntegrityFields, Fun) ->
             Fun(Value)
     end.
 
+split_binary_once(Binary, Separator) ->
+    case binary:match(Binary, Separator) of
+        {Position, SeparatorLength} when Position > 0 ->
+            [
+                binary:part(Binary, 0, Position),
+                binary:part(
+                    Binary,
+                    Position + SeparatorLength,
+                    byte_size(Binary) - Position - SeparatorLength
+                )
+            ];
+        nomatch ->
+            error;
+        _ ->
+            error
+    end.
+
 validate_integrity_digest(sha256, Digest, CanonicalForm)
         when is_binary(Digest) ->
     case re:run(Digest, <<"^[0-9a-f]{64}$">>, [{capture, none}]) of
@@ -441,7 +1127,12 @@ canonical_manifest_binary(Term) ->
     unicode:characters_to_binary(io_lib:format("~0tp.~n", [Term])).
 
 write_manifest(ManifestPath, Term) ->
-    file:write_file(ManifestPath, render_manifest_file(Term)).
+    case filelib:ensure_dir(ManifestPath) of
+        ok ->
+            file:write_file(ManifestPath, render_manifest_file(Term));
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 render_manifest_file(Term) ->
     unicode:characters_to_binary(

@@ -117,6 +117,13 @@ and this project adheres to Semantic Versioning.
 - Added manifest-tool verification tests covering successful verification,
   tampered manifests, missing integrity sections, unsupported integrity
   metadata, and preserved parse/structural exit-code behavior.
+- Added `manifest-tool merge` support to assemble firmware manifests from one
+  SDK manifest plus one or more project manifests, including input integrity
+  verification, repository consolidation with reference rewriting, firmware
+  metadata decoding from `--firmware-info`, and final integrity hashing.
+- Added manifest-tool merge tests covering successful firmware manifest
+  assembly, repository-ID conflict rewriting, tampered-input rejection, and
+  required `project_root_<id>` enforcement.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog

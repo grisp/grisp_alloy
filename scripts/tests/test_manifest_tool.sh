@@ -71,6 +71,7 @@ test_manifest_tool_help_flag_shows_usage() {
 
     assert_matches "Usage: manifest-tool <command> \\[options\\]" "${output}"
     assert_matches "Read a top-level field" "${output}"
+    assert_matches "Merge an SDK manifest" "${output}"
     assert_matches "Verify the embedded integrity hash" "${output}"
     assert_matches "Validate the manifest root tuple shape" "${output}"
     assert_matches "Recompute and update the integrity hash" "${output}"
@@ -520,4 +521,107 @@ test_manifest_tool_verify_preserves_structural_errors() {
 
     assert_equals "2" "${status}"
     assert_matches "version must be a binary" "${output}"
+}
+
+test_manifest_tool_merge_builds_firmware_manifest_and_rewrites_repo_conflicts() {
+    local temp_dir sdk_manifest project_alpha_manifest project_beta_manifest output_manifest verify_output repositories_output projects_output security_output parameters_output variant_output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    sdk_manifest="${temp_dir}/sdk/ALLOY_SDK_MANIFEST"
+    project_alpha_manifest="${temp_dir}/projects/alpha/ALLOY_PROJECT_MANIFEST"
+    project_beta_manifest="${temp_dir}/projects/beta/ALLOY_PROJECT_MANIFEST"
+    output_manifest="${temp_dir}/firmware/ALLOY_FIRMWARE_MANIFEST"
+
+    manifest_tool_test_write_manifest "${sdk_manifest}" '{sdk_manifest, <<"1.0">>, [{product, <<"grisp2_vanilla">>}, {product_version, <<"1.0.0">>}, {build_environment, [{smelterl_repository, sdk_repo}]}, {repositories, [{sdk_repo, [{name, <<"sdk_repo">>}, {type, git}, {url, <<"https://example.com/sdk.git">>}, {commit, <<"sdk-commit">>}, {describe, <<"sdk-v1">>}, {dirty, false}]}, {shared_repo, [{name, <<"shared_repo">>}, {type, git}, {url, <<"https://example.com/shared.git">>}, {commit, <<"shared-commit">>}, {describe, <<"shared-v1">>}, {dirty, false}]}]}, {nuggets, [{nugget, platform_demo, [{repository, sdk_repo}]}, {nugget, feature_shared, [{repository, shared_repo}]}]}]}.' 
+    manifest_tool_test_hash_manifest "${sdk_manifest}"
+
+    manifest_tool_test_write_manifest "${project_alpha_manifest}" '{project_manifest, <<"1.0">>, [{id, alpha}, {name, <<"alpha">>}, {version, <<"2.0.0">>}, {repository, project_alpha}, {repositories, [{project_alpha, [{name, <<"project_alpha">>}, {type, git}, {url, <<"https://example.com/project-alpha.git">>}, {commit, <<"alpha-commit">>}, {describe, <<"alpha-v2">>}, {dirty, false}]}, {shared_repo, [{name, <<"shared_repo">>}, {type, git}, {url, <<"https://example.com/shared.git">>}, {commit, <<"shared-commit">>}, {describe, <<"shared-v1">>}, {dirty, false}]}]}, {dependencies, [{shared_dep, [{type, git}, {repository, shared_repo}, {ref, <<"shared-v1">>}]}]}]}.' 
+    manifest_tool_test_hash_manifest "${project_alpha_manifest}"
+
+    manifest_tool_test_write_manifest "${project_beta_manifest}" '{project_manifest, <<"1.0">>, [{id, beta}, {name, <<"beta">>}, {version, <<"3.1.0">>}, {repository, sdk_repo}, {repositories, [{sdk_repo, [{name, <<"project_beta">>}, {type, git}, {url, <<"https://example.com/project-beta.git">>}, {commit, <<"beta-commit">>}, {describe, <<"beta-v3">>}, {dirty, false}]}]}, {dependencies, [{beta_dep, [{type, git}, {repository, sdk_repo}, {ref, <<"beta-v3">>}]}]}]}.' 
+    manifest_tool_test_hash_manifest "${project_beta_manifest}"
+
+    manifest_tool_test_run merge \
+        --sdk-manifest "${sdk_manifest}" \
+        --project-manifests "${temp_dir}/projects/*/ALLOY_PROJECT_MANIFEST" \
+        --firmware-info firmware_variant=secure \
+        --firmware-info firmware_name=demo_firmware \
+        --firmware-info firmware_version=9.9.9 \
+        --firmware-info security_pack_name=acme_secpack \
+        --firmware-info security_pack_version=2.0 \
+        --firmware-info param_serial_number:string=SN123 \
+        --firmware-info param_retry_count:integer=3 \
+        --firmware-info param_factory_mode:boolean=true \
+        --firmware-info project_root_alpha=/srv/alloy/alpha \
+        --firmware-info project_root_beta=/srv/alloy/beta \
+        --output "${output_manifest}"
+
+    verify_output="$(manifest_tool_test_run verify --manifest "${output_manifest}")"
+    variant_output="$(manifest_tool_test_run get --manifest "${output_manifest}" --field firmware_variant)"
+    security_output="$(manifest_tool_test_run get --manifest "${output_manifest}" --field security_pack --format erlang)"
+    parameters_output="$(manifest_tool_test_run get --manifest "${output_manifest}" --field parameters --format erlang)"
+    repositories_output="$(manifest_tool_test_run get --manifest "${output_manifest}" --field repositories --format erlang)"
+    projects_output="$(manifest_tool_test_run get --manifest "${output_manifest}" --field projects --format erlang)"
+
+    assert_matches "manifest=firmware_manifest" "${verify_output}"
+    assert_matches "integrity=PASS" "${verify_output}"
+    assert_equals "secure" "${variant_output}"
+    assert_equals "[{<<\"name\">>,<<\"acme_secpack\">>},{<<\"version\">>,<<\"2.0\">>}]" "${security_output}"
+    assert_equals "[{serial_number,<<\"SN123\">>},{retry_count,3},{factory_mode,true}]" "${parameters_output}"
+    assert_matches "\\{sdk_repo,\\[\\{name,<<\"sdk_repo\">>\\},\\{type,git\\},\\{url,<<\"https://example.com/sdk.git\">>" "${repositories_output}"
+    assert_matches "\\{shared_repo,\\[\\{name,<<\"shared_repo\">>\\},\\{type,git\\},\\{url,<<\"https://example.com/shared.git\">>" "${repositories_output}"
+    assert_matches "\\{sdk_repo2,\\[\\{name,<<\"project_beta\">>\\},\\{type,git\\},\\{url,<<\"https://example.com/project-beta.git\">>" "${repositories_output}"
+    assert_matches "\\{project_root,<<\"/srv/alloy/alpha\">>\\}" "${projects_output}"
+    assert_matches "\\{project_root,<<\"/srv/alloy/beta\">>\\}" "${projects_output}"
+    assert_matches "\\{repository,sdk_repo2\\}" "${projects_output}"
+}
+
+test_manifest_tool_merge_rejects_tampered_project_manifest() {
+    local temp_dir sdk_manifest project_manifest output_manifest output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    sdk_manifest="${temp_dir}/sdk/ALLOY_SDK_MANIFEST"
+    project_manifest="${temp_dir}/projects/app/ALLOY_PROJECT_MANIFEST"
+    output_manifest="${temp_dir}/firmware/ALLOY_FIRMWARE_MANIFEST"
+
+    manifest_tool_test_write_manifest "${sdk_manifest}" '{sdk_manifest, <<"1.0">>, [{product, <<"grisp2_vanilla">>}, {product_version, <<"1.0.0">>}, {repositories, []}]}.' 
+    manifest_tool_test_hash_manifest "${sdk_manifest}"
+
+    manifest_tool_test_write_manifest "${project_manifest}" '{project_manifest, <<"1.0">>, [{id, app}, {name, <<"app">>}, {version, <<"1.0.0">>}, {repositories, []}]}.' 
+    manifest_tool_test_hash_manifest "${project_manifest}"
+    manifest_tool_test_write_manifest "${project_manifest}" '{project_manifest, <<"1.0">>, [{id, app}, {name, <<"tampered">>}, {version, <<"1.0.0">>}, {repositories, []}, {integrity, [{digest_algorithm, sha256}, {canonical_form, basic_term_canon}, {digest, <<"17a3d0c7e81ec7b76885e5f5d3b75f847bcf9783df82b295673eee1268db15bf">>}]}]}.' 
+
+    output="$({ manifest_tool_test_run merge \
+        --sdk-manifest "${sdk_manifest}" \
+        --project-manifests "${temp_dir}/projects/*/ALLOY_PROJECT_MANIFEST" \
+        --firmware-info firmware_variant=plain \
+        --firmware-info project_root_app=/srv/alloy/app \
+        --output "${output_manifest}"; } 2>&1)"
+    status=$?
+
+    assert_equals "1" "${status}"
+    assert_matches "integrity verification failed" "${output}"
+    assert_matches "${project_manifest}" "${output}"
+}
+
+test_manifest_tool_merge_requires_project_root_for_each_project() {
+    local temp_dir sdk_manifest project_manifest output_manifest output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    sdk_manifest="${temp_dir}/sdk/ALLOY_SDK_MANIFEST"
+    project_manifest="${temp_dir}/projects/app/ALLOY_PROJECT_MANIFEST"
+    output_manifest="${temp_dir}/firmware/ALLOY_FIRMWARE_MANIFEST"
+
+    manifest_tool_test_write_manifest "${sdk_manifest}" '{sdk_manifest, <<"1.0">>, [{product, <<"grisp2_vanilla">>}, {product_version, <<"1.0.0">>}, {repositories, []}]}.' 
+    manifest_tool_test_hash_manifest "${sdk_manifest}"
+
+    manifest_tool_test_write_manifest "${project_manifest}" '{project_manifest, <<"1.0">>, [{id, app}, {name, <<"app">>}, {version, <<"1.0.0">>}, {repositories, []}]}.' 
+    manifest_tool_test_hash_manifest "${project_manifest}"
+
+    output="$({ manifest_tool_test_run merge \
+        --sdk-manifest "${sdk_manifest}" \
+        --project-manifests "${temp_dir}/projects/*/ALLOY_PROJECT_MANIFEST" \
+        --firmware-info firmware_variant=plain \
+        --output "${output_manifest}"; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "project_root_app" "${output}"
 }

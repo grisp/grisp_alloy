@@ -136,7 +136,7 @@ Backlog policy:
   - Refinement note (from Task 2.3): Reuse the shared `basic_term_canon`/SHA-256 helpers added for `hash`, including the width-independent compact serializer (`~0tp`), so `verify` compares the exact same canonical byte stream that producers hash.
   - Done when: Corruption is always detected with clear failure reason.
 
-- [ ] **Task 2.5: `manifest-tool merge` for firmware manifest**
+- [x] **Task 2.5: `manifest-tool merge` for firmware manifest**
   - Scope: Merge SDK + project manifests + firmware-info inputs.
   - Tests: Golden test for merged firmware manifest content.
   - Refinement note (from Task 2.4): Reuse the shared integrity-metadata validation and digest helpers from `verify` to reject tampered SDK/project manifests before merge proceeds, keeping integrity failures distinct from parse/structural input errors.
@@ -414,6 +414,7 @@ Backlog policy:
 - [ ] **Task 7.8: Firmware manifest merge and rootfs inclusion**
   - Scope: Generate and place `ALLOY_FIRMWARE_MANIFEST` in rootfs overlay.
   - Tests: Integration tests for merge fields and integrity.
+  - Refinement note (from Task 2.5): Invoke `manifest-tool merge` with one `--project-manifests` glob/string argument and flat `--firmware-info` entries; the tool expands the glob internally, requires one `project_root_<id>` per embedded project, and preserves integrity failures as exit 1 distinct from parse/structural failures.
   - Done when: Final firmware includes valid merged manifest.
 
 - [ ] **Task 7.9: Firmware artifact packaging**
