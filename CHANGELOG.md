@@ -111,6 +111,12 @@ and this project adheres to Semantic Versioning.
 - Added manifest-tool golden tests for known integrity digests, field-order
   sensitivity, stale-integrity replacement, and preserved parse/structural
   failures in the new `hash` command path.
+- Added `manifest-tool verify` support to validate embedded manifest integrity
+  hashes, including `--integrity-only`, mismatch reporting, and explicit
+  unsupported-algorithm / unsupported-canonical-form failures.
+- Added manifest-tool verification tests covering successful verification,
+  tampered manifests, missing integrity sections, unsupported integrity
+  metadata, and preserved parse/structural exit-code behavior.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog

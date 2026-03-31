@@ -129,7 +129,7 @@ Backlog policy:
   - Tests: Golden tests for known digest outputs.
   - Done when: Stable digest output matches spec.
 
-- [ ] **Task 2.4: `manifest-tool verify`**
+- [x] **Task 2.4: `manifest-tool verify`**
   - Scope: Integrity verification against embedded section.
   - Tests: Positive and tampered-manifest tests.
   - Refinement note (from Task 2.2): Build `verify` on the same reader/field-access helpers now used by `validate-root` and `get`, so integrity mismatches can keep exit `1` distinct from parse (`3`) and structural (`2`) failures.
@@ -139,6 +139,7 @@ Backlog policy:
 - [ ] **Task 2.5: `manifest-tool merge` for firmware manifest**
   - Scope: Merge SDK + project manifests + firmware-info inputs.
   - Tests: Golden test for merged firmware manifest content.
+  - Refinement note (from Task 2.4): Reuse the shared integrity-metadata validation and digest helpers from `verify` to reject tampered SDK/project manifests before merge proceeds, keeping integrity failures distinct from parse/structural input errors.
   - Done when: Output structure and integrity are spec-compliant.
 
 - [ ] **Task 2.6: `artefact-server` wrapper contract**

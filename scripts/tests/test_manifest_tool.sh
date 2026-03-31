@@ -46,6 +46,11 @@ ${body}
 EOF
 }
 
+manifest_tool_test_hash_manifest() {
+    local manifest_path="$1"
+    manifest_tool_test_run hash --manifest "${manifest_path}"
+}
+
 test_manifest_tool_shows_usage_when_no_command_is_provided() {
     local output status
     output="$({ manifest_tool_test_run; } 2>&1)"
@@ -56,6 +61,7 @@ test_manifest_tool_shows_usage_when_no_command_is_provided() {
     assert_matches "Commands:" "${output}"
     assert_matches "validate-root" "${output}"
     assert_matches "get" "${output}"
+    assert_matches "verify" "${output}"
     assert_matches "hash" "${output}"
 }
 
@@ -65,6 +71,7 @@ test_manifest_tool_help_flag_shows_usage() {
 
     assert_matches "Usage: manifest-tool <command> \\[options\\]" "${output}"
     assert_matches "Read a top-level field" "${output}"
+    assert_matches "Verify the embedded integrity hash" "${output}"
     assert_matches "Validate the manifest root tuple shape" "${output}"
     assert_matches "Recompute and update the integrity hash" "${output}"
 }
@@ -391,6 +398,124 @@ test_manifest_tool_hash_preserves_structural_errors() {
     manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, "1.0", [{id, my_app}]}.' 
 
     output="$({ manifest_tool_test_run hash --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "version must be a binary" "${output}"
+}
+
+test_manifest_tool_verify_accepts_valid_manifest() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{product, demo}, {target_arch, <<"arm-buildroot-linux-gnueabihf">>}]}.' 
+    manifest_tool_test_hash_manifest "${manifest_path}"
+
+    output="$(manifest_tool_test_run verify --manifest "${manifest_path}")"
+
+    assert_matches "manifest=sdk_manifest" "${output}"
+    assert_matches "version=1.0" "${output}"
+    assert_matches "integrity=PASS" "${output}"
+}
+
+test_manifest_tool_verify_integrity_only_accepts_valid_manifest() {
+    local temp_dir manifest_path output
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}, {name, <<"demo">>}]}.' 
+    manifest_tool_test_hash_manifest "${manifest_path}"
+
+    output="$(manifest_tool_test_run verify --manifest "${manifest_path}" --integrity-only)"
+
+    assert_matches "manifest=project_manifest" "${output}"
+    assert_matches "version=1.0" "${output}"
+    assert_matches "integrity=PASS" "${output}"
+}
+
+test_manifest_tool_verify_detects_tampered_manifest() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}, {name, <<"demo">>}]}.' 
+    manifest_tool_test_hash_manifest "${manifest_path}"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}, {name, <<"tampered">>}, {integrity, [{digest_algorithm, sha256}, {canonical_form, basic_term_canon}, {digest, <<"e775a31afd09fac6c3f57b6bacdafc827dba75450b2d13d63227d065588ec1cf">>}]}]}.' 
+
+    output="$({ manifest_tool_test_run verify --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "1" "${status}"
+    assert_matches "integrity=FAIL" "${output}"
+    assert_matches "Digest mismatch" "${output}"
+}
+
+test_manifest_tool_verify_rejects_missing_integrity_section() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_FIRMWARE_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{firmware_manifest, <<"1.0">>, [{firmware_variant, plain}]}.' 
+
+    output="$({ manifest_tool_test_run verify --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Manifest is missing integrity section" "${output}"
+}
+
+test_manifest_tool_verify_rejects_unsupported_digest_algorithm() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}, {name, <<"demo">>}, {integrity, [{digest_algorithm, sha3_256}, {canonical_form, basic_term_canon}, {digest, <<"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">>}]}]}.' 
+
+    output="$({ manifest_tool_test_run verify --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Unsupported digest algorithm: sha3_256" "${output}"
+}
+
+test_manifest_tool_verify_rejects_unsupported_canonical_form() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}, {name, <<"demo">>}, {integrity, [{digest_algorithm, sha256}, {canonical_form, future_canon}, {digest, <<"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">>}]}]}.' 
+
+    output="$({ manifest_tool_test_run verify --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Unsupported canonical form: future_canon" "${output}"
+}
+
+test_manifest_tool_verify_requires_manifest_argument() {
+    local output status
+    output="$({ manifest_tool_test_run verify; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "verify requires --manifest PATH" "${output}"
+}
+
+test_manifest_tool_verify_preserves_parse_errors() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{product, demo}]'
+
+    output="$({ manifest_tool_test_run verify --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "3" "${status}"
+    assert_matches "Failed to parse manifest" "${output}"
+}
+
+test_manifest_tool_verify_preserves_structural_errors() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, "1.0", [{id, my_app}]}.' 
+
+    output="$({ manifest_tool_test_run verify --manifest "${manifest_path}"; } 2>&1)"
     status=$?
 
     assert_equals "2" "${status}"

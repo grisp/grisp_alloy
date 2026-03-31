@@ -17,6 +17,8 @@ main(Args) ->
             run_validate_root(RestArgs);
         ["get" | RestArgs] ->
             run_get(RestArgs);
+        ["verify" | RestArgs] ->
+            run_verify(RestArgs);
         ["hash" | RestArgs] ->
             run_hash(RestArgs);
         [Command | _] ->
@@ -29,11 +31,13 @@ print_usage(Device) ->
         "Usage: manifest-tool <command> [options]~n~n"
         "Commands:~n"
         "  get            Read a top-level field from any Alloy manifest.~n"
+        "  verify         Verify the embedded integrity hash of any Alloy manifest.~n"
         "  hash           Recompute and update the integrity hash of any Alloy manifest.~n"
         "  validate-root  Validate the manifest root tuple shape and manifest type.~n~n"
         "Examples:~n"
         "  manifest-tool get --manifest ALLOY_SDK_MANIFEST --field product~n"
         "  manifest-tool get --manifest ALLOY_FIRMWARE_MANIFEST --field capabilities --format erlang~n"
+        "  manifest-tool verify --manifest ALLOY_PROJECT_MANIFEST~n"
         "  manifest-tool hash --manifest ALLOY_PROJECT_MANIFEST~n"
         "  manifest-tool validate-root --manifest ALLOY_PROJECT_MANIFEST~n",
         []
@@ -69,6 +73,28 @@ run_get(Args) ->
                             end;
                         error ->
                             exit_with(1, "Field not found: ~ts~n", [FieldName])
+                    end;
+                {error, {structural, Reason}} ->
+                    exit_with(2, "~ts~n", [format_structural_reason(Reason)]);
+                {error, {parse, Reason}} ->
+                    exit_with(3, "~ts~n", [format_parse_reason(ManifestPath, Reason)])
+            end;
+        {error, Reason} ->
+            exit_with(2, "~ts~n", [Reason])
+    end.
+
+run_verify(Args) ->
+    case parse_verify_args(Args, undefined, false) of
+        {ok, ManifestPath, IntegrityOnly} ->
+            case read_manifest_root(ManifestPath) of
+                {ok, Tag, Version, Fields} ->
+                    case verify_manifest(Tag, Version, Fields, IntegrityOnly) of
+                        {ok, Summary} ->
+                            io:format("~ts~n", [Summary]);
+                        {error, {integrity, Reason}} ->
+                            exit_with(1, "~ts~n", [format_verify_summary(Tag, Version, fail, Reason)]);
+                        {error, {structural, Reason}} ->
+                            exit_with(2, "~ts~n", [format_structural_reason(Reason)])
                     end;
                 {error, {structural, Reason}} ->
                     exit_with(2, "~ts~n", [format_structural_reason(Reason)]);
@@ -134,6 +160,19 @@ parse_get_args(["--format", Format | _], _ManifestPath, _FieldName, _CurrentForm
     {error, iolist_to_binary(io_lib:format("get: unsupported format '~ts'", [Format]))};
 parse_get_args([Unknown | _], _ManifestPath, _FieldName, _Format) ->
     {error, iolist_to_binary(io_lib:format("get: unknown argument '~ts'", [Unknown]))}.
+
+parse_verify_args([], ManifestPath, IntegrityOnly) when ManifestPath =/= undefined ->
+    {ok, ManifestPath, IntegrityOnly};
+parse_verify_args([], undefined, _IntegrityOnly) ->
+    {error, <<"verify requires --manifest PATH">>};
+parse_verify_args(["--manifest", ManifestPath | RestArgs], undefined, IntegrityOnly) ->
+    parse_verify_args(RestArgs, ManifestPath, IntegrityOnly);
+parse_verify_args(["--integrity-only" | RestArgs], ManifestPath, _IntegrityOnly) ->
+    parse_verify_args(RestArgs, ManifestPath, true);
+parse_verify_args(["--manifest" | _], _ManifestPath, _IntegrityOnly) ->
+    {error, <<"verify requires --manifest PATH">>};
+parse_verify_args([Unknown | _], _ManifestPath, _IntegrityOnly) ->
+    {error, iolist_to_binary(io_lib:format("verify: unknown argument '~ts'", [Unknown]))}.
 
 parse_hash_args([], ManifestPath) when ManifestPath =/= undefined ->
     {ok, ManifestPath};
@@ -232,6 +271,26 @@ format_structural_reason(manifest_fields_must_be_list) ->
     <<"Manifest root fields must be a list">>;
 format_structural_reason(manifest_fields_must_be_tuples) ->
     <<"Manifest root fields must contain only tuples">>;
+format_structural_reason(multiple_integrity_sections) ->
+    <<"Manifest must contain exactly one integrity section">>;
+format_structural_reason(missing_integrity_section) ->
+    <<"Manifest is missing integrity section">>;
+format_structural_reason(integrity_fields_must_be_list) ->
+    <<"Integrity section fields must be a list">>;
+format_structural_reason(integrity_fields_must_be_tuples) ->
+    <<"Integrity section fields must contain only tuples">>;
+format_structural_reason({missing_integrity_field, Key}) ->
+    iolist_to_binary(io_lib:format("Integrity section is missing required field: ~ts", [atom_to_binary(Key, utf8)]));
+format_structural_reason({integrity_field_must_be_atom, Key}) ->
+    iolist_to_binary(io_lib:format("Integrity field ~ts must be an atom", [atom_to_binary(Key, utf8)]));
+format_structural_reason({integrity_field_must_be_binary, Key}) ->
+    iolist_to_binary(io_lib:format("Integrity field ~ts must be a binary", [atom_to_binary(Key, utf8)]));
+format_structural_reason({unsupported_digest_algorithm, Algorithm}) ->
+    iolist_to_binary(io_lib:format("Unsupported digest algorithm: ~tp", [Algorithm]));
+format_structural_reason({unsupported_canonical_form, Form}) ->
+    iolist_to_binary(io_lib:format("Unsupported canonical form: ~tp", [Form]));
+format_structural_reason({invalid_digest_format, sha256}) ->
+    <<"Integrity digest must be a lowercase hex binary of length 64 for sha256">>;
 format_structural_reason(invalid_manifest_root) ->
     <<"Manifest root must be {Tag, Version, Fields}">>.
 
@@ -258,8 +317,125 @@ append_integrity_field(Fields, Digest) ->
                 {digest, Digest}
             ]}].
 
+verify_manifest(Tag, Version, Fields, _IntegrityOnly) ->
+    case verify_integrity_metadata(Fields) of
+        {ok, DigestAlgorithm, CanonicalForm, ExpectedDigest} ->
+            case manifest_digest({Tag, Version, strip_integrity_fields(Fields)}, DigestAlgorithm, CanonicalForm) of
+                {ok, ExpectedDigest} ->
+                    {ok, format_verify_summary(Tag, Version, pass, undefined)};
+                {ok, ActualDigest} ->
+                    {error, {integrity, {digest_mismatch, ExpectedDigest, ActualDigest}}}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+verify_integrity_metadata(Fields) ->
+    case lookup_field_occurrences(integrity, Fields) of
+        [] ->
+            {error, {structural, missing_integrity_section}};
+        [_First, _Second | _Rest] ->
+            {error, {structural, multiple_integrity_sections}};
+        [{integrity, IntegrityFields}] when not is_list(IntegrityFields) ->
+            {error, {structural, integrity_fields_must_be_list}};
+        [{integrity, IntegrityFields}] ->
+            case lists:all(fun erlang:is_tuple/1, IntegrityFields) of
+                false ->
+                    {error, {structural, integrity_fields_must_be_tuples}};
+                true ->
+                    verify_integrity_fields(IntegrityFields)
+            end
+    end.
+
+verify_integrity_fields(IntegrityFields) ->
+    with_required_integrity_field(digest_algorithm, IntegrityFields,
+        fun(DigestAlgorithm) when not is_atom(DigestAlgorithm) ->
+                {error, {structural, {integrity_field_must_be_atom, digest_algorithm}}};
+           (DigestAlgorithm) ->
+                case DigestAlgorithm of
+                    sha256 ->
+                        with_required_integrity_field(canonical_form, IntegrityFields,
+                            fun(CanonicalForm) when not is_atom(CanonicalForm) ->
+                                    {error, {structural, {integrity_field_must_be_atom, canonical_form}}};
+                               (CanonicalForm) ->
+                                    case CanonicalForm of
+                                        basic_term_canon ->
+                                            with_required_integrity_field(digest, IntegrityFields,
+                                                fun(Digest) when not is_binary(Digest) ->
+                                                        {error, {structural, {integrity_field_must_be_binary, digest}}};
+                                                   (Digest) ->
+                                                        validate_integrity_digest(DigestAlgorithm, Digest, CanonicalForm)
+                                                end);
+                                        _ ->
+                                            {error, {structural, {unsupported_canonical_form, CanonicalForm}}}
+                                    end
+                            end);
+                    _ ->
+                        {error, {structural, {unsupported_digest_algorithm, DigestAlgorithm}}}
+                end
+        end).
+
+with_required_integrity_field(Key, IntegrityFields, Fun) ->
+    case lookup_field(Key, IntegrityFields) of
+        error ->
+            {error, {structural, {missing_integrity_field, Key}}};
+        {ok, Value} ->
+            Fun(Value)
+    end.
+
+validate_integrity_digest(sha256, Digest, CanonicalForm)
+        when is_binary(Digest) ->
+    case re:run(Digest, <<"^[0-9a-f]{64}$">>, [{capture, none}]) of
+        match ->
+            {ok, sha256, CanonicalForm, Digest};
+        nomatch ->
+            {error, {structural, {invalid_digest_format, sha256}}}
+    end.
+
+lookup_field(Key, Fields) ->
+    lookup_field(Key, Fields, error).
+
+lookup_field(_Key, [], Result) ->
+    Result;
+lookup_field(Key, [{Key, Value} | _Rest], _Result) ->
+    {ok, Value};
+lookup_field(Key, [_Other | Rest], Result) ->
+    lookup_field(Key, Rest, Result).
+
+lookup_field_occurrences(Key, Fields) ->
+    [{FieldKey, Value} || {FieldKey, Value} <- Fields, FieldKey =:= Key].
+
+format_verify_summary(Tag, Version, Status, undefined) ->
+    iolist_to_binary(
+        io_lib:format(
+            "manifest=~ts version=~ts integrity=~ts",
+            [atom_to_binary(Tag, utf8), Version, integrity_status_label(Status)]
+        )
+    );
+format_verify_summary(Tag, Version, Status, Reason) ->
+    iolist_to_binary(
+        io_lib:format(
+            "manifest=~ts version=~ts integrity=~ts reason=~ts",
+            [atom_to_binary(Tag, utf8), Version, integrity_status_label(Status), format_integrity_reason(Reason)]
+        )
+    ).
+
+integrity_status_label(pass) ->
+    <<"PASS">>;
+integrity_status_label(fail) ->
+    <<"FAIL">>.
+
+format_integrity_reason({digest_mismatch, _ExpectedDigest, _ActualDigest}) ->
+    <<"Digest mismatch">>.
+
 manifest_digest(Term) ->
-    hex_encode(crypto:hash(sha256, canonical_manifest_binary(Term))).
+    case manifest_digest(Term, sha256, basic_term_canon) of
+        {ok, Digest} ->
+            Digest
+    end.
+
+manifest_digest(Term, sha256, basic_term_canon) ->
+    {ok, hex_encode(crypto:hash(sha256, canonical_manifest_binary(Term))) }.
 
 canonical_manifest_binary(Term) ->
     unicode:characters_to_binary(io_lib:format("~0tp.~n", [Term])).
