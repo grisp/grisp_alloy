@@ -9,6 +9,7 @@
     plan_requires_product/1,
     plan_requires_motherlode/1,
     plan_requires_output_plan/1,
+    plan_reports_invalid_motherlode_path/1,
     plan_rejects_unknown_argument/1,
     valid_plan_args_report_not_implemented/1
 ]).
@@ -20,6 +21,7 @@ all() ->
         plan_requires_product,
         plan_requires_motherlode,
         plan_requires_output_plan,
+        plan_reports_invalid_motherlode_path,
         plan_rejects_unknown_argument,
         valid_plan_args_report_not_implemented
     ].
@@ -51,6 +53,11 @@ plan_requires_output_plan(_Config) ->
     assert_equal(2, Status),
     assert_contains(Output, <<"plan requires --output-plan.">>).
 
+plan_reports_invalid_motherlode_path(_Config) ->
+    {Status, Output} = run_main(["plan", "--product", "demo", "--motherlode", "/definitely/missing", "--output-plan", "/tmp/build_plan.term"]),
+    assert_equal(1, Status),
+    assert_contains(Output, <<"plan: invalid motherlode path">>).
+
 plan_rejects_unknown_argument(_Config) ->
     {Status, Output} = run_main([
         "plan",
@@ -63,10 +70,11 @@ plan_rejects_unknown_argument(_Config) ->
     assert_contains(Output, <<"plan: unknown argument '--bogus'">>).
 
 valid_plan_args_report_not_implemented(_Config) ->
+    MotherlodeDir = create_valid_motherlode(),
     {Status, Output} = run_main([
         "plan",
         "--product", "demo",
-        "--motherlode", "/tmp/motherlode",
+        "--motherlode", MotherlodeDir,
         "--output-plan", "/tmp/build_plan.term",
         "--output-plan-env", "/tmp/build_plan.env",
         "--extra-config", "FOO=bar",
@@ -114,3 +122,32 @@ assert_equal(Expected, Actual) ->
         Expected -> ok;
         _ -> ct:fail("Expected ~tp, got ~tp", [Expected, Actual])
     end.
+
+create_valid_motherlode() ->
+    Dir = make_temp_dir("smelterl-plan-motherlode"),
+    RepoDir = filename:join(Dir, "builtin"),
+    NuggetDir = filename:join(RepoDir, "demo"),
+    ok = filelib:ensure_dir(filename:join(NuggetDir, "demo.nugget")),
+    ok = file:write_file(
+        filename:join(RepoDir, ".nuggets"),
+        [
+            "{nugget_registry, <<\"1.0\">>, [\n",
+            "    {nuggets, [<<\"demo/demo.nugget\">>]}\n",
+            "]}.\n"
+        ]
+    ),
+    ok = file:write_file(
+        filename:join(NuggetDir, "demo.nugget"),
+        [
+            "{nugget, <<\"1.0\">>, [\n",
+            "    {id, demo},\n",
+            "    {category, feature}\n",
+            "]}.\n"
+        ]
+    ),
+    Dir.
+
+make_temp_dir(Prefix) ->
+    Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))),
+    ok = file:make_dir(Base),
+    Base.

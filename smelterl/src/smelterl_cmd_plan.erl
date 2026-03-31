@@ -42,11 +42,20 @@ help(plan) ->
 run(plan, Opts) ->
     case require_options(Opts) of
         ok ->
-            io:format(standard_error, "plan execution not implemented yet.~n", []),
-            1;
+            run_plan(Opts);
         {error, Message} ->
             io:format(standard_error, "~ts~n", [Message]),
             2
+    end.
+
+run_plan(Opts) ->
+    case smelterl_motherlode:load(maps:get(motherlode, Opts)) of
+        {ok, _Motherlode} ->
+            io:format(standard_error, "plan execution not implemented yet.~n", []),
+            1;
+        {error, Reason} ->
+            io:format(standard_error, "~ts~n", [format_load_error(Reason)]),
+            1
     end.
 
 require_options(Opts) ->
@@ -65,3 +74,37 @@ require_options(Opts) ->
                     end
             end
     end.
+
+format_load_error({invalid_path, Path, Posix}) ->
+    io_lib:format("plan: invalid motherlode path '~ts': ~tp", [Path, Posix]);
+format_load_error({invalid_registry, RepoPath, Detail}) ->
+    io_lib:format("plan: invalid nugget registry in '~ts': ~ts", [RepoPath, format_detail(Detail)]);
+format_load_error({missing_metadata, RepoPath, NuggetRelPath}) ->
+    io_lib:format(
+        "plan: nugget metadata '~ts' listed by '~ts/.nuggets' does not exist",
+        [NuggetRelPath, RepoPath]
+    );
+format_load_error({invalid_metadata, RepoPath, NuggetRelPath, Detail}) ->
+    io_lib:format(
+        "plan: invalid nugget metadata '~ts/~ts': ~ts",
+        [RepoPath, NuggetRelPath, format_detail(Detail)]
+    );
+format_load_error({duplicated_nugget_id, NuggetId, RepoPath1, RepoPath2}) ->
+    io_lib:format(
+        "plan: duplicated nugget id '~ts' in '~ts' and '~ts'",
+        [atom_to_list(NuggetId), RepoPath1, RepoPath2]
+    );
+format_load_error({missing_file, RepoPath, NuggetRelPath, FileRelPath, Detail}) ->
+    io_lib:format(
+        "plan: missing referenced file '~ts' for '~ts/~ts': ~ts",
+        [FileRelPath, RepoPath, NuggetRelPath, format_detail(Detail)]
+    );
+format_load_error(Reason) ->
+    io_lib:format("plan: motherlode loading failed: ~tp", [Reason]).
+
+format_detail({parse_error, FileError}) ->
+    io_lib:format("~tp", [FileError]);
+format_detail(Detail) when is_atom(Detail) ->
+    atom_to_list(Detail);
+format_detail(Detail) ->
+    io_lib:format("~tp", [Detail]).

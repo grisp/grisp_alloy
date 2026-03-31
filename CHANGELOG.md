@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_motherlode` with motherlode repository loading, `.nuggets`
+  and `.nugget` root/schema validation, SBOM-default merging, `license_files`
+  path resolution, duplicate nugget-id detection, and Common Test coverage for
+  valid and malformed motherlodes.
 - Added an initial `smelterl/` OTP project skeleton with a real escript
   entrypoint, CLI dispatch, `plan` command handler, and Common Test coverage
   for `plan` option validation and stderr/status behavior.
@@ -34,6 +38,8 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` so it now runs motherlode loading before the later
+  pipeline stub and reports loader errors with command-level stderr messages.
 - Simplified the initial `smelterl` first-pass CLI handling so Dialyzer passes
   without impossible-branch warnings.
 - Updated the AI workflow and Smelterl test-harness documentation to make

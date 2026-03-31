@@ -160,11 +160,33 @@ Backlog policy:
   - Tests: Command-option unit tests, stderr/status behavior.
   - Done when: `plan` entry behavior is stable and test-covered.
 
-- [ ] **Task 3.2: `smelterl_motherlode` load + schema checks**
+- [x] **Task 3.2: `smelterl_motherlode` load + schema checks**
   - Scope: `.nuggets` and `.nugget` parsing with defaults merge.
   - Tests: Parsing/unit tests for malformed and valid registries.
   - Refinement note (from Task 3.1): Implement loading behind the new `smelterl` / `smelterl_cli` / `smelterl_cmd_plan` skeleton so `plan` can transition from validated stub to real pipeline without changing the public CLI shape again.
   - Done when: Motherlode map is complete and validated.
+
+- [ ] **Task 3.2b: Smelterl Appendix B formatting and documentation conformance**
+  - Scope: Bring the Smelterl Erlang source modules into conformance with
+    `docs/02_SMELTERL_DESIGN.md` Appendix B formatting and inline
+    documentation rules.
+  - Scope: Add any missing SPDX/REUSE headers, `-moduledoc`, `-doc`,
+    documented exported types/callbacks, section headers/order, export layout,
+    and line-wrapping cleanups required by the current Smelterl source set.
+  - Tests: `rebar3 as test ct`, `rebar3 dialyzer`, and Appendix B review of
+    touched Erlang modules.
+  - Done when: The Smelterl Erlang source files follow Appendix B structure and
+    inline documentation requirements.
+
+- [ ] **Task 3.2c: Smelterl warning/reporting surface**
+  - Scope: Introduce a proper non-fatal Smelterl warning/reporting surface for
+    command-visible warnings that should not abort execution.
+  - Scope: Use that warning/reporting surface for motherlode repositories that
+    are missing `.nuggets`, instead of continuing silently.
+  - Tests: `rebar3 as test ct`, `rebar3 dialyzer`, and focused tests for
+    warning emission/collection behavior.
+  - Done when: Smelterl can report non-fatal warnings deterministically and the
+    missing-`.nuggets` motherlode case uses that path.
 
 - [ ] **Task 3.3: `smelterl_tree` main+aux tree construction**
   - Scope: Main tree, auxiliary discovery, effective auxiliary trees.
@@ -194,6 +216,7 @@ Backlog policy:
 - [ ] **Task 3.8: `smelterl_config` consolidation**
   - Scope: Per-target config/exports with path/computed/exec handling.
   - Tests: Unit tests for substitution, script exec, path resolution.
+  - Refinement note (from Task 3.2): Consume the `{Key, Value, DeclaringNugget}` config/export entries prepared by `smelterl_motherlode` instead of re-deriving the declaring nugget during consolidation.
   - Done when: Consolidated config is deterministic and spec-compliant.
 
 - [ ] **Task 3.9: `smelterl_gen_defconfig` plan-stage model build**
