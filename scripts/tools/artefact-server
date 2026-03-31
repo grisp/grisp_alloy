@@ -6,11 +6,11 @@
 %% - Special case: if URL matches <name>/<path_inside>, and <name>.tar exists in root,
 %%   the server responds with the file inside the tar without extracting to disk.
 %%
-%% Secure mode (-S|--security-pack DIR):
-%% - Enables HTTPS with mutual TLS (client certificate required)
-%% - Uses server key/cert from: DIR/servers/<name>.key.pem and DIR/servers/<name>.fullchain.pem
-%% - Verifies clients against:  DIR/clients/devices.chain.pem (required)
-%% - Defaults to port 8443 in secure mode (overridable via -p/--port)
+%% TLS modes:
+%% - Manual TLS via --certfile/--keyfile with optional --cacertfile for mTLS
+%% - Security-pack TLS via --security-pack DIR, using the current transitional
+%%   on-disk secpack layout already supported by this escript
+%% - Defaults to port 8443 in TLS mode (overridable via -p/--port)
 %% - TLS versions allowed: TLS 1.2 and TLS 1.3
 
 -mode(compile).
@@ -18,80 +18,203 @@
 -include_lib("kernel/include/file.hrl").
 
 main(Args) ->
-    {Port, RootOpt, SecpackOpt, ServerNameOpt, Debug} = parse_args(Args),
+    Opts = parse_args(Args),
     {ok, Cwd} = file:get_cwd(),
-    Root = normalize_root(RootOpt, Cwd),
+    Root = normalize_root(maps:get(root, Opts), Cwd),
     ok = ensure_dir(Root),
-    case SecpackOpt of
-        undefined ->
-            io:format("artefact_server: serving ~s on http://0.0.0.0:~p\n", [Root, Port]),
+    Port = effective_port(Opts),
+    Debug = maps:get(verbose, Opts),
+    case tls_mode(Opts) of
+        http ->
+            io:format("artefact-server: serving ~s on http://0.0.0.0:~p\n", [Root, Port]),
             start_server(Port, Root, Debug);
-        _ ->
+        {manual, KeyFile, CertFile, CACertFile} ->
+            ok = ensure_file(KeyFile),
+            ok = ensure_file(CertFile),
+            maybe_ensure_file(CACertFile),
             _ = application:ensure_all_started(ssl),
-            {KeyFile, CertFile, CACertFile} = resolve_tls_materials(SecpackOpt, ServerNameOpt),
-            io:format("artefact_server: serving ~s on https://0.0.0.0:~p (mTLS)\n", [Root, Port]),
+            io:format("artefact-server: serving ~s on https://0.0.0.0:~p~s\n",
+                      [Root, Port, tls_label(CACertFile)]),
+            start_server_tls(Port, Root, KeyFile, CertFile, CACertFile, Debug);
+        {security_pack, SecpackOpt, Identity} ->
+            _ = application:ensure_all_started(ssl),
+            {KeyFile, CertFile, CACertFile} = resolve_tls_materials(SecpackOpt, Identity),
+            io:format("artefact-server: serving ~s on https://0.0.0.0:~p~s\n",
+                      [Root, Port, tls_label(CACertFile)]),
             start_server_tls(Port, Root, KeyFile, CertFile, CACertFile, Debug)
     end.
 
 parse_args(Args) ->
-    parse_args(Args, #{port => 8080, root => "artefacts", secpack => undefined, server_name => undefined, debug => false}).
+    Defaults = #{
+        port => undefined,
+        root => "artefacts",
+        security_pack => undefined,
+        identity => "artefact-server",
+        identity_explicit => false,
+        certfile => undefined,
+        keyfile => undefined,
+        cacertfile => undefined,
+        verbose => false
+    },
+    finalize_options(parse_args(Args, Defaults)).
 
 parse_args(["-p", PortStr | Rest], Acc) ->
     parse_args(Rest, Acc#{port := to_int(PortStr)});
 parse_args(["--port", PortStr | Rest], Acc) ->
     parse_args(Rest, Acc#{port := to_int(PortStr)});
+parse_args(["--port"], _Acc) ->
+    usage_error("--port requires a value.");
 parse_args(["-r", Root | Rest], Acc) ->
     parse_args(Rest, Acc#{root := Root});
 parse_args(["--root", Root | Rest], Acc) ->
     parse_args(Rest, Acc#{root := Root});
+parse_args(["--root"], _Acc) ->
+    usage_error("--root requires a value.");
 parse_args(["-S", Secpack | Rest], Acc) ->
-    % When secpack is specified and port was default, bump to 8443
-    Acc1 = case maps:get(port, Acc) of
-        8080 -> Acc#{port := 8443};
-        P -> Acc#{port := P}
-    end,
-    parse_args(Rest, Acc1#{secpack := Secpack});
+    parse_args(Rest, Acc#{security_pack := Secpack});
 parse_args(["--security-pack", Secpack | Rest], Acc) ->
-    Acc1 = case maps:get(port, Acc) of
-        8080 -> Acc#{port := 8443};
-        P -> Acc#{port := P}
-    end,
-    parse_args(Rest, Acc1#{secpack := Secpack});
+    parse_args(Rest, Acc#{security_pack := Secpack});
+parse_args(["-S"], _Acc) ->
+    usage_error("--security-pack requires a value.");
+parse_args(["--security-pack"], _Acc) ->
+    usage_error("--security-pack requires a value.");
+parse_args(["--identity", Name | Rest], Acc) ->
+    parse_args(Rest, Acc#{identity := Name, identity_explicit := true});
+parse_args(["--identity"], _Acc) ->
+    usage_error("--identity requires a value.");
 parse_args(["-n", Name | Rest], Acc) ->
-    parse_args(Rest, Acc#{server_name := Name});
+    parse_args(Rest, Acc#{identity := Name, identity_explicit := true});
 parse_args(["--name", Name | Rest], Acc) ->
-    parse_args(Rest, Acc#{server_name := Name});
+    parse_args(Rest, Acc#{identity := Name, identity_explicit := true});
+parse_args(["--certfile", CertFile | Rest], Acc) ->
+    parse_args(Rest, Acc#{certfile := CertFile});
+parse_args(["--certfile"], _Acc) ->
+    usage_error("--certfile requires a value.");
+parse_args(["--keyfile", KeyFile | Rest], Acc) ->
+    parse_args(Rest, Acc#{keyfile := KeyFile});
+parse_args(["--keyfile"], _Acc) ->
+    usage_error("--keyfile requires a value.");
+parse_args(["--cacertfile", CACertFile | Rest], Acc) ->
+    parse_args(Rest, Acc#{cacertfile := CACertFile});
+parse_args(["--cacertfile"], _Acc) ->
+    usage_error("--cacertfile requires a value.");
 parse_args(["-v" | Rest], Acc) ->
-    parse_args(Rest, Acc#{debug := true});
+    parse_args(Rest, Acc#{verbose := true});
 parse_args(["--verbose" | Rest], Acc) ->
-    parse_args(Rest, Acc#{debug := true});
-parse_args(["-h" | _], Acc) ->
+    parse_args(Rest, Acc#{verbose := true});
+parse_args(["-h" | _], _Acc) ->
     usage(),
-    halt_ok(Acc);
-parse_args(["--help" | _], Acc) ->
+    halt_ok();
+parse_args(["--help" | _], _Acc) ->
     usage(),
-    halt_ok(Acc);
-parse_args([], #{port := Port, root := Root, secpack := Secpack, server_name := Name, debug := Debug}) ->
-    {Port, Root, Secpack, Name, Debug};
+    halt_ok();
+parse_args([], Acc) ->
+    Acc;
 parse_args([Unknown | _], _Acc) ->
-    io:format(standard_error, "Unknown option: ~s\n", [Unknown]),
-    usage(),
-    halt_error().
+    usage_error(lists:concat(["Unknown option: ", Unknown])).
+
+finalize_options(Opts) ->
+    Secpack = effective_security_pack(Opts),
+    CertFile = maps:get(certfile, Opts),
+    KeyFile = maps:get(keyfile, Opts),
+    CACertFile = maps:get(cacertfile, Opts),
+    IdentityExplicit = maps:get(identity_explicit, Opts),
+    ManualTLS = has_manual_tls(Opts),
+
+    case {CertFile, KeyFile} of
+        {undefined, undefined} -> ok;
+        {undefined, _} -> usage_error("--certfile and --keyfile must be provided together.");
+        {_, undefined} -> usage_error("--certfile and --keyfile must be provided together.");
+        _ -> ok
+    end,
+
+    case CACertFile of
+        undefined -> ok;
+        _ when ManualTLS =:= false ->
+            usage_error("--cacertfile requires --certfile and --keyfile.");
+        _ -> ok
+    end,
+
+    case {Secpack, ManualTLS} of
+        {undefined, _} -> ok;
+        {_, false} -> ok;
+        {_, true} ->
+            usage_error("--security-pack is mutually exclusive with --certfile/--keyfile/--cacertfile.")
+    end,
+
+    case {Secpack, IdentityExplicit} of
+        {undefined, true} -> usage_error("--identity is only valid with --security-pack.");
+        _ -> ok
+    end,
+
+    Opts#{security_pack := Secpack}.
+
+effective_security_pack(Opts) ->
+    case maps:get(security_pack, Opts) of
+        undefined ->
+            case os:getenv("ALLOY_SECURITY_PACK") of
+                false -> undefined;
+                [] -> undefined;
+                Value -> Value
+            end;
+        Value -> Value
+    end.
+
+has_manual_tls(Opts) ->
+    lists:any(fun(Value) -> Value =/= undefined end,
+              [maps:get(certfile, Opts), maps:get(keyfile, Opts)]).
+
+effective_port(Opts) ->
+    case maps:get(port, Opts) of
+        undefined ->
+            case tls_mode(Opts) of
+                http -> 8080;
+                _ -> 8443
+            end;
+        Port -> Port
+    end.
+
+tls_mode(Opts) ->
+    case maps:get(security_pack, Opts) of
+        undefined ->
+            case has_manual_tls(Opts) of
+                true ->
+                    {manual,
+                     maps:get(keyfile, Opts),
+                     maps:get(certfile, Opts),
+                     maps:get(cacertfile, Opts)};
+                false ->
+                    http
+            end;
+        Secpack ->
+            {security_pack, Secpack, maps:get(identity, Opts)}
+    end.
+
+tls_label(undefined) ->
+    "";
+tls_label(_) ->
+    " (mTLS)".
 
 usage() ->
     io:format(
-      "Usage: artefact_server [OPTIONS]\n"
+      "Usage: artefact-server [OPTIONS]\n"
       "\n"
       "Options:\n"
-      "  -p, --port                  HTTP(S) port (default: 8080; 8443 when -S is used)\n"
-      "  -r, --root                  Root directory to serve (default: ./artefacts)\n"
-      "  -S, --security-pack DIR     Enable HTTPS + client auth using security pack at DIR\n"
-      "                               Requires DIR/devices/devices.chain.pem (devices CA bundle)\n"
-      "                               Uses DIR/servers/<name>.key.pem and <name>.fullchain.pem\n"
-      "  -n, --name NAME             Server identity name; default is the first key in DIR/servers\n"
-      "  -v, --verbose               Log each request as: METHOD CODE PATH\n\n").
+      "  -p, --port PORT             HTTP(S) listen port\n"
+      "  -r, --root DIR              Root directory to serve (default: ./artefacts)\n"
+      "      --certfile FILE         TLS server certificate file (PEM)\n"
+      "      --keyfile FILE          TLS server private key file (PEM)\n"
+      "      --cacertfile FILE       CA certificate bundle for client verification (PEM)\n"
+      "      --security-pack PATH    Security-pack path (or use ALLOY_SECURITY_PACK)\n"
+      "      --identity IDENTITY     Server identity name for --security-pack\n"
+      "  -v, --verbose               Log each request as: METHOD CODE PATH\n"
+      "  -h, --help                  Show this help text\n\n").
 
-halt_ok(_Acc) ->
+usage_error(Message) ->
+    io:format(standard_error, "~s\n", [Message]),
+    halt_error().
+
+halt_ok() ->
     erlang:halt(0).
 
 halt_error() ->
@@ -119,17 +242,28 @@ ensure_dir(Path) ->
             halt_error()
     end.
 
+maybe_ensure_file(undefined) ->
+    ok;
+maybe_ensure_file(Path) ->
+    ensure_file(Path).
+
 start_server(Port, Root, Debug) ->
     {ok, Listen} = gen_tcp:listen(Port, [binary, {packet, raw}, {reuseaddr, true}, {active, false}]),
     accept_loop(Listen, Root, Debug).
 
 start_server_tls(Port, Root, KeyFile, CertFile, CACertFile, Debug) ->
-    {ok, Listen} = ssl:listen(Port, [binary, {reuseaddr, true}, {active, false},
-                                     {certfile, CertFile}, {keyfile, KeyFile},
-                                     {cacertfile, CACertFile}, {verify, verify_peer},
-                                     {fail_if_no_peer_cert, true}, {depth, 3},
-                                     {versions, ['tlsv1.2','tlsv1.3']}]),
+    TLSOpts = [binary, {reuseaddr, true}, {active, false},
+               {certfile, CertFile}, {keyfile, KeyFile},
+               {versions, ['tlsv1.2','tlsv1.3']}] ++
+              tls_verification_options(CACertFile),
+    {ok, Listen} = ssl:listen(Port, TLSOpts),
     accept_loop_tls(Listen, Root, Debug).
+
+tls_verification_options(undefined) ->
+    [{verify, verify_none}];
+tls_verification_options(CACertFile) ->
+    [{cacertfile, CACertFile}, {verify, verify_peer},
+     {fail_if_no_peer_cert, true}, {depth, 3}].
 
 accept_loop(Listen, Root, Debug) ->
     case gen_tcp:accept(Listen) of
@@ -386,8 +520,6 @@ list_index(Root) ->
         _ -> {404, #{<<"content-type">> => <<"text/plain">>}, <<"Not Found">>}
     end.
 
-%% --- Symlink and path safety helpers ---
-
 is_symlink(Path) ->
     case file:read_link_info(Path) of
         {ok, #file_info{type = symlink}} -> true;
@@ -502,8 +634,6 @@ stream_file_loop_tls(Sock, Fd) ->
         eof -> ok;
         {error, _} -> ok
     end.
-
-%% --- TLS material resolution from secpack ---
 
 resolve_tls_materials(SecpackDir, ServerNameOpt) ->
     Root = normalize_root(SecpackDir, filename:absname(".")),

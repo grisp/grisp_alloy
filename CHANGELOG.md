@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added focused shell tests covering the artefact-server CLI validation
+  contract plus the `serve-artefacts.sh` wrapper dispatch path.
+- Moved the authoritative artefact-server implementation into
+  `scripts/tools/artefact-server` and removed the legacy repository-root copy.
 - Bootstrapped `scripts/tests/` harness with canonical workflow gates:
   - `./scripts/tests/gates/baseline.sh`
   - `./scripts/tests/gates/full.sh`
