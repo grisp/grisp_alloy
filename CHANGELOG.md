@@ -105,6 +105,12 @@ and this project adheres to Semantic Versioning.
 - Expanded `scripts/tests/test_manifest_tool.sh` to cover `get` output modes,
   missing fields, unsupported plain rendering for nested values, and preserved
   parse/structural exit-code behavior.
+- Added `manifest-tool hash` support to recompute and rewrite manifest
+  integrity sections in place using the documented `basic_term_canon` plus
+  SHA-256 contract.
+- Added manifest-tool golden tests for known integrity digests, field-order
+  sensitivity, stale-integrity replacement, and preserved parse/structural
+  failures in the new `hash` command path.
 
 ### Changed
 - Updated `docs/WORKFLOW.md` to enforce concise, final-state history/changelog
@@ -161,3 +167,7 @@ and this project adheres to Semantic Versioning.
 - Updated `docs/PLANNING.md` so the later project-plugin integration task
   explicitly builds on `plugin_utils.sh` instead of the older hard-coded
   project loader pattern.
+- Updated `scripts/tools/manifest-tool` to use width-independent compact
+  Erlang term rendering (`~0tp`) for machine-facing output and canonical
+  manifest hashing, avoiding formatter-inserted line breaks in integrity
+  digests.

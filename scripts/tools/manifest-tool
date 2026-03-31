@@ -17,6 +17,8 @@ main(Args) ->
             run_validate_root(RestArgs);
         ["get" | RestArgs] ->
             run_get(RestArgs);
+        ["hash" | RestArgs] ->
+            run_hash(RestArgs);
         [Command | _] ->
             exit_with(2, "manifest-tool command not implemented yet: ~ts~n", [Command])
     end.
@@ -27,10 +29,12 @@ print_usage(Device) ->
         "Usage: manifest-tool <command> [options]~n~n"
         "Commands:~n"
         "  get            Read a top-level field from any Alloy manifest.~n"
+        "  hash           Recompute and update the integrity hash of any Alloy manifest.~n"
         "  validate-root  Validate the manifest root tuple shape and manifest type.~n~n"
         "Examples:~n"
         "  manifest-tool get --manifest ALLOY_SDK_MANIFEST --field product~n"
         "  manifest-tool get --manifest ALLOY_FIRMWARE_MANIFEST --field capabilities --format erlang~n"
+        "  manifest-tool hash --manifest ALLOY_PROJECT_MANIFEST~n"
         "  manifest-tool validate-root --manifest ALLOY_PROJECT_MANIFEST~n",
         []
     ).
@@ -75,6 +79,29 @@ run_get(Args) ->
             exit_with(2, "~ts~n", [Reason])
     end.
 
+run_hash(Args) ->
+    case parse_hash_args(Args, undefined) of
+        {ok, ManifestPath} ->
+            case read_manifest_root(ManifestPath) of
+                {ok, Tag, Version, Fields} ->
+                    StrippedFields = strip_integrity_fields(Fields),
+                    Digest = manifest_digest({Tag, Version, StrippedFields}),
+                    UpdatedFields = append_integrity_field(StrippedFields, Digest),
+                    case write_manifest(ManifestPath, {Tag, Version, UpdatedFields}) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            exit_with(2, "Failed to write manifest '~ts': ~tp~n", [ManifestPath, Reason])
+                    end;
+                {error, {structural, Reason}} ->
+                    exit_with(2, "~ts~n", [format_structural_reason(Reason)]);
+                {error, {parse, Reason}} ->
+                    exit_with(3, "~ts~n", [format_parse_reason(ManifestPath, Reason)])
+            end;
+        {error, Reason} ->
+            exit_with(2, "~ts~n", [Reason])
+    end.
+
 parse_validate_root_args([], ManifestPath) when ManifestPath =/= undefined ->
     {ok, ManifestPath};
 parse_validate_root_args([], undefined) ->
@@ -107,6 +134,17 @@ parse_get_args(["--format", Format | _], _ManifestPath, _FieldName, _CurrentForm
     {error, iolist_to_binary(io_lib:format("get: unsupported format '~ts'", [Format]))};
 parse_get_args([Unknown | _], _ManifestPath, _FieldName, _Format) ->
     {error, iolist_to_binary(io_lib:format("get: unknown argument '~ts'", [Unknown]))}.
+
+parse_hash_args([], ManifestPath) when ManifestPath =/= undefined ->
+    {ok, ManifestPath};
+parse_hash_args([], undefined) ->
+    {error, <<"hash requires --manifest PATH">>};
+parse_hash_args(["--manifest", ManifestPath | RestArgs], undefined) ->
+    parse_hash_args(RestArgs, ManifestPath);
+parse_hash_args(["--manifest" | _], _) ->
+    {error, <<"hash requires --manifest PATH">>};
+parse_hash_args([Unknown | _], _) ->
+    {error, iolist_to_binary(io_lib:format("hash: unknown argument '~ts'", [Unknown]))}.
 
 read_manifest_root(ManifestPath) ->
     case file:consult(ManifestPath) of
@@ -158,7 +196,7 @@ lookup_manifest_field(FieldName, [_Other | Rest], Result) ->
     lookup_manifest_field(FieldName, Rest, Result).
 
 render_field_output(Value, erlang) ->
-    {ok, iolist_to_binary(io_lib:format("~tp", [Value]))};
+    {ok, iolist_to_binary(io_lib:format("~0tp", [Value]))};
 render_field_output(Value, plain) when is_binary(Value) ->
     {ok, Value};
 render_field_output(Value, plain) when is_atom(Value) ->
@@ -206,6 +244,37 @@ format_parse_reason(ManifestPath, multiple_terms) ->
 format_parse_reason(ManifestPath, Reason) ->
     iolist_to_binary(
         io_lib:format("Failed to parse manifest '~ts': ~tp", [ManifestPath, Reason])
+    ).
+
+strip_integrity_fields(Fields) ->
+    [Field || {Key, _Value} = Field <- Fields, Key =/= integrity].
+
+append_integrity_field(Fields, Digest) ->
+    Fields ++
+        [{integrity,
+            [
+                {digest_algorithm, sha256},
+                {canonical_form, basic_term_canon},
+                {digest, Digest}
+            ]}].
+
+manifest_digest(Term) ->
+    hex_encode(crypto:hash(sha256, canonical_manifest_binary(Term))).
+
+canonical_manifest_binary(Term) ->
+    unicode:characters_to_binary(io_lib:format("~0tp.~n", [Term])).
+
+write_manifest(ManifestPath, Term) ->
+    file:write_file(ManifestPath, render_manifest_file(Term)).
+
+render_manifest_file(Term) ->
+    unicode:characters_to_binary(
+        io_lib:format("%% coding: utf-8~n~0tp.~n", [Term])
+    ).
+
+hex_encode(Binary) ->
+    unicode:characters_to_binary(
+        [io_lib:format("~2.16.0b", [Byte]) || <<Byte>> <= Binary]
     ).
 
 exit_with(Status, Format, Args) ->

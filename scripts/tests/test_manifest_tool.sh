@@ -56,6 +56,7 @@ test_manifest_tool_shows_usage_when_no_command_is_provided() {
     assert_matches "Commands:" "${output}"
     assert_matches "validate-root" "${output}"
     assert_matches "get" "${output}"
+    assert_matches "hash" "${output}"
 }
 
 test_manifest_tool_help_flag_shows_usage() {
@@ -65,6 +66,7 @@ test_manifest_tool_help_flag_shows_usage() {
     assert_matches "Usage: manifest-tool <command> \\[options\\]" "${output}"
     assert_matches "Read a top-level field" "${output}"
     assert_matches "Validate the manifest root tuple shape" "${output}"
+    assert_matches "Recompute and update the integrity hash" "${output}"
 }
 
 test_manifest_tool_validate_root_accepts_sdk_manifest() {
@@ -306,6 +308,89 @@ test_manifest_tool_get_preserves_structural_errors() {
     manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, "1.0", [{id, my_app}]}.' 
 
     output="$({ manifest_tool_test_run get --manifest "${manifest_path}" --field id; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "version must be a binary" "${output}"
+}
+
+test_manifest_tool_hash_writes_known_sdk_manifest_digest() {
+    local temp_dir manifest_path integrity_output file_content
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{product, demo}, {target_arch, <<"arm-buildroot-linux-gnueabihf">>}]}.' 
+
+    manifest_tool_test_run hash --manifest "${manifest_path}"
+
+    integrity_output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field integrity --format erlang)"
+    assert_equals "[{digest_algorithm,sha256},{canonical_form,basic_term_canon},{digest,<<\"80b19c71322c5126c11f2757bdf857a03d4328c302b6de5fad8e66d0cd128d64\">>}]" "${integrity_output}"
+
+    file_content="$(cat "${manifest_path}")"
+    assert_matches "^%% coding: utf-8" "${file_content}"
+}
+
+test_manifest_tool_hash_replaces_existing_integrity_section() {
+    local temp_dir manifest_path integrity_output integrity_count
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, <<"1.0">>, [{id, my_app}, {integrity, [{digest_algorithm, sha256}, {canonical_form, basic_term_canon}, {digest, <<"stale">>}]}, {name, <<"demo">>}]}.' 
+
+    manifest_tool_test_run hash --manifest "${manifest_path}"
+
+    integrity_output="$(manifest_tool_test_run get --manifest "${manifest_path}" --field integrity --format erlang)"
+    assert_equals "[{digest_algorithm,sha256},{canonical_form,basic_term_canon},{digest,<<\"e775a31afd09fac6c3f57b6bacdafc827dba75450b2d13d63227d065588ec1cf\">>}]" "${integrity_output}"
+
+    integrity_count="$(grep -c "{integrity," "${manifest_path}")"
+    assert_equals "1" "${integrity_count}"
+}
+
+test_manifest_tool_hash_preserves_field_order_in_digest() {
+    local temp_dir first_manifest second_manifest first_integrity second_integrity
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    first_manifest="${temp_dir}/ALLOY_PROJECT_MANIFEST.first"
+    second_manifest="${temp_dir}/ALLOY_PROJECT_MANIFEST.second"
+    manifest_tool_test_write_manifest "${first_manifest}" '{project_manifest, <<"1.0">>, [{name, <<"demo">>}, {id, my_app}]}.' 
+    manifest_tool_test_write_manifest "${second_manifest}" '{project_manifest, <<"1.0">>, [{id, my_app}, {name, <<"demo">>}]}.' 
+
+    manifest_tool_test_run hash --manifest "${first_manifest}"
+    manifest_tool_test_run hash --manifest "${second_manifest}"
+
+    first_integrity="$(manifest_tool_test_run get --manifest "${first_manifest}" --field integrity --format erlang)"
+    second_integrity="$(manifest_tool_test_run get --manifest "${second_manifest}" --field integrity --format erlang)"
+
+    assert_equals "[{digest_algorithm,sha256},{canonical_form,basic_term_canon},{digest,<<\"d1cdc6b96cf8d6251333ba686c43f2e60864bfe19577ec2b4c54565c7d4265ee\">>}]" "${first_integrity}"
+    assert_equals "[{digest_algorithm,sha256},{canonical_form,basic_term_canon},{digest,<<\"e775a31afd09fac6c3f57b6bacdafc827dba75450b2d13d63227d065588ec1cf\">>}]" "${second_integrity}"
+}
+
+test_manifest_tool_hash_requires_manifest_argument() {
+    local output status
+    output="$({ manifest_tool_test_run hash; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "hash requires --manifest PATH" "${output}"
+}
+
+test_manifest_tool_hash_preserves_parse_errors() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_SDK_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{sdk_manifest, <<"1.0">>, [{product, demo}]'
+
+    output="$({ manifest_tool_test_run hash --manifest "${manifest_path}"; } 2>&1)"
+    status=$?
+
+    assert_equals "3" "${status}"
+    assert_matches "Failed to parse manifest" "${output}"
+}
+
+test_manifest_tool_hash_preserves_structural_errors() {
+    local temp_dir manifest_path output status
+    temp_dir="$(harness_make_temp_dir "manifest-tool")"
+    manifest_path="${temp_dir}/ALLOY_PROJECT_MANIFEST"
+    manifest_tool_test_write_manifest "${manifest_path}" '{project_manifest, "1.0", [{id, my_app}]}.' 
+
+    output="$({ manifest_tool_test_run hash --manifest "${manifest_path}"; } 2>&1)"
     status=$?
 
     assert_equals "2" "${status}"

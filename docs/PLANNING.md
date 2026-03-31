@@ -124,7 +124,7 @@ Backlog policy:
   - Refinement note (from Task 2.1): Reuse the shared manifest root reader/validator from `manifest-tool` so `get` keeps the same parse-vs-structural error split (exit 3 for parse errors, exit 2 for invalid root shape/tag) before it handles field lookup.
   - Done when: `get` behavior is deterministic and documented.
 
-- [ ] **Task 2.3: `manifest-tool hash` and canonicalization integration**
+- [x] **Task 2.3: `manifest-tool hash` and canonicalization integration**
   - Scope: Hash generation against `basic_term_canon`.
   - Tests: Golden tests for known digest outputs.
   - Done when: Stable digest output matches spec.
@@ -133,6 +133,7 @@ Backlog policy:
   - Scope: Integrity verification against embedded section.
   - Tests: Positive and tampered-manifest tests.
   - Refinement note (from Task 2.2): Build `verify` on the same reader/field-access helpers now used by `validate-root` and `get`, so integrity mismatches can keep exit `1` distinct from parse (`3`) and structural (`2`) failures.
+  - Refinement note (from Task 2.3): Reuse the shared `basic_term_canon`/SHA-256 helpers added for `hash`, including the width-independent compact serializer (`~0tp`), so `verify` compares the exact same canonical byte stream that producers hash.
   - Done when: Corruption is always detected with clear failure reason.
 
 - [ ] **Task 2.5: `manifest-tool merge` for firmware manifest**
