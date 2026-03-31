@@ -8,6 +8,8 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added end-to-end artefact-server tests covering direct HTTP serving,
+  manual-TLS HTTPS serving, and tar-member serving from `<name>.tar`.
 - Added focused shell tests covering the artefact-server CLI validation
   contract plus the `serve-artefacts.sh` wrapper dispatch path.
 - Moved the authoritative artefact-server implementation into

@@ -148,7 +148,7 @@ Backlog policy:
   - Tests: Command invocation and arg-validation tests.
   - Done when: Wrapper integration points are stable and the authoritative implementation lives only under `scripts/tools/artefact-server`.
 
-- [ ] **Task 2.6a: `artefact-server` end-to-end serving tests**
+- [x] **Task 2.6a: `artefact-server` end-to-end serving tests**
   - Scope: Add real integration coverage for `scripts/tools/artefact-server`, including HTTP file serving, HTTPS serving, and tar-member serving behavior.
   - Tests: Integration tests that start the server on an ephemeral port, fetch regular artefacts over HTTP and HTTPS, and verify `<name>/<path>` serving from `<name>.tar`.
   - Done when: Automated tests prove the authoritative tool still serves normal files and tar-backed paths correctly over HTTP and HTTPS.
@@ -446,6 +446,7 @@ Backlog policy:
   - Tests: Command and integration tests for tls modes.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy serve artefacts ...` UX.
   - Refinement note (from Task 2.6): Reuse the canonical `scripts/tools/artefact-server` entrypoint/flag names and finish migrating security-pack TLS handling from the current transitional on-disk layout to the documented `secpack capabilities` / `secpack tls` command contract.
+  - Refinement note (from Task 2.6a): Extend the new live-server integration test approach to security-pack mode once the documented secpack command-contract flow lands, so plain HTTP/manual HTTPS/security-pack HTTPS are all exercised end-to-end.
   - Done when: Server starts with expected security mode from options/secpack and command help/usage is canonicalized.
 
 - [ ] **Task 8.4: `alloy grispio` command**
