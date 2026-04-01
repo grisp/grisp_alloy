@@ -38,6 +38,11 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Brought the current Smelterl source modules into Appendix B conformance with
+  REUSE/SPDX headers, `-moduledoc` text, documented callbacks/types, required
+  section headers, one-export-per-line layout, and explicit two-space wrapped
+  guard indentation, including preferred vs not-preferred Appendix B examples,
+  without changing runtime behavior.
 - Updated `smelterl plan` so it now runs motherlode loading before the later
   pipeline stub and reports loader errors with command-level stderr messages.
 - Simplified the initial `smelterl` first-pass CLI handling so Dialyzer passes

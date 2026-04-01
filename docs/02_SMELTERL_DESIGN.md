@@ -3091,6 +3091,19 @@ This appendix shows a single example Erlang module that illustrates every docume
   7. BEHAVIOUR <NAME> CALLBACKS (callback implementations)
   8. INTERNAL FUNCTIONS
 - **Pattern matching in function heads:** Prefer `Arg = #{key1 := A, key2 := B}` (assign then match) over `#{key1 := A, key2 := B} = Arg` in function argument pattern matching.
+- **Guard indentation:** When a function head wraps and the `when` guard moves to
+  the next line, indent `when` by two spaces so it reads as a continuation of
+  the function head.
+  Preferred:
+  ```erlang
+  normalize_sbom_value(_Source, _RepoPath, _DeclaringRelPath, license, Value)
+    when is_binary(Value) ->
+  ```
+  Not preferred:
+  ```erlang
+  normalize_sbom_value(_Source, _RepoPath, _DeclaringRelPath, license, Value)
+  when is_binary(Value) ->
+  ```
 - **Exports:** One `-export([...])` per function name per line (repeat `-export` for each function); use a single `-export([name/1, name/2])` when one function has multiple arities.
 - No spec or documentation needed for bahviour callback implementations.
 

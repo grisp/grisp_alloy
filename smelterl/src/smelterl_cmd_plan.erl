@@ -1,14 +1,30 @@
+%% SPDX-FileCopyrightText: 2026 Stritzinger GmbH <peer@stritzinger.com>
+%% SPDX-License-Identifier: Apache-2.0
+
 -module(smelterl_cmd_plan).
+-moduledoc """
+`smelterl plan` command implementation.
+
+This module exposes the command metadata consumed by `smelterl_cli` and owns
+the current `plan` execution stub, including required-option validation and
+motherlode loading error formatting.
+""".
 
 -behaviour(smelterl_command).
 
--export([actions/0, help/1, options_spec/1, run/2]).
+%=== EXPORTS ===================================================================
 
--spec actions() -> [atom()].
+-export([actions/0]).
+-export([help/1]).
+-export([options_spec/1]).
+-export([run/2]).
+
+
+%=== BEHAVIOUR smelterl_command CALLBACKS ======================================
+
 actions() ->
     [plan].
 
--spec options_spec(atom()) -> [map()].
 options_spec(plan) ->
     [
         #{name => product, long => "product", type => value},
@@ -21,7 +37,6 @@ options_spec(plan) ->
         #{name => debug, long => "debug", type => flag}
     ].
 
--spec help(atom()) -> iodata().
 help(plan) ->
     [
         "Usage: smelterl plan [OPTIONS]\n\n",
@@ -38,7 +53,6 @@ help(plan) ->
         "  --help, -h             Show this help text\n"
     ].
 
--spec run(atom(), map()) -> integer().
 run(plan, Opts) ->
     case require_options(Opts) of
         ok ->
@@ -48,10 +62,17 @@ run(plan, Opts) ->
             2
     end.
 
+
+%=== INTERNAL FUNCTIONS ========================================================
+
 run_plan(Opts) ->
     case smelterl_motherlode:load(maps:get(motherlode, Opts)) of
         {ok, _Motherlode} ->
-            io:format(standard_error, "plan execution not implemented yet.~n", []),
+            io:format(
+                standard_error,
+                "plan execution not implemented yet.~n",
+                []
+            ),
             1;
         {error, Reason} ->
             io:format(standard_error, "~ts~n", [format_load_error(Reason)]),
@@ -60,17 +81,24 @@ run_plan(Opts) ->
 
 require_options(Opts) ->
     case maps:get(product, Opts, undefined) of
-        undefined -> {error, "plan requires --product."};
-        [] -> {error, "plan requires --product."};
+        undefined ->
+            {error, "plan requires --product."};
+        [] ->
+            {error, "plan requires --product."};
         _ ->
             case maps:get(motherlode, Opts, undefined) of
-                undefined -> {error, "plan requires --motherlode."};
-                [] -> {error, "plan requires --motherlode."};
+                undefined ->
+                    {error, "plan requires --motherlode."};
+                [] ->
+                    {error, "plan requires --motherlode."};
                 _ ->
                     case maps:get(output_plan, Opts, undefined) of
-                        undefined -> {error, "plan requires --output-plan."};
-                        [] -> {error, "plan requires --output-plan."};
-                        _ -> ok
+                        undefined ->
+                            {error, "plan requires --output-plan."};
+                        [] ->
+                            {error, "plan requires --output-plan."};
+                        _ ->
+                            ok
                     end
             end
     end.
@@ -78,7 +106,10 @@ require_options(Opts) ->
 format_load_error({invalid_path, Path, Posix}) ->
     io_lib:format("plan: invalid motherlode path '~ts': ~tp", [Path, Posix]);
 format_load_error({invalid_registry, RepoPath, Detail}) ->
-    io_lib:format("plan: invalid nugget registry in '~ts': ~ts", [RepoPath, format_detail(Detail)]);
+    io_lib:format(
+        "plan: invalid nugget registry in '~ts': ~ts",
+        [RepoPath, format_detail(Detail)]
+    );
 format_load_error({missing_metadata, RepoPath, NuggetRelPath}) ->
     io_lib:format(
         "plan: nugget metadata '~ts' listed by '~ts/.nuggets' does not exist",

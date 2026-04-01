@@ -1,14 +1,45 @@
+%% SPDX-FileCopyrightText: 2026 Stritzinger GmbH <peer@stritzinger.com>
+%% SPDX-License-Identifier: Apache-2.0
+
 -module(smelterl_cli).
+-moduledoc """
+Command-line parser and dispatcher for `smelterl`.
+
+This module handles global options, resolves the target command handler, and
+parses command-local long options before handing execution to the command
+module.
+""".
+
+%=== EXPORTS ===================================================================
 
 -export([run/2]).
 -export_type([option_spec/0]).
 
+
+%=== TYPES =====================================================================
+
+-doc """
+Description of one supported command-line option.
+
+`name` is the atom stored in the parsed option map, `long` is the CLI long
+option name without the leading `--`, and `type` controls how the parser
+consumes values.
+""".
 -type option_spec() :: #{
     name := atom(),
     long := string(),
     type := flag | value | accum
 }.
 
+
+%=== API FUNCTIONS =============================================================
+
+-doc """
+Parse one `smelterl` argv list and run the selected command.
+
+Returns an exit status code instead of terminating the VM directly so callers
+can compose it into escript or test harness entrypoints.
+""".
 -spec run([string()], smelterl:smelterl_config()) -> integer().
 run(Argv, Config) ->
     case first_pass(Argv) of
@@ -28,11 +59,19 @@ run(Argv, Config) ->
             dispatch(Command, Rest, Config)
     end.
 
+
+%=== INTERNAL FUNCTIONS ========================================================
+
 dispatch(Command, Rest, Config) ->
     Handlers = maps:get(command_handlers, Config),
     case maps:get(Command, Handlers, undefined) of
         undefined ->
-            print_error(io_lib:format("Unknown command: ~ts", [atom_to_list(Command)])),
+            print_error(
+                io_lib:format(
+                    "Unknown command: ~ts",
+                    [atom_to_list(Command)]
+                )
+            ),
             2;
         Module ->
             Action = resolve_action(Command, Module),
@@ -54,12 +93,17 @@ dispatch(Command, Rest, Config) ->
 
 resolve_action(Command, Module) ->
     case Module:actions() of
-        [Action] -> Action;
-        Actions when is_list(Actions) -> Command
+        [Action] ->
+            Action;
+        Actions when is_list(Actions) ->
+            Command
     end.
 
 first_pass(Argv) ->
-    first_pass(Argv, #{help => false, version => false, command => undefined, rest => []}).
+    first_pass(
+        Argv,
+        #{help => false, version => false, command => undefined, rest => []}
+    ).
 
 first_pass([], State) ->
     {ok, State};
@@ -71,7 +115,8 @@ first_pass(["--version" | Rest], State) ->
     first_pass(Rest, State#{version := true});
 first_pass(["-v" | Rest], State) ->
     first_pass(["--version" | Rest], State);
-first_pass([Token | _], _State) when is_list(Token), Token =/= [], hd(Token) =:= $- ->
+first_pass([Token | _], _State)
+  when is_list(Token), Token =/= [], hd(Token) =:= $- ->
     {error, io_lib:format("Unknown global option: ~ts", [Token])};
 first_pass([Token | Rest], State) ->
     {ok, State#{command := list_to_atom(Token), rest := Rest}}.
@@ -79,7 +124,11 @@ first_pass([Token | Rest], State) ->
 parse_command_args([], _Spec, Opts) ->
     {ok, Opts};
 parse_command_args(["--" | Rest], _Spec, _Opts) ->
-    {error, io_lib:format("Unexpected positional arguments: ~ts", [string:join(Rest, " ")])};
+    {error,
+        io_lib:format(
+            "Unexpected positional arguments: ~ts",
+            [string:join(Rest, " ")]
+        )};
 parse_command_args([Token | Rest], Spec, Opts) ->
     case Token of
         "--help" ->
@@ -93,13 +142,28 @@ parse_command_args([Token | Rest], Spec, Opts) ->
                 {ok, Name, Attached} ->
                     case option_by_long(Name, Spec) of
                         undefined ->
-                            {error, io_lib:format("plan: unknown argument '~ts'", [Token])};
+                            {error,
+                                io_lib:format(
+                                    "plan: unknown argument '~ts'",
+                                    [Token]
+                                )};
                         OptionSpec ->
-                            parse_option(Rest, Spec, Opts, OptionSpec, Token, Attached)
+                            parse_option(
+                                Rest,
+                                Spec,
+                                Opts,
+                                OptionSpec,
+                                Token,
+                                Attached
+                            )
                     end
             end;
         _ ->
-            {error, io_lib:format("plan: unexpected positional argument '~ts'", [Token])}
+            {error,
+                io_lib:format(
+                    "plan: unexpected positional argument '~ts'",
+                    [Token]
+                )}
     end.
 
 parse_option(Rest, Spec, Opts, #{name := Name, type := flag}, Token, Attached) ->
@@ -107,7 +171,11 @@ parse_option(Rest, Spec, Opts, #{name := Name, type := flag}, Token, Attached) -
         undefined ->
             parse_command_args(Rest, Spec, Opts#{Name => true});
         _ ->
-            {error, io_lib:format("plan: option '~ts' does not take a value", [Token])}
+            {error,
+                io_lib:format(
+                    "plan: option '~ts' does not take a value",
+                    [Token]
+                )}
     end;
 parse_option(Rest, Spec, Opts, #{name := Name, type := value}, _Token, Attached) ->
     case Attached of
@@ -116,7 +184,11 @@ parse_option(Rest, Spec, Opts, #{name := Name, type := value}, _Token, Attached)
                 [Value | Tail] ->
                     parse_command_args(Tail, Spec, Opts#{Name => Value});
                 [] ->
-                    {error, io_lib:format("plan: option '--~ts' requires a value", [atom_to_list(Name)])}
+                    {error,
+                        io_lib:format(
+                            "plan: option '--~ts' requires a value",
+                            [atom_to_list(Name)]
+                        )}
             end;
         Value ->
             parse_command_args(Rest, Spec, Opts#{Name => Value})
@@ -129,7 +201,11 @@ parse_option(Rest, Spec, Opts, #{name := Name, type := accum}, _Token, Attached)
                     Values = maps:get(Name, Opts, []),
                     parse_command_args(Tail, Spec, Opts#{Name => Values ++ [Value]});
                 [] ->
-                    {error, io_lib:format("plan: option '--~ts' requires a value", [atom_to_list(Name)])}
+                    {error,
+                        io_lib:format(
+                            "plan: option '--~ts' requires a value",
+                            [atom_to_list(Name)]
+                        )}
             end;
         Value ->
             Values = maps:get(Name, Opts, []),
@@ -138,9 +214,12 @@ parse_option(Rest, Spec, Opts, #{name := Name, type := accum}, _Token, Attached)
 
 split_long_option([$-, $- | Rest]) ->
     case string:split(Rest, "=", all) of
-        [Name] -> {ok, Name, undefined};
-        [Name, Value] -> {ok, Name, Value};
-        [Name | Tail] -> {ok, Name, string:join(Tail, "=")}
+        [Name] ->
+            {ok, Name, undefined};
+        [Name, Value] ->
+            {ok, Name, Value};
+        [Name | Tail] ->
+            {ok, Name, string:join(Tail, "=")}
     end;
 split_long_option(Token) ->
     {error, io_lib:format("plan: unknown argument '~ts'", [Token])}.
@@ -165,7 +244,10 @@ option_by_long(Name, Spec) ->
 global_help(Config) ->
     Commands = maps:keys(maps:get(command_handlers, Config)),
     Sorted = lists:sort(Commands),
-    CommandLines = [io_lib:format("  ~ts~n", [atom_to_list(Command)]) || Command <- Sorted],
+    CommandLines = [
+        io_lib:format("  ~ts~n", [atom_to_list(Command)])
+     || Command <- Sorted
+    ],
     [
         "Usage: smelterl <command> [options]\n\n",
         "Commands:\n",

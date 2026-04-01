@@ -166,7 +166,7 @@ Backlog policy:
   - Refinement note (from Task 3.1): Implement loading behind the new `smelterl` / `smelterl_cli` / `smelterl_cmd_plan` skeleton so `plan` can transition from validated stub to real pipeline without changing the public CLI shape again.
   - Done when: Motherlode map is complete and validated.
 
-- [ ] **Task 3.2b: Smelterl Appendix B formatting and documentation conformance**
+- [x] **Task 3.2b: Smelterl Appendix B formatting and documentation conformance**
   - Scope: Bring the Smelterl Erlang source modules into conformance with
     `docs/02_SMELTERL_DESIGN.md` Appendix B formatting and inline
     documentation rules.
@@ -191,6 +191,10 @@ Backlog policy:
 - [ ] **Task 3.3: `smelterl_tree` main+aux tree construction**
   - Scope: Main tree, auxiliary discovery, effective auxiliary trees.
   - Tests: Unit tests for dependency resolution and cycle detection.
+  - Refinement note (from Task 3.2b): New Smelterl Erlang modules should start
+    from the Appendix B-compliant source skeleton (SPDX/REUSE headers,
+    `-moduledoc`, section headers, documented exported APIs) so style/docs do
+    not drift until the end of the pipeline work.
   - Done when: All target trees are built deterministically.
 
 - [ ] **Task 3.4: `smelterl_validate` target validation**
