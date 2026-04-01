@@ -54,9 +54,10 @@ help(plan) ->
     ].
 
 run(plan, Opts) ->
-    case require_options(Opts) of
-        ok ->
-            run_plan(Opts);
+    maybe
+        ok ?= require_options(Opts),
+        run_plan(Opts)
+    else
         {error, Message} ->
             smelterl_log:error("~ts~n", [Message]),
             2
@@ -67,49 +68,75 @@ run(plan, Opts) ->
 
 run_plan(Opts) ->
     ProductId = list_to_atom(maps:get(product, Opts)),
-    case smelterl_motherlode:load(maps:get(motherlode, Opts)) of
-        {ok, Motherlode} ->
-            case smelterl_tree:build_targets(ProductId, Motherlode) of
-                {ok, Targets} ->
-                    case smelterl_validate:validate_targets(Targets, Motherlode) of
-                        ok ->
-                            smelterl_log:error("plan execution not implemented yet.~n", []),
-                            1;
-                        {error, Reason} ->
-                            smelterl_log:error("~ts~n", [format_validation_error(Reason)]),
-                            1
-                    end;
-                {error, Reason} ->
-                    smelterl_log:error("~ts~n", [format_tree_error(Reason)]),
-                    1
-            end;
-        {error, Reason} ->
+    maybe
+        {ok, Motherlode} ?= load_motherlode(maps:get(motherlode, Opts)),
+        {ok, Targets} ?= build_targets(ProductId, Motherlode),
+        ok ?= validate_targets(Targets, Motherlode),
+        smelterl_log:error("plan execution not implemented yet.~n", []),
+        1
+    else
+        {load_error, Reason} ->
             smelterl_log:error("~ts~n", [format_load_error(Reason)]),
+            1;
+        {tree_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_tree_error(Reason)]),
+            1;
+        {validation_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_validation_error(Reason)]),
             1
     end.
 
 require_options(Opts) ->
-    case maps:get(product, Opts, undefined) of
+    maybe
+        {ok, _Product} ?= required_option(Opts, product, "plan requires --product."),
+        {ok, _Motherlode} ?= required_option(
+            Opts,
+            motherlode,
+            "plan requires --motherlode."
+        ),
+        {ok, _OutputPlan} ?= required_option(
+            Opts,
+            output_plan,
+            "plan requires --output-plan."
+        ),
+        ok
+    else
+        {error, _} = Error ->
+            Error
+    end.
+
+required_option(Opts, Key, Message) ->
+    case maps:get(Key, Opts, undefined) of
         undefined ->
-            {error, "plan requires --product."};
+            {error, Message};
         [] ->
-            {error, "plan requires --product."};
-        _ ->
-            case maps:get(motherlode, Opts, undefined) of
-                undefined ->
-                    {error, "plan requires --motherlode."};
-                [] ->
-                    {error, "plan requires --motherlode."};
-                _ ->
-                    case maps:get(output_plan, Opts, undefined) of
-                        undefined ->
-                            {error, "plan requires --output-plan."};
-                        [] ->
-                            {error, "plan requires --output-plan."};
-                        _ ->
-                            ok
-                    end
-            end
+            {error, Message};
+        Value ->
+            {ok, Value}
+    end.
+
+load_motherlode(Path) ->
+    case smelterl_motherlode:load(Path) of
+        {ok, _Motherlode} = Ok ->
+            Ok;
+        {error, Reason} ->
+            {load_error, Reason}
+    end.
+
+build_targets(ProductId, Motherlode) ->
+    case smelterl_tree:build_targets(ProductId, Motherlode) of
+        {ok, _Targets} = Ok ->
+            Ok;
+        {error, Reason} ->
+            {tree_error, Reason}
+    end.
+
+validate_targets(Targets, Motherlode) ->
+    case smelterl_validate:validate_targets(Targets, Motherlode) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            {validation_error, Reason}
     end.
 
 format_load_error({invalid_path, Path, Posix}) ->

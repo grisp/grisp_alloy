@@ -67,9 +67,10 @@ conflicts, and version/flavor requirements for a single tree.
 """.
 -spec validate_tree(nugget_tree(), motherlode()) -> ok | {error, term()}.
 validate_tree(Tree, Motherlode) ->
-    case validate_tree_with_flavors(Tree, Motherlode, #{}) of
-        {ok, _FlavorMap} ->
-            ok;
+    maybe
+        {ok, _FlavorMap} ?= validate_tree_with_flavors(Tree, Motherlode, #{}),
+        ok
+    else
         {error, _} = Error ->
             Error
     end.
@@ -86,23 +87,25 @@ auxiliary ids.
 validate_targets(Targets, Motherlode) ->
     MainTree = maps:get(main, Targets),
     Auxiliaries = maps:get(auxiliaries, Targets, []),
-    case validate_tree_with_flavors(MainTree, Motherlode, #{}) of
-        {ok, MainFlavors} ->
-            case validate_auxiliary_ids(Auxiliaries) of
-                ok ->
-                    case validate_auxiliaries(Auxiliaries, MainFlavors, MainTree, Motherlode) of
-                        ok ->
-                            validate_target_hook_scopes(
-                                Targets,
-                                Motherlode,
-                                auxiliary_ids(Auxiliaries)
-                            );
-                        {error, _} = Error ->
-                            Error
-                    end;
-                {error, _} = Error ->
-                    Error
-            end;
+    maybe
+        {ok, MainFlavors} ?= validate_tree_with_flavors(
+            MainTree,
+            Motherlode,
+            #{}
+        ),
+        ok ?= validate_auxiliary_ids(Auxiliaries),
+        ok ?= validate_auxiliaries(
+            Auxiliaries,
+            MainFlavors,
+            MainTree,
+            Motherlode
+        ),
+        ok ?= validate_target_hook_scopes(
+            Targets,
+            Motherlode,
+            auxiliary_ids(Auxiliaries)
+        )
+    else
         {error, _} = Error ->
             Error
     end.
@@ -110,50 +113,34 @@ validate_targets(Targets, Motherlode) ->
 
 %=== INTERNAL FUNCTIONS ========================================================
 
- -spec validate_auxiliaries([auxiliary_target()], flavor_map(), nugget_tree(), motherlode()) ->
+-spec validate_auxiliaries([auxiliary_target()], flavor_map(), nugget_tree(), motherlode()) ->
     ok | {error, term()}.
 validate_auxiliaries([], _MainFlavors, _MainTree, _Motherlode) ->
     ok;
 validate_auxiliaries([Auxiliary | Rest], MainFlavors, MainTree, Motherlode) ->
     AuxiliaryId = maps:get(id, Auxiliary),
-    case validate_auxiliary_specific_tree(Auxiliary, Motherlode) of
-        ok ->
-            case validate_auxiliary_constraints(Auxiliary, Motherlode) of
-                {ok, RootFlavorMap} ->
-                    case validate_tree_with_flavors(
-                        maps:get(tree, Auxiliary),
-                        Motherlode,
-                        RootFlavorMap
-                    ) of
-                        {ok, AuxiliaryFlavors} ->
-                            case validate_shared_flavors(
-                                AuxiliaryId,
-                                MainFlavors,
-                                AuxiliaryFlavors,
-                                MainTree,
-                                maps:get(tree, Auxiliary)
-                            ) of
-                                ok ->
-                                    validate_auxiliaries(
-                                        Rest,
-                                        MainFlavors,
-                                        MainTree,
-                                        Motherlode
-                                    );
-                                {error, _} = Error ->
-                                    Error
-                            end;
-                        {error, _} = Error ->
-                            Error
-                    end;
-                {error, _} = Error ->
-                    Error
-            end;
+    maybe
+        ok ?= validate_auxiliary_specific_tree(Auxiliary, Motherlode),
+        {ok, RootFlavorMap} ?= validate_auxiliary_constraints(Auxiliary, Motherlode),
+        {ok, AuxiliaryFlavors} ?= validate_tree_with_flavors(
+            maps:get(tree, Auxiliary),
+            Motherlode,
+            RootFlavorMap
+        ),
+        ok ?= validate_shared_flavors(
+            AuxiliaryId,
+            MainFlavors,
+            AuxiliaryFlavors,
+            MainTree,
+            maps:get(tree, Auxiliary)
+        ),
+        validate_auxiliaries(Rest, MainFlavors, MainTree, Motherlode)
+    else
         {error, _} = Error ->
             Error
     end.
 
- -spec validate_auxiliary_ids([auxiliary_target()]) -> ok | {error, term()}.
+-spec validate_auxiliary_ids([auxiliary_target()]) -> ok | {error, term()}.
 validate_auxiliary_ids(Auxiliaries) ->
     validate_auxiliary_ids(Auxiliaries, #{}).
 
@@ -191,32 +178,33 @@ validate_auxiliary_specific_nodes(AuxiliaryId, [NuggetId | Rest], Motherlode) ->
             validate_auxiliary_specific_nodes(AuxiliaryId, Rest, Motherlode)
     end.
 
- -spec validate_auxiliary_constraints(auxiliary_target(), motherlode()) ->
+-spec validate_auxiliary_constraints(auxiliary_target(), motherlode()) ->
     {ok, flavor_map()} | {error, term()}.
 validate_auxiliary_constraints(Auxiliary, Motherlode) ->
     AuxiliaryId = maps:get(id, Auxiliary),
     RootNugget = maps:get(root_nugget, Auxiliary),
-    case parse_auxiliary_constraints(maps:get(constraints, Auxiliary, []), #{versions => [], flavor => undefined}) of
-        {ok, #{versions := Versions, flavor := Flavor}} ->
-            case validate_version_constraints(AuxiliaryId, RootNugget, Versions, Motherlode, incompatible_auxiliary_version) of
-                ok ->
-                    case Flavor of
-                        undefined ->
-                            {ok, #{}};
-                        _ ->
-                            case ensure_flavor(RootNugget, Flavor, Motherlode, #{}) of
-                                {ok, FlavorMap} ->
-                                    {ok, FlavorMap};
-                                {error, _} = Error ->
-                                    Error
-                            end
-                    end;
-                {error, _} = Error ->
-                    Error
-            end;
+    maybe
+        {ok, #{versions := Versions, flavor := Flavor}} ?= parse_auxiliary_constraints(
+            maps:get(constraints, Auxiliary, []),
+            #{versions => [], flavor => undefined}
+        ),
+        ok ?= validate_version_constraints(
+            AuxiliaryId,
+            RootNugget,
+            Versions,
+            Motherlode,
+            incompatible_auxiliary_version
+        ),
+        resolve_auxiliary_flavor(RootNugget, Flavor, Motherlode)
+    else
         {error, _} = Error ->
             Error
     end.
+
+resolve_auxiliary_flavor(_RootNugget, undefined, _Motherlode) ->
+    {ok, #{}};
+resolve_auxiliary_flavor(RootNugget, Flavor, Motherlode) ->
+    ensure_flavor(RootNugget, Flavor, Motherlode, #{}).
 
 parse_auxiliary_constraints([], Acc) ->
     {ok, Acc};

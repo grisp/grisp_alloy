@@ -48,6 +48,12 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated Smelterl Appendix B to document a readability rule for Erlang
+  `maybe` usage and to treat more than three nested `case` expressions as the
+  default refactoring threshold.
+- Refactored the current linear error-propagation paths in `smelterl_validate`
+  and `smelterl_cmd_plan` to use `maybe` and small helper extraction where that
+  reduces nesting without changing behavior.
 - Updated `smelterl plan` to run target validation after target-tree
   construction, report validation failures with command-level diagnostics, and
   keep the stubbed not-implemented path only for validated plans.

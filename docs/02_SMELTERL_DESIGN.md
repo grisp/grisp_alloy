@@ -3091,6 +3091,15 @@ This appendix shows a single example Erlang module that illustrates every docume
   7. BEHAVIOUR <NAME> CALLBACKS (callback implementations)
   8. INTERNAL FUNCTIONS
 - **Pattern matching in function heads:** Prefer `Arg = #{key1 := A, key2 := B}` (assign then match) over `#{key1 := A, key2 := B} = Arg` in function argument pattern matching.
+- **`maybe` for linear fallible flows:** Prefer Erlang `maybe` syntax when it
+  materially improves readability of a linear sequence of fallible steps (for
+  example repeated `{ok, Value}` / `{error, Reason}` propagation). Do not use
+  it mechanically when an explicit `case` expresses the branching intent more
+  clearly.
+- **Nested `case` depth:** Treat more than three nested `case` expressions in
+  one flow as a readability smell. When the depth would exceed that threshold,
+  refactor to `maybe`, helper functions, or both, unless the explicit nested
+  branching is still demonstrably clearer.
 - **Guard indentation:** When a function head wraps and the `when` guard moves to
   the next line, indent `when` by two spaces so it reads as a continuation of
   the function head.
