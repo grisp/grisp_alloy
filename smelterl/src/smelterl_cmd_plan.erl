@@ -72,6 +72,7 @@ run_plan(Opts) ->
         {ok, Motherlode} ?= load_motherlode(maps:get(motherlode, Opts)),
         {ok, Targets} ?= build_targets(ProductId, Motherlode),
         ok ?= validate_targets(Targets, Motherlode),
+        {ok, _TopologyOrders} ?= topology_orders(Targets),
         smelterl_log:error("plan execution not implemented yet.~n", []),
         1
     else
@@ -83,6 +84,9 @@ run_plan(Opts) ->
             1;
         {validation_error, Reason} ->
             smelterl_log:error("~ts~n", [format_validation_error(Reason)]),
+            1;
+        {topology_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_topology_error(Reason)]),
             1
     end.
 
@@ -137,6 +141,40 @@ validate_targets(Targets, Motherlode) ->
             ok;
         {error, Reason} ->
             {validation_error, Reason}
+    end.
+
+topology_orders(Targets) ->
+    MainTree = maps:get(main, Targets),
+    AuxiliaryTargets = maps:get(auxiliaries, Targets, []),
+    maybe
+        {ok, MainOrder} ?= topology_order(maps:get(root, MainTree), MainTree),
+        {ok, AuxiliaryOrders} ?= topology_orders(AuxiliaryTargets, #{}),
+        {ok, maps:put(main, MainOrder, AuxiliaryOrders)}
+    else
+        {topology_error, _} = Error ->
+            Error
+    end.
+
+topology_orders([], Orders) ->
+    {ok, Orders};
+topology_orders([Auxiliary | Rest], Orders0) ->
+    AuxiliaryId = maps:get(id, Auxiliary),
+    Tree = maps:get(tree, Auxiliary),
+    maybe
+        {ok, Order} ?= topology_order(AuxiliaryId, Tree),
+        {ok, Orders1} ?= topology_orders(Rest, maps:put(AuxiliaryId, Order, Orders0)),
+        {ok, Orders1}
+    else
+        {topology_error, _} = Error ->
+            Error
+    end.
+
+topology_order(TargetId, Tree) ->
+    case smelterl_topology:topology_order(Tree) of
+        {ok, Order} ->
+            {ok, Order};
+        {error, Reason} ->
+            {topology_error, {TargetId, Reason}}
     end.
 
 format_load_error({invalid_path, Path, Posix}) ->
@@ -353,6 +391,20 @@ format_validation_error({invalid_dependency_constraint, NuggetId, Detail}) ->
     );
 format_validation_error(Reason) ->
     io_lib:format("plan: target validation failed: ~tp", [Reason]).
+
+format_topology_error({TargetId, {cycle_detected, Path}}) ->
+    io_lib:format(
+        "plan: target '~ts' contains a dependency cycle: ~ts",
+        [
+            atom_to_list(TargetId),
+            string:join([atom_to_list(Id) || Id <- Path], " -> ")
+        ]
+    );
+format_topology_error({TargetId, Reason}) ->
+    io_lib:format(
+        "plan: failed to compute topology for target '~ts': ~tp",
+        [atom_to_list(TargetId), Reason]
+    ).
 
 format_version(undefined) ->
     "undefined";

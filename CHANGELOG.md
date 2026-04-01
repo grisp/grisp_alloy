@@ -8,6 +8,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_topology` with deterministic DFS-based topological ordering,
+  cycle detection, and Common Test coverage for dependency ordering,
+  declaration-order tie-breaking, stability across runs, and cycle reporting.
 - Added `smelterl_validate` with target-tree and target-set validation for
   category cardinality, dependency constraints, conflicts, version/flavor
   checks, auxiliary restrictions, and hook-scope enforcement, plus a dedicated
@@ -48,6 +51,9 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` to compute per-target topology orders after
+  validation so the plan pipeline now exercises deterministic ordering for main
+  and auxiliary targets before the remaining stubbed stages.
 - Updated Smelterl Appendix B to document a readability rule for Erlang
   `maybe` usage and to treat more than three nested `case` expressions as the
   default refactoring threshold.
