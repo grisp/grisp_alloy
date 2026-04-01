@@ -8,6 +8,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_tree` with nugget-only dependency subtree construction,
+  auxiliary target discovery, effective auxiliary-tree composition, and Common
+  Test coverage for dependency order, cycle detection, and backbone merging.
 - Added `smelterl_log` as the shared stderr reporting surface for Smelterl
   command diagnostics, with warning emission used by motherlode loading when a
   repository is missing `.nuggets`.
@@ -41,6 +44,9 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` to run target-tree construction before the later
+  pipeline stub and to report circular-dependency and missing-dependency tree
+  failures at command level.
 - Updated `smelterl plan` and the shared CLI path to route stderr diagnostics
   through `smelterl_log`, and added Common Test coverage for visible,
   deterministic missing-registry warnings.

@@ -188,7 +188,7 @@ Backlog policy:
   - Done when: Smelterl can report non-fatal warnings deterministically and the
     missing-`.nuggets` motherlode case uses that path.
 
-- [ ] **Task 3.3: `smelterl_tree` main+aux tree construction**
+- [x] **Task 3.3: `smelterl_tree` main+aux tree construction**
   - Scope: Main tree, auxiliary discovery, effective auxiliary trees.
   - Tests: Unit tests for dependency resolution and cycle detection.
   - Refinement note (from Task 3.2b): New Smelterl Erlang modules should start
@@ -204,6 +204,10 @@ Backlog policy:
 - [ ] **Task 3.4: `smelterl_validate` target validation**
   - Scope: Category cardinality, constraints, auxiliary restrictions.
   - Tests: Unit tests for each validation family.
+  - Refinement note (from Task 3.3): The pre-validation auxiliary target set is
+    preserved as an ordered list rather than a map so duplicate `AuxId`
+    declarations survive discovery; validation should reject duplicates before
+    any later canonicalization by target id.
   - Done when: Invalid target graphs fail early with clear reasons.
 
 - [ ] **Task 3.5: `smelterl_topology` deterministic ordering**

@@ -66,10 +66,17 @@ run(plan, Opts) ->
 %=== INTERNAL FUNCTIONS ========================================================
 
 run_plan(Opts) ->
+    ProductId = list_to_atom(maps:get(product, Opts)),
     case smelterl_motherlode:load(maps:get(motherlode, Opts)) of
-        {ok, _Motherlode} ->
-            smelterl_log:error("plan execution not implemented yet.~n", []),
-            1;
+        {ok, Motherlode} ->
+            case smelterl_tree:build_targets(ProductId, Motherlode) of
+                {ok, _Targets} ->
+                    smelterl_log:error("plan execution not implemented yet.~n", []),
+                    1;
+                {error, Reason} ->
+                    smelterl_log:error("~ts~n", [format_tree_error(Reason)]),
+                    1
+            end;
         {error, Reason} ->
             smelterl_log:error("~ts~n", [format_load_error(Reason)]),
             1
@@ -135,3 +142,44 @@ format_detail(Detail) when is_atom(Detail) ->
     atom_to_list(Detail);
 format_detail(Detail) ->
     io_lib:format("~tp", [Detail]).
+
+format_tree_error({product_not_found, ProductId}) ->
+    io_lib:format(
+        "plan: product '~ts' not found in motherlode",
+        [atom_to_list(ProductId)]
+    );
+format_tree_error({auxiliary_root_not_found, AuxId, RootNugget}) ->
+    io_lib:format(
+        "plan: auxiliary target '~ts' references missing root nugget '~ts'",
+        [atom_to_list(AuxId), atom_to_list(RootNugget)]
+    );
+format_tree_error({circular_dependency, Cycle}) ->
+    io_lib:format(
+        "plan: circular dependency detected: ~ts",
+        [string:join([atom_to_list(Id) || Id <- Cycle], " -> ")]
+    );
+format_tree_error({dependency_not_found, RequesterId, MissingId, Constraint}) ->
+    io_lib:format(
+        "plan: nugget '~ts' requires missing dependency '~ts' (~ts)",
+        [atom_to_list(RequesterId), atom_to_list(MissingId), atom_to_list(Constraint)]
+    );
+format_tree_error({invalid_dependency_constraints, NuggetId, Detail}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid depends_on metadata: ~tp",
+        [atom_to_list(NuggetId), Detail]
+    );
+format_tree_error({invalid_dependency_constraint, NuggetId, Detail}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid dependency constraint: ~tp",
+        [atom_to_list(NuggetId), Detail]
+    );
+format_tree_error({invalid_auxiliary_products, NuggetId, Detail}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid auxiliary_products metadata: ~tp",
+        [atom_to_list(NuggetId), Detail]
+    );
+format_tree_error({invalid_auxiliary_product, NuggetId, Detail}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid auxiliary_products entry: ~tp",
+        [atom_to_list(NuggetId), Detail]
+    ).

@@ -9,6 +9,8 @@
     plan_requires_product/1,
     plan_requires_motherlode/1,
     plan_requires_output_plan/1,
+    plan_reports_circular_dependency/1,
+    plan_reports_missing_dependency/1,
     plan_warns_when_repository_is_missing_registry/1,
     plan_warns_for_multiple_missing_registries_in_sorted_order/1,
     plan_reports_invalid_motherlode_path/1,
@@ -23,6 +25,8 @@ all() ->
         plan_requires_product,
         plan_requires_motherlode,
         plan_requires_output_plan,
+        plan_reports_circular_dependency,
+        plan_reports_missing_dependency,
         plan_warns_when_repository_is_missing_registry,
         plan_warns_for_multiple_missing_registries_in_sorted_order,
         plan_reports_invalid_motherlode_path,
@@ -56,6 +60,75 @@ plan_requires_output_plan(_Config) ->
     {Status, Output} = run_main(["plan", "--product", "demo", "--motherlode", "/tmp/motherlode"]),
     assert_equal(2, Status),
     assert_contains(Output, <<"plan requires --output-plan.">>).
+
+plan_reports_circular_dependency(_Config) ->
+    MotherlodeDir = make_temp_dir("smelterl-plan-cycle"),
+    ok = write_repo(
+        MotherlodeDir,
+        "builtin",
+        [
+            {"demo/demo.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, demo},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [{required, nugget, dep_a}]}\n",
+                    "]}.\n"
+                ]},
+            {"dep_a/dep_a.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, dep_a},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [{required, nugget, dep_b}]}\n",
+                    "]}.\n"
+                ]},
+            {"dep_b/dep_b.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, dep_b},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [{required, nugget, demo}]}\n",
+                    "]}.\n"
+                ]}
+        ]
+    ),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(Output, <<"plan: circular dependency detected: demo -> dep_a -> dep_b -> demo">>).
+
+plan_reports_missing_dependency(_Config) ->
+    MotherlodeDir = make_temp_dir("smelterl-plan-missing-dep"),
+    ok = write_repo(
+        MotherlodeDir,
+        "builtin",
+        [
+            {"demo/demo.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, demo},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [{required, nugget, missing_dep}]}\n",
+                    "]}.\n"
+                ]}
+        ]
+    ),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(
+        Output,
+        <<"plan: nugget 'demo' requires missing dependency 'missing_dep' (required)">>
+    ).
 
 plan_warns_when_repository_is_missing_registry(_Config) ->
     MotherlodeDir = create_valid_motherlode(),
@@ -201,6 +274,33 @@ create_valid_motherlode() ->
 
 create_repo_without_registry(MotherlodeDir, RepoName) ->
     ok = file:make_dir(filename:join(MotherlodeDir, RepoName)).
+
+write_repo(MotherlodeDir, RepoName, Nuggets) ->
+    RepoDir = filename:join(MotherlodeDir, RepoName),
+    RegistryEntries = [
+        io_lib:format("        <<\"~ts\">>", [Path])
+     || {Path, _Contents} <- Nuggets
+    ],
+    ok = filelib:ensure_dir(filename:join(RepoDir, ".nuggets")),
+    ok = file:write_file(
+        filename:join(RepoDir, ".nuggets"),
+        [
+            "{nugget_registry, <<\"1.0\">>, [\n",
+            "    {nuggets, [\n",
+            string:join([lists:flatten(Entry) || Entry <- RegistryEntries], ",\n"),
+            "\n    ]}\n",
+            "]}.\n"
+        ]
+    ),
+    lists:foreach(
+        fun({Path, Contents}) ->
+            FullPath = filename:join(RepoDir, Path),
+            ok = filelib:ensure_dir(FullPath),
+            ok = file:write_file(FullPath, Contents)
+        end,
+        Nuggets
+    ),
+    ok.
 
 make_temp_dir(Prefix) ->
     Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))),
