@@ -8,6 +8,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_log` as the shared stderr reporting surface for Smelterl
+  command diagnostics, with warning emission used by motherlode loading when a
+  repository is missing `.nuggets`.
 - Added `smelterl_motherlode` with motherlode repository loading, `.nuggets`
   and `.nugget` root/schema validation, SBOM-default merging, `license_files`
   path resolution, duplicate nugget-id detection, and Common Test coverage for
@@ -38,6 +41,9 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` and the shared CLI path to route stderr diagnostics
+  through `smelterl_log`, and added Common Test coverage for visible,
+  deterministic missing-registry warnings.
 - Brought the current Smelterl source modules into Appendix B conformance with
   REUSE/SPDX headers, `-moduledoc` text, documented callbacks/types, required
   section headers, one-export-per-line layout, and explicit two-space wrapped

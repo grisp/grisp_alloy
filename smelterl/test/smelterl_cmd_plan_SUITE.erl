@@ -9,6 +9,8 @@
     plan_requires_product/1,
     plan_requires_motherlode/1,
     plan_requires_output_plan/1,
+    plan_warns_when_repository_is_missing_registry/1,
+    plan_warns_for_multiple_missing_registries_in_sorted_order/1,
     plan_reports_invalid_motherlode_path/1,
     plan_rejects_unknown_argument/1,
     valid_plan_args_report_not_implemented/1
@@ -21,6 +23,8 @@ all() ->
         plan_requires_product,
         plan_requires_motherlode,
         plan_requires_output_plan,
+        plan_warns_when_repository_is_missing_registry,
+        plan_warns_for_multiple_missing_registries_in_sorted_order,
         plan_reports_invalid_motherlode_path,
         plan_rejects_unknown_argument,
         valid_plan_args_report_not_implemented
@@ -52,6 +56,40 @@ plan_requires_output_plan(_Config) ->
     {Status, Output} = run_main(["plan", "--product", "demo", "--motherlode", "/tmp/motherlode"]),
     assert_equal(2, Status),
     assert_contains(Output, <<"plan requires --output-plan.">>).
+
+plan_warns_when_repository_is_missing_registry(_Config) ->
+    MotherlodeDir = create_valid_motherlode(),
+    create_repo_without_registry(MotherlodeDir, "missing_registry"),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(
+        Output,
+        <<"warning: motherlode repository '">>
+    ),
+    assert_contains(Output, <<"missing_registry' has no .nuggets registry">>),
+    assert_contains(Output, <<"plan execution not implemented yet.">>).
+
+plan_warns_for_multiple_missing_registries_in_sorted_order(_Config) ->
+    MotherlodeDir = create_valid_motherlode(),
+    create_repo_without_registry(MotherlodeDir, "zzz_missing"),
+    create_repo_without_registry(MotherlodeDir, "aaa_missing"),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_order(
+        Output,
+        <<"aaa_missing' has no .nuggets registry">>,
+        <<"zzz_missing' has no .nuggets registry">>
+    ).
 
 plan_reports_invalid_motherlode_path(_Config) ->
     {Status, Output} = run_main(["plan", "--product", "demo", "--motherlode", "/definitely/missing", "--output-plan", "/tmp/build_plan.term"]),
@@ -117,6 +155,20 @@ assert_contains(Haystack, Needle) ->
             ok
     end.
 
+assert_order(Haystack, FirstNeedle, SecondNeedle) ->
+    case {
+        binary:match(Haystack, FirstNeedle),
+        binary:match(Haystack, SecondNeedle)
+    } of
+        {{FirstIndex, _}, {SecondIndex, _}} when FirstIndex < SecondIndex ->
+            ok;
+        {FirstMatch, SecondMatch} ->
+            ct:fail(
+                "Expected ~tp before ~tp in ~tp, got ~tp and ~tp",
+                [FirstNeedle, SecondNeedle, Haystack, FirstMatch, SecondMatch]
+            )
+    end.
+
 assert_equal(Expected, Actual) ->
     case Actual of
         Expected -> ok;
@@ -146,6 +198,9 @@ create_valid_motherlode() ->
         ]
     ),
     Dir.
+
+create_repo_without_registry(MotherlodeDir, RepoName) ->
+    ok = file:make_dir(filename:join(MotherlodeDir, RepoName)).
 
 make_temp_dir(Prefix) ->
     Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))),

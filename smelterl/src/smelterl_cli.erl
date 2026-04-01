@@ -258,4 +258,4 @@ global_help(Config) ->
     ].
 
 print_error(Message) ->
-    io:format(standard_error, "~ts~n", [Message]).
+    smelterl_log:error("~ts~n", [Message]).

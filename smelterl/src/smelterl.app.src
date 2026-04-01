@@ -6,6 +6,7 @@
         smelterl_cli,
         smelterl_command,
         smelterl_cmd_plan,
+        smelterl_log,
         smelterl_motherlode
     ]},
     {registered, []},

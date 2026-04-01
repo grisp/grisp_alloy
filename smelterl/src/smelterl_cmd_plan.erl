@@ -58,7 +58,7 @@ run(plan, Opts) ->
         ok ->
             run_plan(Opts);
         {error, Message} ->
-            io:format(standard_error, "~ts~n", [Message]),
+            smelterl_log:error("~ts~n", [Message]),
             2
     end.
 
@@ -68,14 +68,10 @@ run(plan, Opts) ->
 run_plan(Opts) ->
     case smelterl_motherlode:load(maps:get(motherlode, Opts)) of
         {ok, _Motherlode} ->
-            io:format(
-                standard_error,
-                "plan execution not implemented yet.~n",
-                []
-            ),
+            smelterl_log:error("plan execution not implemented yet.~n", []),
             1;
         {error, Reason} ->
-            io:format(standard_error, "~ts~n", [format_load_error(Reason)]),
+            smelterl_log:error("~ts~n", [format_load_error(Reason)]),
             1
     end.
 

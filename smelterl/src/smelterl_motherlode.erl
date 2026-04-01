@@ -69,6 +69,11 @@ load_repository(RepoPath, RepoName, Motherlode0) ->
     RegistryPath = filename:join(RepoPath, ".nuggets"),
     case filelib:is_regular(RegistryPath) of
         false ->
+            smelterl_log:warning(
+                "warning: motherlode repository '~ts' has no .nuggets registry;"
+                " skipping.~n",
+                [to_binary(RepoPath)]
+            ),
             {ok, Motherlode0};
         true ->
             case parse_registry(RepoPath, RegistryPath) of
