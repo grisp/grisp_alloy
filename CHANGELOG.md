@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_validate` with target-tree and target-set validation for
+  category cardinality, dependency constraints, conflicts, version/flavor
+  checks, auxiliary restrictions, and hook-scope enforcement, plus a dedicated
+  Common Test suite covering each validation family.
 - Added `smelterl_tree` with nugget-only dependency subtree construction,
   auxiliary target discovery, effective auxiliary-tree composition, and Common
   Test coverage for dependency order, cycle detection, and backbone merging.
@@ -44,6 +48,11 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` to run target validation after target-tree
+  construction, report validation failures with command-level diagnostics, and
+  keep the stubbed not-implemented path only for validated plans.
+- Updated Smelterl Common Test temp-directory helpers to use collision-resistant
+  `/tmp` directory creation so repeated reruns do not require manual cleanup.
 - Updated `smelterl plan` to run target-tree construction before the later
   pipeline stub and to report circular-dependency and missing-dependency tree
   failures at command level.

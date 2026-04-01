@@ -70,9 +70,15 @@ run_plan(Opts) ->
     case smelterl_motherlode:load(maps:get(motherlode, Opts)) of
         {ok, Motherlode} ->
             case smelterl_tree:build_targets(ProductId, Motherlode) of
-                {ok, _Targets} ->
-                    smelterl_log:error("plan execution not implemented yet.~n", []),
-                    1;
+                {ok, Targets} ->
+                    case smelterl_validate:validate_targets(Targets, Motherlode) of
+                        ok ->
+                            smelterl_log:error("plan execution not implemented yet.~n", []),
+                            1;
+                        {error, Reason} ->
+                            smelterl_log:error("~ts~n", [format_validation_error(Reason)]),
+                            1
+                    end;
                 {error, Reason} ->
                     smelterl_log:error("~ts~n", [format_tree_error(Reason)]),
                     1
@@ -183,3 +189,152 @@ format_tree_error({invalid_auxiliary_product, NuggetId, Detail}) ->
         "plan: nugget '~ts' has invalid auxiliary_products entry: ~tp",
         [atom_to_list(NuggetId), Detail]
     ).
+
+format_validation_error({bad_category_cardinality, Category, Count, NuggetIds}) ->
+    io_lib:format(
+        "plan: target tree must contain exactly one '~ts' nugget; found ~B (~ts)",
+        [
+            atom_to_list(Category),
+            Count,
+            string:join([atom_to_list(Id) || Id <- NuggetIds], ", ")
+        ]
+    );
+format_validation_error({missing_category_dependency, NuggetId, Category, Constraint}) ->
+    io_lib:format(
+        "plan: nugget '~ts' is missing category dependency '~ts' (~ts)",
+        [atom_to_list(NuggetId), atom_to_list(Category), atom_to_list(Constraint)]
+    );
+format_validation_error({missing_capability_dependency, NuggetId, Capability}) ->
+    io_lib:format(
+        "plan: nugget '~ts' is missing capability dependency '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Capability)]
+    );
+format_validation_error({missing_nugget_dependency, NuggetId, DependencyId, Constraint}) ->
+    io_lib:format(
+        "plan: nugget '~ts' is missing nugget dependency '~ts' (~ts)",
+        [atom_to_list(NuggetId), atom_to_list(DependencyId), atom_to_list(Constraint)]
+    );
+format_validation_error({invalid_dependency_match_count, NuggetId, Constraint, Target, Values, Count}) ->
+    io_lib:format(
+        "plan: nugget '~ts' dependency constraint '~ts' on ~ts expected a different match count; matched ~B for ~tp",
+        [atom_to_list(NuggetId), atom_to_list(Constraint), atom_to_list(Target), Count, Values]
+    );
+format_validation_error({nugget_conflict, NuggetIdA, NuggetIdB}) ->
+    io_lib:format(
+        "plan: nugget '~ts' conflicts with nugget '~ts'",
+        [atom_to_list(NuggetIdA), atom_to_list(NuggetIdB)]
+    );
+format_validation_error({capability_conflict, NuggetId, capability, Capability}) ->
+    io_lib:format(
+        "plan: nugget '~ts' conflicts with capability '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Capability)]
+    );
+format_validation_error({incompatible_version, RequesterId, TargetId, Required, Actual}) ->
+    io_lib:format(
+        "plan: nugget '~ts' requires '~ts' version '~ts' but found ~ts",
+        [
+            atom_to_list(RequesterId),
+            atom_to_list(TargetId),
+            Required,
+            format_version(Actual)
+        ]
+    );
+format_validation_error({incompatible_auxiliary_version, AuxId, TargetId, Required, Actual}) ->
+    io_lib:format(
+        "plan: auxiliary target '~ts' requires root nugget '~ts' version '~ts' but found ~ts",
+        [atom_to_list(AuxId), atom_to_list(TargetId), Required, format_version(Actual)]
+    );
+format_validation_error({invalid_flavor, NuggetId, Flavor}) ->
+    io_lib:format(
+        "plan: nugget '~ts' does not declare requested flavor '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Flavor)]
+    );
+format_validation_error({flavor_mismatch, NuggetId, Flavor}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has conflicting flavor requirements including '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Flavor)]
+    );
+format_validation_error({duplicate_auxiliary_id, AuxId}) ->
+    io_lib:format(
+        "plan: duplicate auxiliary target id '~ts'",
+        [atom_to_list(AuxId)]
+    );
+format_validation_error({reserved_auxiliary_id, AuxId}) ->
+    io_lib:format(
+        "plan: auxiliary target id '~ts' is reserved",
+        [atom_to_list(AuxId)]
+    );
+format_validation_error({auxiliary_forbidden_category, AuxId, NuggetId, Category}) ->
+    io_lib:format(
+        "plan: auxiliary target '~ts' introduces forbidden category '~ts' via nugget '~ts'",
+        [atom_to_list(AuxId), atom_to_list(Category), atom_to_list(NuggetId)]
+    );
+format_validation_error({invalid_auxiliary_constraint, Constraint}) ->
+    io_lib:format(
+        "plan: invalid auxiliary target constraint: ~tp",
+        [Constraint]
+    );
+format_validation_error({shared_flavor_mismatch, AuxId, NuggetId, MainFlavor, AuxFlavor}) ->
+    io_lib:format(
+        "plan: shared nugget '~ts' resolves to different flavors in main vs auxiliary '~ts' (~ts vs ~ts)",
+        [
+            atom_to_list(NuggetId),
+            atom_to_list(AuxId),
+            format_flavor(MainFlavor),
+            format_flavor(AuxFlavor)
+        ]
+    );
+format_validation_error({invalid_hooks_metadata, NuggetId, Hooks}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid hooks metadata: ~tp",
+        [atom_to_list(NuggetId), Hooks]
+    );
+format_validation_error({invalid_hook, NuggetId, Hook}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid hook entry: ~tp",
+        [atom_to_list(NuggetId), Hook]
+    );
+format_validation_error({invalid_hook_type, NuggetId, HookType}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid hook type '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(HookType)]
+    );
+format_validation_error({unknown_hook_scope, NuggetId, HookType, Scope}) ->
+    io_lib:format(
+        "plan: nugget '~ts' uses unknown scope '~ts' for hook '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Scope), atom_to_list(HookType)]
+    );
+format_validation_error({invalid_hook_scope, NuggetId, HookType, Scope}) ->
+    io_lib:format(
+        "plan: nugget '~ts' uses invalid scope '~tp' for hook '~ts'",
+        [atom_to_list(NuggetId), Scope, atom_to_list(HookType)]
+    );
+format_validation_error({invalid_firmware_hook_scope, NuggetId, HookType, Scope}) ->
+    io_lib:format(
+        "plan: nugget '~ts' uses auxiliary-only scope '~ts' for firmware hook '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Scope), atom_to_list(HookType)]
+    );
+format_validation_error({invalid_dependency_constraints, NuggetId, Detail}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid depends_on metadata: ~tp",
+        [atom_to_list(NuggetId), Detail]
+    );
+format_validation_error({invalid_dependency_constraint, NuggetId, Detail}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid dependency constraint: ~tp",
+        [atom_to_list(NuggetId), Detail]
+    );
+format_validation_error(Reason) ->
+    io_lib:format("plan: target validation failed: ~tp", [Reason]).
+
+format_version(undefined) ->
+    "undefined";
+format_version(Version) when is_binary(Version) ->
+    binary_to_list(Version);
+format_version(Version) ->
+    io_lib:format("~tp", [Version]).
+
+format_flavor(undefined) ->
+    "undefined";
+format_flavor(Flavor) ->
+    atom_to_list(Flavor).

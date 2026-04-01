@@ -201,7 +201,7 @@ Backlog policy:
     `io:format/3` reporting.
   - Done when: All target trees are built deterministically.
 
-- [ ] **Task 3.4: `smelterl_validate` target validation**
+- [x] **Task 3.4: `smelterl_validate` target validation**
   - Scope: Category cardinality, constraints, auxiliary restrictions.
   - Tests: Unit tests for each validation family.
   - Refinement note (from Task 3.3): The pre-validation auxiliary target set is
@@ -209,6 +209,22 @@ Backlog policy:
     declarations survive discovery; validation should reject duplicates before
     any later canonicalization by target id.
   - Done when: Invalid target graphs fail early with clear reasons.
+
+- [ ] **Task 3.4b: Smelterl Appendix B case-depth and `maybe` readability rule**
+  - Scope: Update `docs/02_SMELTERL_DESIGN.md` Appendix B to state that
+    `maybe` syntax should be used when it materially improves readability, and
+    that deeply nested `case` expressions should be refactored when they exceed
+    the preferred readability threshold.
+  - Scope: Refactor the existing Smelterl Erlang modules that now violate the
+    new readability rule, using `maybe` and/or helper-function extraction where
+    it makes the control flow clearer.
+  - Tests: `rebar3 as test ct`, `rebar3 dialyzer`, and focused regression tests
+    for any refactored command/validator paths.
+  - Refinement note (from Task 3.4): Treat more than three nested `case`
+    expressions as the default refactoring threshold, but keep the rule
+    readability-driven rather than mechanically enforcing `maybe` everywhere.
+  - Done when: Appendix B documents the style rule clearly and the current
+    Smelterl codebase no longer has obvious violations in the touched modules.
 
 - [ ] **Task 3.5: `smelterl_topology` deterministic ordering**
   - Scope: Stable topological order per target.
@@ -218,6 +234,10 @@ Backlog policy:
 - [ ] **Task 3.6: `smelterl_overrides` nugget/config/aux remap**
   - Scope: Apply overrides in deterministic order with scoped semantics.
   - Tests: Unit tests for last-wins and scope rules.
+  - Refinement note (from Task 3.4): After auxiliary remaps or nugget
+    replacements, rerun target-set validation (not just per-tree validation) so
+    duplicate `AuxId`, auxiliary-category, shared-flavor, and hook-scope
+    invariants stay enforced before later pipeline stages.
   - Done when: Overridden trees/motherlode/config are reproducible.
 
 - [ ] **Task 3.7: `smelterl_capabilities` discovery output**

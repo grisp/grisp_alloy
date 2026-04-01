@@ -257,7 +257,13 @@ create_valid_motherlode() ->
         filename:join(RepoDir, ".nuggets"),
         [
             "{nugget_registry, <<\"1.0\">>, [\n",
-            "    {nuggets, [<<\"demo/demo.nugget\">>]}\n",
+            "    {nuggets, [\n",
+            "        <<\"demo/demo.nugget\">>,\n",
+            "        <<\"builder_core/builder_core.nugget\">>,\n",
+            "        <<\"toolchain_core/toolchain_core.nugget\">>,\n",
+            "        <<\"platform_core/platform_core.nugget\">>,\n",
+            "        <<\"system_core/system_core.nugget\">>\n",
+            "    ]}\n",
             "]}.\n"
         ]
     ),
@@ -266,7 +272,53 @@ create_valid_motherlode() ->
         [
             "{nugget, <<\"1.0\">>, [\n",
             "    {id, demo},\n",
-            "    {category, feature}\n",
+            "    {category, feature},\n",
+            "    {depends_on, [\n",
+            "        {required, nugget, builder_core},\n",
+            "        {required, nugget, toolchain_core},\n",
+            "        {required, nugget, platform_core},\n",
+            "        {required, nugget, system_core}\n",
+            "    ]}\n",
+            "]}.\n"
+        ]
+    ),
+    ok = filelib:ensure_dir(filename:join(RepoDir, "builder_core/builder_core.nugget")),
+    ok = file:write_file(
+        filename:join(RepoDir, "builder_core/builder_core.nugget"),
+        [
+            "{nugget, <<\"1.0\">>, [\n",
+            "    {id, builder_core},\n",
+            "    {category, builder}\n",
+            "]}.\n"
+        ]
+    ),
+    ok = filelib:ensure_dir(filename:join(RepoDir, "toolchain_core/toolchain_core.nugget")),
+    ok = file:write_file(
+        filename:join(RepoDir, "toolchain_core/toolchain_core.nugget"),
+        [
+            "{nugget, <<\"1.0\">>, [\n",
+            "    {id, toolchain_core},\n",
+            "    {category, toolchain}\n",
+            "]}.\n"
+        ]
+    ),
+    ok = filelib:ensure_dir(filename:join(RepoDir, "platform_core/platform_core.nugget")),
+    ok = file:write_file(
+        filename:join(RepoDir, "platform_core/platform_core.nugget"),
+        [
+            "{nugget, <<\"1.0\">>, [\n",
+            "    {id, platform_core},\n",
+            "    {category, platform}\n",
+            "]}.\n"
+        ]
+    ),
+    ok = filelib:ensure_dir(filename:join(RepoDir, "system_core/system_core.nugget")),
+    ok = file:write_file(
+        filename:join(RepoDir, "system_core/system_core.nugget"),
+        [
+            "{nugget, <<\"1.0\">>, [\n",
+            "    {id, system_core},\n",
+            "    {category, system}\n",
             "]}.\n"
         ]
     ),
@@ -303,6 +355,14 @@ write_repo(MotherlodeDir, RepoName, Nuggets) ->
     ok.
 
 make_temp_dir(Prefix) ->
-    Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))),
-    ok = file:make_dir(Base),
-    Base.
+    make_temp_dir(Prefix, 0).
+
+make_temp_dir(Prefix, Attempt) ->
+    Suffix = integer_to_list(erlang:system_time(nanosecond)) ++ "-" ++ integer_to_list(erlang:unique_integer([monotonic, positive])) ++ "-" ++ integer_to_list(Attempt),
+    Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ Suffix),
+    case file:make_dir(Base) of
+        ok ->
+            Base;
+        {error, eexist} ->
+            make_temp_dir(Prefix, Attempt + 1)
+    end.

@@ -8,7 +8,8 @@
         smelterl_cmd_plan,
         smelterl_log,
         smelterl_motherlode,
-        smelterl_tree
+        smelterl_tree,
+        smelterl_validate
     ]},
     {registered, []},
     {applications, [kernel, stdlib]},

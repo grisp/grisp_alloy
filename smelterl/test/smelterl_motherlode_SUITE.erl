@@ -198,9 +198,17 @@ ensure_file(Path, Contents) ->
     file:write_file(Path, Contents).
 
 make_temp_dir(Prefix) ->
-    Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))),
-    ok = file:make_dir(Base),
-    Base.
+    make_temp_dir(Prefix, 0).
+
+make_temp_dir(Prefix, Attempt) ->
+    Suffix = integer_to_list(erlang:system_time(nanosecond)) ++ "-" ++ integer_to_list(erlang:unique_integer([monotonic, positive])) ++ "-" ++ integer_to_list(Attempt),
+    Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ Suffix),
+    case file:make_dir(Base) of
+        ok ->
+            Base;
+        {error, eexist} ->
+            make_temp_dir(Prefix, Attempt + 1)
+    end.
 
 path_binary(Path) ->
     unicode:characters_to_binary(filename:absname(Path)).
