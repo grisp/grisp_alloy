@@ -14,6 +14,8 @@
     validate_tree_rejects_invalid_flavor/1,
     validate_tree_rejects_flavor_mismatch/1,
     validate_tree_rejects_one_of_nugget_cardinality/1,
+    validate_replacement_accepts_same_category_with_existing_dependencies/1,
+    validate_replacement_rejects_category_mismatch/1,
     validate_targets_rejects_duplicate_auxiliary_id/1,
     validate_targets_rejects_auxiliary_forbidden_category/1,
     validate_targets_rejects_shared_flavor_mismatch/1,
@@ -32,6 +34,8 @@ all() ->
         validate_tree_rejects_invalid_flavor,
         validate_tree_rejects_flavor_mismatch,
         validate_tree_rejects_one_of_nugget_cardinality,
+        validate_replacement_accepts_same_category_with_existing_dependencies,
+        validate_replacement_rejects_category_mismatch,
         validate_targets_rejects_duplicate_auxiliary_id,
         validate_targets_rejects_auxiliary_forbidden_category,
         validate_targets_rejects_shared_flavor_mismatch,
@@ -232,6 +236,49 @@ validate_tree_rejects_one_of_nugget_cardinality(_Config) ->
                 [dep_a, dep_b],
                 2}},
         smelterl_validate:validate_tree(Tree, Motherlode)
+    ).
+
+validate_replacement_accepts_same_category_with_existing_dependencies(_Config) ->
+    Motherlode = valid_motherlode([
+        nugget(feature_old, feature, [{required, nugget, shared_dep}]),
+        nugget(feature_new, feature, [{required, nugget, shared_dep}]),
+        nugget(shared_dep, feature, [])
+    ]),
+    Tree = tree(product, [
+        {product, [builder_core, toolchain_core, platform_core, system_core, feature_old, shared_dep]},
+        {builder_core, []},
+        {toolchain_core, []},
+        {platform_core, []},
+        {system_core, []},
+        {feature_old, [shared_dep]},
+        {shared_dep, []}
+    ]),
+    assert_equal(
+        ok,
+        smelterl_validate:validate_replacement(feature_new, feature_old, Tree, Motherlode)
+    ).
+
+validate_replacement_rejects_category_mismatch(_Config) ->
+    Motherlode = valid_motherlode([
+        nugget(feature_old, feature, []),
+        nugget(replacement_platform, platform, [])
+    ]),
+    Tree = tree(product, [
+        {product, [builder_core, toolchain_core, platform_core, system_core, feature_old]},
+        {builder_core, []},
+        {toolchain_core, []},
+        {platform_core, []},
+        {system_core, []},
+        {feature_old, []}
+    ]),
+    assert_equal(
+        {error, {category_mismatch, replacement_platform, feature_old, feature}},
+        smelterl_validate:validate_replacement(
+            replacement_platform,
+            feature_old,
+            Tree,
+            Motherlode
+        )
     ).
 
 validate_targets_rejects_duplicate_auxiliary_id(_Config) ->

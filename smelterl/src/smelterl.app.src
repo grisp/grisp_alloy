@@ -8,6 +8,7 @@
         smelterl_cmd_plan,
         smelterl_log,
         smelterl_motherlode,
+        smelterl_overrides,
         smelterl_topology,
         smelterl_tree,
         smelterl_validate

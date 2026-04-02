@@ -72,7 +72,9 @@ run_plan(Opts) ->
         {ok, Motherlode} ?= load_motherlode(maps:get(motherlode, Opts)),
         {ok, Targets} ?= build_targets(ProductId, Motherlode),
         ok ?= validate_targets(Targets, Motherlode),
-        {ok, _TopologyOrders} ?= topology_orders(Targets),
+        {ok, TopologyOrders} ?= topology_orders(Targets),
+        {ok, _OverriddenTargets, _OverriddenTopologyOrders, _TargetMotherlodes} ?=
+            apply_overrides(Targets, TopologyOrders, Motherlode),
         smelterl_log:error("plan execution not implemented yet.~n", []),
         1
     else
@@ -84,6 +86,9 @@ run_plan(Opts) ->
             1;
         {validation_error, Reason} ->
             smelterl_log:error("~ts~n", [format_validation_error(Reason)]),
+            1;
+        {override_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_override_error(Reason)]),
             1;
         {topology_error, Reason} ->
             smelterl_log:error("~ts~n", [format_topology_error(Reason)]),
@@ -175,6 +180,14 @@ topology_order(TargetId, Tree) ->
             {ok, Order};
         {error, Reason} ->
             {topology_error, {TargetId, Reason}}
+    end.
+
+apply_overrides(Targets, TopologyOrders, Motherlode) ->
+    case smelterl_overrides:apply_overrides(Targets, TopologyOrders, Motherlode) of
+        {ok, _OverriddenTargets, _OverriddenTopologyOrders, _TargetMotherlodes} = Ok ->
+            Ok;
+        {error, Reason} ->
+            {override_error, Reason}
     end.
 
 format_load_error({invalid_path, Path, Posix}) ->
@@ -319,6 +332,15 @@ format_validation_error({flavor_mismatch, NuggetId, Flavor}) ->
         "plan: nugget '~ts' has conflicting flavor requirements including '~ts'",
         [atom_to_list(NuggetId), atom_to_list(Flavor)]
     );
+format_validation_error({category_mismatch, NewNuggetId, ReplacedNuggetId, Category}) ->
+    io_lib:format(
+        "plan: replacement nugget '~ts' does not match category '~ts' of '~ts'",
+        [
+            atom_to_list(NewNuggetId),
+            atom_to_list(Category),
+            atom_to_list(ReplacedNuggetId)
+        ]
+    );
 format_validation_error({duplicate_auxiliary_id, AuxId}) ->
     io_lib:format(
         "plan: duplicate auxiliary target id '~ts'",
@@ -405,6 +427,58 @@ format_topology_error({TargetId, Reason}) ->
         "plan: failed to compute topology for target '~ts': ~tp",
         [atom_to_list(TargetId), Reason]
     ).
+
+format_override_error({validation_failed, Reason}) ->
+    format_validation_error(Reason);
+format_override_error({replacement_not_found, TargetNuggetId, ReplacementNuggetId}) ->
+    io_lib:format(
+        "plan: override replacement nugget '~ts' for target '~ts' was not found",
+        [atom_to_list(ReplacementNuggetId), atom_to_list(TargetNuggetId)]
+    );
+format_override_error({override_target_missing, OwnerNuggetId, TargetNuggetId}) ->
+    io_lib:format(
+        "plan: nugget '~ts' overrides missing target nugget '~ts'",
+        [atom_to_list(OwnerNuggetId), atom_to_list(TargetNuggetId)]
+    );
+format_override_error({invalid_overrides_metadata, NuggetId, Overrides}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid overrides metadata: ~tp",
+        [atom_to_list(NuggetId), Overrides]
+    );
+format_override_error({invalid_override, NuggetId, Override}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid override entry: ~tp",
+        [atom_to_list(NuggetId), Override]
+    );
+format_override_error({unknown_auxiliary_override_target, AuxId}) ->
+    io_lib:format(
+        "plan: auxiliary override references unknown target auxiliary id '~ts'",
+        [atom_to_list(AuxId)]
+    );
+format_override_error({unknown_auxiliary_override_replacement, AuxId}) ->
+    io_lib:format(
+        "plan: auxiliary override references unknown replacement auxiliary id '~ts'",
+        [atom_to_list(AuxId)]
+    );
+format_override_error({unknown_config_override_scope, NuggetId, Scope}) ->
+    io_lib:format(
+        "plan: nugget '~ts' uses unknown config override scope '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(Scope)]
+    );
+format_override_error({config_override_missing_key, TargetId, ConfigKey}) ->
+    io_lib:format(
+        "plan: target '~ts' does not declare overridable config key '~ts'",
+        [atom_to_list(TargetId), atom_to_list(ConfigKey)]
+    );
+format_override_error({config_override_targets_export, TargetId, ConfigKey}) ->
+    io_lib:format(
+        "plan: target '~ts' exports config key '~ts', so it cannot be overridden",
+        [atom_to_list(TargetId), atom_to_list(ConfigKey)]
+    );
+format_override_error({topology_error, Reason}) ->
+    format_topology_error(Reason);
+format_override_error(Reason) ->
+    io_lib:format("plan: override application failed: ~tp", [Reason]).
 
 format_version(undefined) ->
     "undefined";

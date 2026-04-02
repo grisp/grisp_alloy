@@ -235,7 +235,7 @@ Backlog policy:
     `case` expressions.
   - Done when: Same input yields same order every run.
 
-- [ ] **Task 3.6: `smelterl_overrides` nugget/config/aux remap**
+- [x] **Task 3.6: `smelterl_overrides` nugget/config/aux remap**
   - Scope: Apply overrides in deterministic order with scoped semantics.
   - Tests: Unit tests for last-wins and scope rules.
   - Refinement note (from Task 3.4): After auxiliary remaps or nugget
@@ -257,6 +257,10 @@ Backlog policy:
   - Scope: Per-target config/exports with path/computed/exec handling.
   - Tests: Unit tests for substitution, script exec, path resolution.
   - Refinement note (from Task 3.2): Consume the `{Key, Value, DeclaringNugget}` config/export entries prepared by `smelterl_motherlode` instead of re-deriving the declaring nugget during consolidation.
+  - Refinement note (from Task 3.6): Consume the target-local motherlode views
+    emitted by `smelterl_overrides`, not the raw motherlode; nugget
+    replacements rewrite nugget-id references in `depends_on`, and config
+    overrides already mutate `{Key, Value, OriginNugget}` entries per target.
   - Done when: Consolidated config is deterministic and spec-compliant.
 
 - [ ] **Task 3.9: `smelterl_gen_defconfig` plan-stage model build**

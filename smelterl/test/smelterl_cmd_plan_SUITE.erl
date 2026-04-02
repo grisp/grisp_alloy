@@ -11,6 +11,7 @@
     plan_requires_output_plan/1,
     plan_reports_circular_dependency/1,
     plan_reports_missing_dependency/1,
+    plan_reports_override_validation_failure/1,
     plan_warns_when_repository_is_missing_registry/1,
     plan_warns_for_multiple_missing_registries_in_sorted_order/1,
     plan_reports_invalid_motherlode_path/1,
@@ -27,6 +28,7 @@ all() ->
         plan_requires_output_plan,
         plan_reports_circular_dependency,
         plan_reports_missing_dependency,
+        plan_reports_override_validation_failure,
         plan_warns_when_repository_is_missing_registry,
         plan_warns_for_multiple_missing_registries_in_sorted_order,
         plan_reports_invalid_motherlode_path,
@@ -129,6 +131,80 @@ plan_reports_missing_dependency(_Config) ->
         Output,
         <<"plan: nugget 'demo' requires missing dependency 'missing_dep' (required)">>
     ).
+
+plan_reports_override_validation_failure(_Config) ->
+    MotherlodeDir = make_temp_dir("smelterl-plan-override-duplicate-aux"),
+    ok = write_repo(
+        MotherlodeDir,
+        "builtin",
+        [
+            {"demo/demo.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, demo},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [\n",
+                    "        {required, nugget, builder_core},\n",
+                    "        {required, nugget, toolchain_core},\n",
+                    "        {required, nugget, platform_core},\n",
+                    "        {required, nugget, system_core}\n",
+                    "    ]},\n",
+                    "    {auxiliary_products, [{aux_a, aux_root_a}, {aux_b, aux_root_b}]},\n",
+                    "    {overrides, [{auxiliary_product, aux_a, aux_b}]}\n",
+                    "]}.\n"
+                ]},
+            {"builder_core/builder_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, builder_core},\n",
+                    "    {category, builder}\n",
+                    "]}.\n"
+                ]},
+            {"toolchain_core/toolchain_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, toolchain_core},\n",
+                    "    {category, toolchain}\n",
+                    "]}.\n"
+                ]},
+            {"platform_core/platform_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, platform_core},\n",
+                    "    {category, platform}\n",
+                    "]}.\n"
+                ]},
+            {"system_core/system_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, system_core},\n",
+                    "    {category, system}\n",
+                    "]}.\n"
+                ]},
+            {"aux_root_a/aux_root_a.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, aux_root_a},\n",
+                    "    {category, feature}\n",
+                    "]}.\n"
+                ]},
+            {"aux_root_b/aux_root_b.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, aux_root_b},\n",
+                    "    {category, feature}\n",
+                    "]}.\n"
+                ]}
+        ]
+    ),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(Output, <<"plan: duplicate auxiliary target id 'aux_b'">>).
 
 plan_warns_when_repository_is_missing_registry(_Config) ->
     MotherlodeDir = create_valid_motherlode(),

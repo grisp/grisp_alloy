@@ -13,6 +13,7 @@ against the pre-built target trees returned by `smelterl_tree`.
 %=== EXPORTS ===================================================================
 
 -export([validate_tree/2]).
+-export([validate_replacement/4]).
 -export([validate_targets/2]).
 
 
@@ -70,6 +71,38 @@ validate_tree(Tree, Motherlode) ->
     maybe
         {ok, _FlavorMap} ?= validate_tree_with_flavors(Tree, Motherlode, #{}),
         ok
+    else
+        {error, _} = Error ->
+            Error
+    end.
+
+-doc """
+Validate one nugget replacement against the current target tree.
+
+The replacement must keep the category stable and must not introduce missing
+dependencies after the replaced nugget is removed from the tree.
+""".
+-spec validate_replacement(nugget_id(), nugget_id(), nugget_tree(), motherlode()) ->
+    ok | {error, term()}.
+validate_replacement(NewNuggetId, ReplacedNuggetId, Tree, Motherlode) ->
+    maybe
+        ok ?= validate_replacement_category(
+            NewNuggetId,
+            ReplacedNuggetId,
+            Motherlode
+        ),
+        {ok, CandidateTree} ?= replacement_tree(
+            NewNuggetId,
+            ReplacedNuggetId,
+            Tree,
+            Motherlode
+        ),
+        RewrittenMotherlode = rewrite_motherlode_nugget_refs(
+            ReplacedNuggetId,
+            NewNuggetId,
+            Motherlode
+        ),
+        validate_tree(CandidateTree, RewrittenMotherlode)
     else
         {error, _} = Error ->
             Error
@@ -138,6 +171,22 @@ validate_auxiliaries([Auxiliary | Rest], MainFlavors, MainTree, Motherlode) ->
     else
         {error, _} = Error ->
             Error
+    end.
+
+-spec validate_replacement_category(nugget_id(), nugget_id(), motherlode()) ->
+    ok | {error, term()}.
+validate_replacement_category(NewNuggetId, ReplacedNuggetId, Motherlode) ->
+    NewCategory = nugget_category(NewNuggetId, Motherlode),
+    ReplacedCategory = nugget_category(ReplacedNuggetId, Motherlode),
+    case NewCategory =:= ReplacedCategory of
+        true ->
+            ok;
+        false ->
+            {error,
+                {category_mismatch,
+                    NewNuggetId,
+                    ReplacedNuggetId,
+                    ReplacedCategory}}
     end.
 
 -spec validate_auxiliary_ids([auxiliary_target()]) -> ok | {error, term()}.
@@ -341,7 +390,166 @@ valid_hook_type(HookType) ->
 firmware_hook_type(HookType) ->
     lists:member(HookType, ?FIRMWARE_HOOK_TYPES).
 
- -spec validate_tree_with_flavors(nugget_tree(), motherlode(), flavor_map()) ->
+-spec replacement_tree(nugget_id(), nugget_id(), nugget_tree(), motherlode()) ->
+    {ok, nugget_tree()} | {error, term()}.
+replacement_tree(NewNuggetId, ReplacedNuggetId, Tree, Motherlode) ->
+    Edges0 = maps:get(edges, Tree),
+    AvailableNodes =
+        maps:remove(
+            ReplacedNuggetId,
+            maps:from_list([{NodeId, true} || NodeId <- maps:keys(Edges0)])
+        ),
+    maybe
+        {ok, ReplacementDeps} ?= replacement_dependency_ids(
+            NewNuggetId,
+            maps:get(depends_on, lookup_nugget(NewNuggetId, Motherlode), []),
+            AvailableNodes
+        ),
+        Edges1 = maps:remove(ReplacedNuggetId, Edges0),
+        Edges2 = rewrite_edge_dependencies(
+            maps:to_list(Edges1),
+            ReplacedNuggetId,
+            NewNuggetId,
+            #{}
+        ),
+        Root =
+            case maps:get(root, Tree) of
+                ReplacedNuggetId -> NewNuggetId;
+                OtherRoot -> OtherRoot
+            end,
+        {ok,
+            #{
+                root => Root,
+                edges => maps:put(NewNuggetId, ReplacementDeps, Edges2)
+            }}
+    else
+        {error, _} = Error ->
+            Error
+    end.
+
+replacement_dependency_ids(_NewNuggetId, [], _AvailableNodes) ->
+    {ok, []};
+replacement_dependency_ids(NewNuggetId, DependsOn, AvailableNodes)
+  when is_list(DependsOn) ->
+    replacement_dependency_ids(NewNuggetId, DependsOn, AvailableNodes, []);
+replacement_dependency_ids(NewNuggetId, DependsOn, _AvailableNodes) ->
+    {error, {invalid_dependency_constraints, NewNuggetId, DependsOn}}.
+
+replacement_dependency_ids(_NewNuggetId, [], _AvailableNodes, Acc) ->
+    {ok, lists:reverse(Acc)};
+replacement_dependency_ids(NewNuggetId, [Constraint | Rest], AvailableNodes, Acc) ->
+    case replacement_constraint_ids(NewNuggetId, Constraint, AvailableNodes) of
+        {ok, DependencyIds} ->
+            replacement_dependency_ids(
+                NewNuggetId,
+                Rest,
+                AvailableNodes,
+                lists:reverse(DependencyIds) ++ Acc
+            );
+        {error, _} = Error ->
+            Error
+    end.
+
+replacement_constraint_ids(NewNuggetId, {required, nugget, Spec}, AvailableNodes) ->
+    required_replacement_dependency(
+        NewNuggetId,
+        Spec,
+        required,
+        AvailableNodes
+    );
+replacement_constraint_ids(NewNuggetId, {optional, nugget, Spec}, AvailableNodes) ->
+    optional_replacement_dependency(NewNuggetId, Spec, AvailableNodes);
+replacement_constraint_ids(NewNuggetId, {one_of, nugget, Specs}, AvailableNodes)
+  when is_list(Specs) ->
+    multi_replacement_dependencies(NewNuggetId, Specs, one_of, AvailableNodes);
+replacement_constraint_ids(NewNuggetId, {any_of, nugget, Specs}, AvailableNodes)
+  when is_list(Specs) ->
+    multi_replacement_dependencies(NewNuggetId, Specs, any_of, AvailableNodes);
+replacement_constraint_ids(_NewNuggetId, {conflicts_with, nugget, _Spec}, _AvailableNodes) ->
+    {ok, []};
+replacement_constraint_ids(_NewNuggetId, {_Type, category, _Spec}, _AvailableNodes) ->
+    {ok, []};
+replacement_constraint_ids(_NewNuggetId, {_Type, capability, _Spec}, _AvailableNodes) ->
+    {ok, []};
+replacement_constraint_ids(NewNuggetId, Constraint, _AvailableNodes) ->
+    {error, {invalid_dependency_constraint, NewNuggetId, Constraint}}.
+
+required_replacement_dependency(NewNuggetId, Spec, ConstraintType, AvailableNodes) ->
+    case parse_dependency_spec(Spec) of
+        {ok, #{id := DependencyId}} ->
+            case maps:is_key(DependencyId, AvailableNodes) of
+                true ->
+                    {ok, [DependencyId]};
+                false ->
+                    {error,
+                        {missing_nugget_dependency,
+                            NewNuggetId,
+                            DependencyId,
+                            ConstraintType}}
+            end;
+        {error, _} ->
+            {error, {invalid_dependency_constraint, NewNuggetId, Spec}}
+    end.
+
+optional_replacement_dependency(NewNuggetId, Spec, AvailableNodes) ->
+    case parse_dependency_spec(Spec) of
+        {ok, #{id := DependencyId}} ->
+            case maps:is_key(DependencyId, AvailableNodes) of
+                true ->
+                    {ok, [DependencyId]};
+                false ->
+                    {ok, []}
+            end;
+        {error, _} ->
+            {error, {invalid_dependency_constraint, NewNuggetId, Spec}}
+    end.
+
+multi_replacement_dependencies(NewNuggetId, Specs, ConstraintType, AvailableNodes) ->
+    case parse_dependency_specs(Specs, []) of
+        {ok, ParsedSpecs} ->
+            DependencyIds = [maps:get(id, ParsedSpec) || ParsedSpec <- ParsedSpecs],
+            PresentIds = [
+                DependencyId
+             || DependencyId <- DependencyIds,
+                maps:is_key(DependencyId, AvailableNodes)
+            ],
+            case PresentIds of
+                [] ->
+                    {error,
+                        {missing_nugget_dependency,
+                            NewNuggetId,
+                            hd(DependencyIds),
+                            ConstraintType}};
+                _ ->
+                    {ok, PresentIds}
+            end;
+        {error, _} ->
+            {error, {invalid_dependency_constraint, NewNuggetId, Specs}}
+    end.
+
+rewrite_edge_dependencies([], _ReplacedNuggetId, _NewNuggetId, Acc) ->
+    Acc;
+rewrite_edge_dependencies(
+    [{NodeId, Dependencies0} | Rest],
+    ReplacedNuggetId,
+    NewNuggetId,
+    Acc
+) ->
+    Dependencies = dedupe_keep_first([
+        case DependencyId of
+            ReplacedNuggetId -> NewNuggetId;
+            _Other -> DependencyId
+        end
+     || DependencyId <- Dependencies0
+    ]),
+    rewrite_edge_dependencies(
+        Rest,
+        ReplacedNuggetId,
+        NewNuggetId,
+        maps:put(NodeId, Dependencies, Acc)
+    ).
+
+-spec validate_tree_with_flavors(nugget_tree(), motherlode(), flavor_map()) ->
     {ok, flavor_map()} | {error, term()}.
 validate_tree_with_flavors(Tree, Motherlode, InitialFlavors) ->
     case validate_category_cardinality(Tree, Motherlode) of
@@ -652,7 +860,76 @@ parse_dependency_props([{flavor, Flavor} | Rest], ParsedProps) when is_atom(Flav
 parse_dependency_props([_Invalid | _], _ParsedProps) ->
     {error, invalid_dependency_spec}.
 
- -spec build_tree_context(nugget_tree(), motherlode()) -> tree_context().
+rewrite_motherlode_nugget_refs(ReplacedNuggetId, NewNuggetId, Motherlode) ->
+    Nuggets0 = maps:get(nuggets, Motherlode),
+    Nuggets1 = maps:map(
+        fun(_NuggetId, Nugget) ->
+            Nugget#{
+                depends_on := rewrite_dependency_constraints(
+                    maps:get(depends_on, Nugget, []),
+                    ReplacedNuggetId,
+                    NewNuggetId
+                )
+            }
+        end,
+        Nuggets0
+    ),
+    Motherlode#{nuggets := Nuggets1}.
+
+rewrite_dependency_constraints(DependsOn, _ReplacedNuggetId, _NewNuggetId)
+  when not is_list(DependsOn) ->
+    DependsOn;
+rewrite_dependency_constraints(DependsOn, ReplacedNuggetId, NewNuggetId) ->
+    [
+        rewrite_dependency_constraint(
+            Constraint,
+            ReplacedNuggetId,
+            NewNuggetId
+        )
+     || Constraint <- DependsOn
+    ].
+
+rewrite_dependency_constraint(
+    {ConstraintType, nugget, Specs},
+    ReplacedNuggetId,
+    NewNuggetId
+)
+  when ConstraintType =:= one_of; ConstraintType =:= any_of ->
+    {ConstraintType,
+        nugget,
+        [
+            rewrite_dependency_spec(Spec, ReplacedNuggetId, NewNuggetId)
+         || Spec <- Specs
+        ]};
+rewrite_dependency_constraint(
+    {ConstraintType, nugget, Spec},
+    ReplacedNuggetId,
+    NewNuggetId
+) ->
+    {ConstraintType,
+        nugget,
+        rewrite_dependency_spec(Spec, ReplacedNuggetId, NewNuggetId)};
+rewrite_dependency_constraint(Constraint, _ReplacedNuggetId, _NewNuggetId) ->
+    Constraint.
+
+rewrite_dependency_spec(ReplacedNuggetId, ReplacedNuggetId, NewNuggetId) ->
+    NewNuggetId;
+rewrite_dependency_spec(
+    {ReplacedNuggetId, Version},
+    ReplacedNuggetId,
+    NewNuggetId
+) ->
+    {NewNuggetId, Version};
+rewrite_dependency_spec(
+    {ReplacedNuggetId, ConstraintProps},
+    ReplacedNuggetId,
+    NewNuggetId
+) ->
+    {NewNuggetId, ConstraintProps};
+rewrite_dependency_spec(Spec, _ReplacedNuggetId, _NewNuggetId) ->
+    Spec.
+
+-spec build_tree_context(nugget_tree(), motherlode()) -> tree_context().
 build_tree_context(Tree, Motherlode) ->
     NodeIds = tree_node_ids(Tree),
     #{
@@ -707,6 +984,19 @@ dependency_count_valid(one_of, Count) ->
     Count =:= 1;
 dependency_count_valid(any_of, Count) ->
     Count >= 1.
+
+dedupe_keep_first(Items) ->
+    dedupe_keep_first(Items, #{}).
+
+dedupe_keep_first([], _Seen) ->
+    [];
+dedupe_keep_first([Item | Rest], Seen) ->
+    case maps:is_key(Item, Seen) of
+        true ->
+            dedupe_keep_first(Rest, Seen);
+        false ->
+            [Item | dedupe_keep_first(Rest, maps:put(Item, true, Seen))]
+    end.
 
 target_nugget_ids(Targets) ->
     lists:usort(

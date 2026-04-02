@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_overrides` with deterministic override collection,
+  auxiliary-remap handling, nugget replacement application, target-local
+  motherlode rewriting, scoped config override support, and Common Test
+  coverage for replacement, scope handling, and auxiliary-remap revalidation.
 - Added `smelterl_topology` with deterministic DFS-based topological ordering,
   cycle detection, and Common Test coverage for dependency ordering,
   declaration-order tie-breaking, stability across runs, and cycle reporting.
@@ -51,6 +55,12 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl_validate` with `validate_replacement/4` so nugget
+  replacements are checked against a candidate tree plus rewritten nugget-id
+  references before they are applied.
+- Updated `smelterl plan` to execute the override stage after topology
+  calculation, surface override failures at command level, and keep the
+  existing not-implemented stub only for plans that pass override processing.
 - Updated `smelterl plan` to compute per-target topology orders after
   validation so the plan pipeline now exercises deterministic ordering for main
   and auxiliary targets before the remaining stubbed stages.
