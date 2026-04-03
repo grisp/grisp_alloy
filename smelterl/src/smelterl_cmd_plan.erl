@@ -73,8 +73,13 @@ run_plan(Opts) ->
         {ok, Targets} ?= build_targets(ProductId, Motherlode),
         ok ?= validate_targets(Targets, Motherlode),
         {ok, TopologyOrders} ?= topology_orders(Targets),
-        {ok, _OverriddenTargets, _OverriddenTopologyOrders, _TargetMotherlodes} ?=
+        {ok, OverriddenTargets, OverriddenTopologyOrders, TargetMotherlodes} ?=
             apply_overrides(Targets, TopologyOrders, Motherlode),
+        {ok, _Capabilities} ?= discover_capabilities(
+            OverriddenTargets,
+            OverriddenTopologyOrders,
+            TargetMotherlodes
+        ),
         smelterl_log:error("plan execution not implemented yet.~n", []),
         1
     else
@@ -89,6 +94,9 @@ run_plan(Opts) ->
             1;
         {override_error, Reason} ->
             smelterl_log:error("~ts~n", [format_override_error(Reason)]),
+            1;
+        {capabilities_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_capabilities_error(Reason)]),
             1;
         {topology_error, Reason} ->
             smelterl_log:error("~ts~n", [format_topology_error(Reason)]),
@@ -188,6 +196,18 @@ apply_overrides(Targets, TopologyOrders, Motherlode) ->
             Ok;
         {error, Reason} ->
             {override_error, Reason}
+    end.
+
+discover_capabilities(Targets, TopologyOrders, TargetMotherlodes) ->
+    case smelterl_capabilities:discover(
+        Targets,
+        TopologyOrders,
+        TargetMotherlodes
+    ) of
+        {ok, _Capabilities} = Ok ->
+            Ok;
+        {error, Reason} ->
+            {capabilities_error, Reason}
     end.
 
 format_load_error({invalid_path, Path, Posix}) ->
@@ -480,6 +500,134 @@ format_override_error({topology_error, Reason}) ->
 format_override_error(Reason) ->
     io_lib:format("plan: override application failed: ~tp", [Reason]).
 
+format_capabilities_error({invalid_firmware_variant_metadata, NuggetId, Value}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid firmware_variant metadata: ~tp",
+        [atom_to_list(NuggetId), Value]
+    );
+format_capabilities_error({duplicate_firmware_variant, NuggetId, Variant}) ->
+    io_lib:format(
+        "plan: nugget '~ts' declares firmware variant '~ts' more than once",
+        [atom_to_list(NuggetId), atom_to_list(Variant)]
+    );
+format_capabilities_error({bootflow_variant_coverage, Variant, Bootflows}) ->
+    io_lib:format(
+        "plan: firmware variant '~ts' must be provided by exactly one bootflow nugget; found ~B~ts",
+        [
+            atom_to_list(Variant),
+            length(Bootflows),
+            format_nugget_list_suffix(Bootflows)
+        ]
+    );
+format_capabilities_error({invalid_firmware_outputs_metadata, NuggetId, Value}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid firmware_outputs metadata: ~tp",
+        [atom_to_list(NuggetId), Value]
+    );
+format_capabilities_error({invalid_firmware_output, NuggetId, Output}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid firmware_outputs entry: ~tp",
+        [atom_to_list(NuggetId), Output]
+    );
+format_capabilities_error({invalid_firmware_output_field, NuggetId, OutputId, Field}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid field in firmware output '~ts': ~tp",
+        [atom_to_list(NuggetId), atom_to_list(OutputId), Field]
+    );
+format_capabilities_error({duplicate_firmware_output, OutputId, FirstNugget, SecondNugget}) ->
+    io_lib:format(
+        "plan: firmware output '~ts' is declared by both '~ts' and '~ts'",
+        [
+            atom_to_list(OutputId),
+            atom_to_list(FirstNugget),
+            atom_to_list(SecondNugget)
+        ]
+    );
+format_capabilities_error({invalid_firmware_parameters_metadata, NuggetId, Value}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid firmware_parameters metadata: ~tp",
+        [atom_to_list(NuggetId), Value]
+    );
+format_capabilities_error({invalid_firmware_parameter, NuggetId, Parameter}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid firmware_parameters entry: ~tp",
+        [atom_to_list(NuggetId), Parameter]
+    );
+format_capabilities_error({invalid_firmware_parameter_field, NuggetId, ParamId, Field}) ->
+    io_lib:format(
+        "plan: nugget '~ts' has invalid field in firmware parameter '~ts': ~tp",
+        [atom_to_list(NuggetId), atom_to_list(ParamId), Field]
+    );
+format_capabilities_error({missing_firmware_parameter_type, NuggetId, ParamId}) ->
+    io_lib:format(
+        "plan: nugget '~ts' firmware parameter '~ts' is missing required type metadata",
+        [atom_to_list(NuggetId), atom_to_list(ParamId)]
+    );
+format_capabilities_error({invalid_firmware_parameter_type, NuggetId, ParamId, Type}) ->
+    io_lib:format(
+        "plan: nugget '~ts' firmware parameter '~ts' has invalid type '~tp'",
+        [atom_to_list(NuggetId), atom_to_list(ParamId), Type]
+    );
+format_capabilities_error({invalid_firmware_parameter_default, NuggetId, ParamId, Type, Value}) ->
+    io_lib:format(
+        "plan: nugget '~ts' firmware parameter '~ts' has default ~tp incompatible with type '~ts'",
+        [atom_to_list(NuggetId), atom_to_list(ParamId), Value, atom_to_list(Type)]
+    );
+format_capabilities_error({parameter_type_conflict, ParamId, FirstNugget, FirstType, SecondNugget, SecondType}) ->
+    io_lib:format(
+        "plan: parameter '~ts' declared as '~ts' in '~ts' but as '~ts' in '~ts'",
+        [
+            atom_to_list(ParamId),
+            atom_to_list(FirstType),
+            atom_to_list(FirstNugget),
+            atom_to_list(SecondType),
+            atom_to_list(SecondNugget)
+        ]
+    );
+format_capabilities_error({parameter_default_conflict, ParamId, FirstNugget, FirstDefault, SecondNugget, SecondDefault}) ->
+    io_lib:format(
+        "plan: parameter '~ts' has conflicting defaults: ~tp in '~ts' vs ~tp in '~ts'",
+        [
+            atom_to_list(ParamId),
+            FirstDefault,
+            atom_to_list(FirstNugget),
+            SecondDefault,
+            atom_to_list(SecondNugget)
+        ]
+    );
+format_capabilities_error({invalid_sdk_outputs_metadata, TargetId, NuggetId, Value}) ->
+    io_lib:format(
+        "plan: target '~ts' nugget '~ts' has invalid sdk_outputs metadata: ~tp",
+        [atom_to_list(TargetId), atom_to_list(NuggetId), Value]
+    );
+format_capabilities_error({invalid_sdk_output, TargetId, NuggetId, Output}) ->
+    io_lib:format(
+        "plan: target '~ts' nugget '~ts' has invalid sdk_outputs entry: ~tp",
+        [atom_to_list(TargetId), atom_to_list(NuggetId), Output]
+    );
+format_capabilities_error({invalid_sdk_output_field, TargetId, NuggetId, OutputId, Field}) ->
+    io_lib:format(
+        "plan: target '~ts' nugget '~ts' has invalid field in sdk output '~ts': ~tp",
+        [
+            atom_to_list(TargetId),
+            atom_to_list(NuggetId),
+            atom_to_list(OutputId),
+            Field
+        ]
+    );
+format_capabilities_error({duplicate_sdk_output, TargetId, OutputId, FirstNugget, SecondNugget}) ->
+    io_lib:format(
+        "plan: target '~ts' declares sdk output '~ts' in both '~ts' and '~ts'",
+        [
+            atom_to_list(TargetId),
+            atom_to_list(OutputId),
+            atom_to_list(FirstNugget),
+            atom_to_list(SecondNugget)
+        ]
+    );
+format_capabilities_error(Reason) ->
+    io_lib:format("plan: capability discovery failed: ~tp", [Reason]).
+
 format_version(undefined) ->
     "undefined";
 format_version(Version) when is_binary(Version) ->
@@ -491,3 +639,11 @@ format_flavor(undefined) ->
     "undefined";
 format_flavor(Flavor) ->
     atom_to_list(Flavor).
+
+format_nugget_list_suffix([]) ->
+    "";
+format_nugget_list_suffix(Bootflows) ->
+    io_lib:format(
+        " (~ts)",
+        [string:join([atom_to_list(Id) || Id <- Bootflows], ", ")]
+    ).

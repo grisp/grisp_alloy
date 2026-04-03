@@ -12,6 +12,7 @@
     plan_reports_circular_dependency/1,
     plan_reports_missing_dependency/1,
     plan_reports_override_validation_failure/1,
+    plan_reports_capability_validation_failure/1,
     plan_warns_when_repository_is_missing_registry/1,
     plan_warns_for_multiple_missing_registries_in_sorted_order/1,
     plan_reports_invalid_motherlode_path/1,
@@ -29,6 +30,7 @@ all() ->
         plan_reports_circular_dependency,
         plan_reports_missing_dependency,
         plan_reports_override_validation_failure,
+        plan_reports_capability_validation_failure,
         plan_warns_when_repository_is_missing_registry,
         plan_warns_for_multiple_missing_registries_in_sorted_order,
         plan_reports_invalid_motherlode_path,
@@ -206,6 +208,85 @@ plan_reports_override_validation_failure(_Config) ->
     assert_equal(1, Status),
     assert_contains(Output, <<"plan: duplicate auxiliary target id 'aux_b'">>).
 
+plan_reports_capability_validation_failure(_Config) ->
+    MotherlodeDir = make_temp_dir("smelterl-plan-missing-secure-bootflow"),
+    ok = write_repo(
+        MotherlodeDir,
+        "builtin",
+        [
+            {"demo/demo.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, demo},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [\n",
+                    "        {required, nugget, builder_core},\n",
+                    "        {required, nugget, toolchain_core},\n",
+                    "        {required, nugget, platform_core},\n",
+                    "        {required, nugget, system_core},\n",
+                    "        {required, nugget, bootflow_plain},\n",
+                    "        {required, nugget, secure_feature}\n",
+                    "    ]}\n",
+                    "]}.\n"
+                ]},
+            {"builder_core/builder_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, builder_core},\n",
+                    "    {category, builder}\n",
+                    "]}.\n"
+                ]},
+            {"toolchain_core/toolchain_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, toolchain_core},\n",
+                    "    {category, toolchain}\n",
+                    "]}.\n"
+                ]},
+            {"platform_core/platform_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, platform_core},\n",
+                    "    {category, platform}\n",
+                    "]}.\n"
+                ]},
+            {"system_core/system_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, system_core},\n",
+                    "    {category, system}\n",
+                    "]}.\n"
+                ]},
+            {"bootflow_plain/bootflow_plain.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, bootflow_plain},\n",
+                    "    {category, bootflow},\n",
+                    "    {firmware_variant, [plain]}\n",
+                    "]}.\n"
+                ]},
+            {"secure_feature/secure_feature.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, secure_feature},\n",
+                    "    {category, feature},\n",
+                    "    {firmware_variant, [secure]}\n",
+                    "]}.\n"
+                ]}
+        ]
+    ),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(
+        Output,
+        <<"plan: firmware variant 'secure' must be provided by exactly one bootflow nugget; found 0">>
+    ).
+
 plan_warns_when_repository_is_missing_registry(_Config) ->
     MotherlodeDir = create_valid_motherlode(),
     create_repo_without_registry(MotherlodeDir, "missing_registry"),
@@ -338,7 +419,8 @@ create_valid_motherlode() ->
             "        <<\"builder_core/builder_core.nugget\">>,\n",
             "        <<\"toolchain_core/toolchain_core.nugget\">>,\n",
             "        <<\"platform_core/platform_core.nugget\">>,\n",
-            "        <<\"system_core/system_core.nugget\">>\n",
+            "        <<\"system_core/system_core.nugget\">>,\n",
+            "        <<\"bootflow_plain/bootflow_plain.nugget\">>\n",
             "    ]}\n",
             "]}.\n"
         ]
@@ -353,7 +435,8 @@ create_valid_motherlode() ->
             "        {required, nugget, builder_core},\n",
             "        {required, nugget, toolchain_core},\n",
             "        {required, nugget, platform_core},\n",
-            "        {required, nugget, system_core}\n",
+            "        {required, nugget, system_core},\n",
+            "        {required, nugget, bootflow_plain}\n",
             "    ]}\n",
             "]}.\n"
         ]
@@ -395,6 +478,17 @@ create_valid_motherlode() ->
             "{nugget, <<\"1.0\">>, [\n",
             "    {id, system_core},\n",
             "    {category, system}\n",
+            "]}.\n"
+        ]
+    ),
+    ok = filelib:ensure_dir(filename:join(RepoDir, "bootflow_plain/bootflow_plain.nugget")),
+    ok = file:write_file(
+        filename:join(RepoDir, "bootflow_plain/bootflow_plain.nugget"),
+        [
+            "{nugget, <<\"1.0\">>, [\n",
+            "    {id, bootflow_plain},\n",
+            "    {category, bootflow},\n",
+            "    {firmware_variant, [plain]}\n",
             "]}.\n"
         ]
     ),

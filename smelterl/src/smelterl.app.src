@@ -5,6 +5,7 @@
         smelterl,
         smelterl_cli,
         smelterl_command,
+        smelterl_capabilities,
         smelterl_cmd_plan,
         smelterl_log,
         smelterl_motherlode,

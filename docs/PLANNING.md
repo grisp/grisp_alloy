@@ -248,10 +248,36 @@ Backlog policy:
     tie-break, and keep each target root last.
   - Done when: Overridden trees/motherlode/config are reproducible.
 
-- [ ] **Task 3.7: `smelterl_capabilities` discovery output**
+- [x] **Task 3.7: `smelterl_capabilities` discovery output**
   - Scope: Main firmware capabilities + per-target `sdk_outputs`.
   - Tests: Unit tests for variant/output/param merging and sdk output mapping.
   - Done when: Discovery map is complete for context/manifest generation.
+
+- [ ] **Task 3.7a: Shared Smelterl type centralization in `smelterl.erl`**
+  - Scope: Move shared plan/generate Erlang types into `smelterl.erl` as the
+    canonical source of truth and replace duplicated local type declarations in
+    Smelterl modules with remote type references.
+  - Scope: Normalize currently duplicated shared types at least across
+    `smelterl_tree`, `smelterl_validate`, `smelterl_overrides`,
+    `smelterl_topology`, and `smelterl_capabilities`, including the common
+    target/tree/motherlode/topology type families.
+  - Scope: Update `docs/02_SMELTERL_DESIGN.md` so the design clearly states
+    that cross-module shared Erlang types live in `smelterl.erl`, while
+    module-private helper types stay local.
+  - Scope: Update `docs/WORKFLOW.md` so future tasks explicitly check for an
+    existing canonical shared type before introducing duplicate cross-module
+    `-type` declarations.
+  - Tests: `rebar3 as test ct`, `rebar3 dialyzer`, and documentation review of
+    the updated shared-type/source-of-truth guidance.
+  - Refinement note (from Task 3.7): The obvious duplicates now are
+    `nugget_id`, `target_id`, `motherlode`, `nugget_tree`,
+    `auxiliary_constraint_prop`, `auxiliary_target`, `target_trees`,
+    `nugget_topology_order`, `topology_orders`, and `target_motherlodes`; keep
+    module-local helper types local unless they are truly shared.
+  - Done when: Shared cross-module types live in `smelterl.erl`, the touched
+    modules use `smelterl:...()` remote types instead of copy-pasted local
+    definitions, `docs/02_SMELTERL_DESIGN.md` and `docs/WORKFLOW.md` both make
+    the source-of-truth rule explicit, and Common Test + Dialyzer stay clean.
 
 - [ ] **Task 3.8: `smelterl_config` consolidation**
   - Scope: Per-target config/exports with path/computed/exec handling.
@@ -271,6 +297,10 @@ Backlog policy:
 - [ ] **Task 3.10: `smelterl_gen_manifest` plan-stage seed build**
   - Scope: Build deterministic manifest seed (`auxiliary_products`, firmware `capabilities`, top-level `sdk_outputs` seed).
   - Tests: Unit tests for repository dedup/id stability and seed shape.
+  - Refinement note (from Task 3.7): Consume the validated
+    `smelterl_capabilities` output for firmware capabilities and per-target
+    `sdk_outputs` seed data instead of recomputing uniqueness and merge rules
+    from nugget metadata.
   - Done when: Seed is complete and independent from runtime/legal inputs.
 
 - [ ] **Task 3.11: `smelterl_plan` serialization (`build_plan.term`)**
@@ -313,6 +343,14 @@ Backlog policy:
 - [ ] **Task 4.6: `smelterl_gen_context` selected-target context**
   - Scope: Generate target context with strict main-vs-aux boundaries.
   - Tests: Golden tests for one main and one auxiliary context.
+  - Refinement note (from Task 3.7): Reuse the plan-carried capability data
+    (`firmware_variants`, `variant_nuggets`, merged firmware parameters, and
+    target-local `sdk_outputs`) rather than reparsing nugget metadata during
+    generate.
+  - Refinement note (from Task 3.7): The current capability payload carries the
+    documented selectable firmware outputs; if main-context generation needs
+    metadata for non-selectable firmware outputs too, clarify that design edge
+    before extending the plan payload.
   - Done when:
     - Auxiliary context omits firmware/embed/fs-priority control arrays.
     - Main context includes firmware arrays and sdk-output consumption support.

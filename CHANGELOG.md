@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_capabilities` with plan-stage firmware variant discovery,
+  bootflow coverage validation, selectable firmware output collection, merged
+  firmware parameter discovery, target-local `sdk_outputs` mapping, and Common
+  Test coverage for both happy-path and validation-failure cases.
 - Added `smelterl_overrides` with deterministic override collection,
   auxiliary-remap handling, nugget replacement application, target-local
   motherlode rewriting, scoped config override support, and Common Test
@@ -55,6 +59,10 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` to run capability discovery after override
+  application, report capability-validation failures at command level, and keep
+  the remaining not-implemented stub only for plans whose capabilities are
+  valid.
 - Updated `smelterl_validate` with `validate_replacement/4` so nugget
   replacements are checked against a candidate tree plus rewritten nugget-id
   references before they are applied.
