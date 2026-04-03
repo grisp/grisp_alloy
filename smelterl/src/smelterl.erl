@@ -24,6 +24,10 @@ delegates argument handling to `smelterl_cli`.
     nugget_topology_order/0,
     topology_orders/0,
     target_motherlodes/0,
+    config_entry_kind/0,
+    config_entry/0,
+    config/0,
+    target_configs/0,
     firmware_output_spec/0,
     firmware_parameter_spec/0,
     sdk_output_spec/0,
@@ -88,6 +92,18 @@ and the version string is shown by `--version`.
 
 -doc "Target-local motherlode views after overrides have been applied.".
 -type target_motherlodes() :: #{target_id() => motherlode()}.
+
+-doc "Source kind for one consolidated config entry.".
+-type config_entry_kind() :: extra | nugget | global.
+
+-doc "One resolved config entry as exported into generated shell environments.".
+-type config_entry() :: {config_entry_kind(), nugget_id() | undefined, binary()}.
+
+-doc "Resolved config map keyed by full environment variable name.".
+-type config() :: #{binary() => config_entry()}.
+
+-doc "Per-target consolidated configs keyed by `main` or auxiliary id.".
+-type target_configs() :: #{target_id() => config()}.
 
 -doc "Plan-stage selectable firmware output metadata carried into later generators.".
 -type firmware_output_spec() :: #{

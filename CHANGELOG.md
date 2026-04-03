@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_config` with plan-stage target-local config consolidation
+  for overridden inputs, including export-conflict validation, flavor-aware
+  value selection, relocatable path resolution, deferred `computed`/`exec`
+  handling, and Common Test coverage for both happy-path and conflict cases.
 - Added `smelterl_capabilities` with plan-stage firmware variant discovery,
   bootflow coverage validation, selectable firmware output collection, merged
   firmware parameter discovery, target-local `sdk_outputs` mapping, and Common
@@ -59,6 +63,14 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` to parse and normalize `--extra-config`, reject
+  user-specified `ALLOY_MOTHERLODE`, inject the reserved motherlode template
+  value for later stages, execute config consolidation after capability
+  discovery, and surface config-stage failures at command level before the
+  remaining stubbed stages.
+- Updated `smelterl_validate` with `resolved_flavors/2` so later plan stages
+  can reuse validated flavor resolution without duplicating dependency-flavor
+  logic, and extended `smelterl.erl` with canonical consolidated-config types.
 - Centralized shared Smelterl plan-pipeline Erlang types in `smelterl.erl` and
   updated `smelterl_tree`, `smelterl_topology`, `smelterl_overrides`, and
   `smelterl_validate` to consume those canonical types via remote type

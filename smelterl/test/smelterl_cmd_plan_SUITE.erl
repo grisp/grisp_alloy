@@ -13,6 +13,7 @@
     plan_reports_missing_dependency/1,
     plan_reports_override_validation_failure/1,
     plan_reports_capability_validation_failure/1,
+    plan_reports_config_consolidation_failure/1,
     plan_warns_when_repository_is_missing_registry/1,
     plan_warns_for_multiple_missing_registries_in_sorted_order/1,
     plan_reports_invalid_motherlode_path/1,
@@ -31,6 +32,7 @@ all() ->
         plan_reports_missing_dependency,
         plan_reports_override_validation_failure,
         plan_reports_capability_validation_failure,
+        plan_reports_config_consolidation_failure,
         plan_warns_when_repository_is_missing_registry,
         plan_warns_for_multiple_missing_registries_in_sorted_order,
         plan_reports_invalid_motherlode_path,
@@ -285,6 +287,78 @@ plan_reports_capability_validation_failure(_Config) ->
     assert_contains(
         Output,
         <<"plan: firmware variant 'secure' must be provided by exactly one bootflow nugget; found 0">>
+    ).
+
+plan_reports_config_consolidation_failure(_Config) ->
+    MotherlodeDir = make_temp_dir("smelterl-plan-config-conflict"),
+    ok = write_repo(
+        MotherlodeDir,
+        "builtin",
+        [
+            {"demo/demo.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, demo},\n",
+                    "    {category, feature},\n",
+                    "    {depends_on, [\n",
+                    "        {required, nugget, builder_core},\n",
+                    "        {required, nugget, toolchain_core},\n",
+                    "        {required, nugget, platform_core},\n",
+                    "        {required, nugget, system_core},\n",
+                    "        {required, nugget, bootflow_plain}\n",
+                    "    ]}\n",
+                    "]}.\n"
+                ]},
+            {"builder_core/builder_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, builder_core},\n",
+                    "    {category, builder}\n",
+                    "]}.\n"
+                ]},
+            {"toolchain_core/toolchain_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, toolchain_core},\n",
+                    "    {category, toolchain}\n",
+                    "]}.\n"
+                ]},
+            {"platform_core/platform_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, platform_core},\n",
+                    "    {category, platform},\n",
+                    "    {exports, [{target_arch, arm}]}\n",
+                    "]}.\n"
+                ]},
+            {"system_core/system_core.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, system_core},\n",
+                    "    {category, system},\n",
+                    "    {config, [{target_arch, aarch64}]}\n",
+                    "]}.\n"
+                ]},
+            {"bootflow_plain/bootflow_plain.nugget",
+                [
+                    "{nugget, <<\"1.0\">>, [\n",
+                    "    {id, bootflow_plain},\n",
+                    "    {category, bootflow},\n",
+                    "    {firmware_variant, [plain]}\n",
+                    "]}.\n"
+                ]}
+        ]
+    ),
+    {Status, Output} = run_main([
+        "plan",
+        "--product", "demo",
+        "--motherlode", MotherlodeDir,
+        "--output-plan", "/tmp/build_plan.term"
+    ]),
+    assert_equal(1, Status),
+    assert_contains(
+        Output,
+        <<"plan: target 'main' export key 'target_arch' from nugget 'platform_core' conflicts with config in nugget 'system_core'">>
     ).
 
 plan_warns_when_repository_is_missing_registry(_Config) ->

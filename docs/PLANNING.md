@@ -279,7 +279,7 @@ Backlog policy:
     definitions, `docs/02_SMELTERL_DESIGN.md` and `docs/WORKFLOW.md` both make
     the source-of-truth rule explicit, and Common Test + Dialyzer stay clean.
 
-- [ ] **Task 3.8: `smelterl_config` consolidation**
+- [x] **Task 3.8: `smelterl_config` consolidation**
   - Scope: Per-target config/exports with path/computed/exec handling.
   - Tests: Unit tests for substitution, script exec, path resolution.
   - Refinement note (from Task 3.2): Consume the `{Key, Value, DeclaringNugget}` config/export entries prepared by `smelterl_motherlode` instead of re-deriving the declaring nugget during consolidation.
@@ -309,6 +309,10 @@ Backlog policy:
 - [ ] **Task 3.11: `smelterl_plan` serialization (`build_plan.term`)**
   - Scope: Serialize full plan structure and version markers.
   - Tests: Roundtrip read/write tests.
+  - Refinement note (from Task 3.8): Persist normalized plan extra-config
+    values, not raw CLI strings: `ALLOY_MOTHERLODE` is injected by
+    `smelterl plan`, the user may not override it, and later stages should read
+    the normalized map/key set from the serialized plan.
   - Done when: Plan can be consumed by generate without recomputation.
 
 - [ ] **Task 3.12: `build_plan.env` export writer**
@@ -331,6 +335,9 @@ Backlog policy:
 - [ ] **Task 4.3: `smelterl_gen_config_in` render/write**
   - Scope: Generate `Config.in` from selected target + plan-carried extra-config.
   - Tests: Golden output test including `ALLOY_MOTHERLODE` behavior.
+  - Refinement note (from Task 3.8): Use the normalized plan-carried
+    extra-config key set produced by `smelterl plan`, with injected
+    `ALLOY_MOTHERLODE` first and no user-provided override path.
   - Done when: Output matches design and Buildroot expectations.
 
 - [ ] **Task 4.4: `smelterl_gen_external_mk` render/write**

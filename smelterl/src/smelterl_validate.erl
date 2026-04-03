@@ -14,6 +14,7 @@ against the pre-built target trees returned by `smelterl_tree`.
 
 -export([validate_tree/2]).
 -export([validate_replacement/4]).
+-export([resolved_flavors/2]).
 -export([validate_targets/2]).
 
 
@@ -50,12 +51,24 @@ conflicts, and version/flavor requirements for a single tree.
     ok | {error, term()}.
 validate_tree(Tree, Motherlode) ->
     maybe
-        {ok, _FlavorMap} ?= validate_tree_with_flavors(Tree, Motherlode, #{}),
+        {ok, _FlavorMap} ?= resolved_flavors(Tree, Motherlode),
         ok
     else
         {error, _} = Error ->
             Error
     end.
+
+-doc """
+Validate one target tree and return the resolved nugget flavors.
+
+This is the validator-backed flavor resolution used by later planning stages
+that need the effective flavor choices without re-implementing dependency
+constraint handling.
+""".
+-spec resolved_flavors(smelterl:nugget_tree(), smelterl:motherlode()) ->
+    {ok, flavor_map()} | {error, term()}.
+resolved_flavors(Tree, Motherlode) ->
+    validate_tree_with_flavors(Tree, Motherlode, #{}).
 
 -doc """
 Validate one nugget replacement against the current target tree.

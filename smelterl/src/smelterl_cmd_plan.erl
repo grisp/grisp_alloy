@@ -73,12 +73,19 @@ run_plan(Opts) ->
         {ok, Targets} ?= build_targets(ProductId, Motherlode),
         ok ?= validate_targets(Targets, Motherlode),
         {ok, TopologyOrders} ?= topology_orders(Targets),
+        {ok, ExtraConfig} ?= parse_extra_config(Opts),
         {ok, OverriddenTargets, OverriddenTopologyOrders, TargetMotherlodes} ?=
             apply_overrides(Targets, TopologyOrders, Motherlode),
         {ok, _Capabilities} ?= discover_capabilities(
             OverriddenTargets,
             OverriddenTopologyOrders,
             TargetMotherlodes
+        ),
+        {ok, _TargetConfigs} ?= consolidate_target_configs(
+            OverriddenTargets,
+            OverriddenTopologyOrders,
+            TargetMotherlodes,
+            ExtraConfig
         ),
         smelterl_log:error("plan execution not implemented yet.~n", []),
         1
@@ -97,6 +104,12 @@ run_plan(Opts) ->
             1;
         {capabilities_error, Reason} ->
             smelterl_log:error("~ts~n", [format_capabilities_error(Reason)]),
+            1;
+        {extra_config_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_extra_config_error(Reason)]),
+            1;
+        {config_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_config_error(Reason)]),
             1;
         {topology_error, Reason} ->
             smelterl_log:error("~ts~n", [format_topology_error(Reason)]),
@@ -208,6 +221,107 @@ discover_capabilities(Targets, TopologyOrders, TargetMotherlodes) ->
             Ok;
         {error, Reason} ->
             {capabilities_error, Reason}
+    end.
+
+parse_extra_config(Opts) ->
+    Entries = maps:get(extra_config, Opts, []),
+    maybe
+        {ok, Parsed0} ?= parse_extra_config_entries(Entries, #{}),
+        ok ?= reject_reserved_extra_config_key(Parsed0),
+        {ok, maps:put(<<"ALLOY_MOTHERLODE">>, <<"${ALLOY_MOTHERLODE}">>, Parsed0)}
+    else
+        {extra_config_error, _} = Error ->
+            Error
+    end.
+
+parse_extra_config_entries([], Acc) ->
+    {ok, Acc};
+parse_extra_config_entries([Entry | Rest], Acc0) ->
+    case parse_extra_config_entry(Entry) of
+        {ok, Key, Value} ->
+            parse_extra_config_entries(Rest, maps:put(Key, Value, Acc0));
+        {error, Reason} ->
+            {extra_config_error, Reason}
+    end.
+
+parse_extra_config_entry(Entry) when is_list(Entry) ->
+    parse_extra_config_entry(unicode:characters_to_binary(Entry));
+parse_extra_config_entry(Entry) when is_binary(Entry) ->
+    case binary:match(Entry, <<"=">>) of
+        nomatch ->
+            {error, {invalid_extra_config, Entry}};
+        {0, _Len} ->
+            {error, {invalid_extra_config, Entry}};
+        {Pos, _Len} ->
+            Key = binary:part(Entry, 0, Pos),
+            Value = binary:part(Entry, Pos + 1, byte_size(Entry) - Pos - 1),
+            {ok, Key, Value}
+    end.
+
+reject_reserved_extra_config_key(ExtraConfig) ->
+    case maps:is_key(<<"ALLOY_MOTHERLODE">>, ExtraConfig) of
+        true ->
+            {extra_config_error, {reserved_extra_config_key, <<"ALLOY_MOTHERLODE">>}};
+        false ->
+            ok
+    end.
+
+consolidate_target_configs(Targets, TopologyOrders, TargetMotherlodes, ExtraConfig) ->
+    TargetIds = [main] ++ [maps:get(id, Auxiliary) || Auxiliary <- maps:get(auxiliaries, Targets, [])],
+    consolidate_target_configs(
+        TargetIds,
+        Targets,
+        TopologyOrders,
+        TargetMotherlodes,
+        ExtraConfig,
+        #{}
+    ).
+
+consolidate_target_configs(
+    [],
+    _Targets,
+    _TopologyOrders,
+    _TargetMotherlodes,
+    _ExtraConfig,
+    Acc
+) ->
+    {ok, Acc};
+consolidate_target_configs(
+    [TargetId | Rest],
+    Targets,
+    TopologyOrders,
+    TargetMotherlodes,
+    ExtraConfig,
+    Acc0
+) ->
+    Tree = target_tree(Targets, TargetId),
+    Topology = maps:get(TargetId, TopologyOrders),
+    TargetMotherlode = maps:get(TargetId, TargetMotherlodes),
+    case smelterl_config:consolidate(Tree, Topology, TargetMotherlode, ExtraConfig) of
+        {ok, Config} ->
+            consolidate_target_configs(
+                Rest,
+                Targets,
+                TopologyOrders,
+                TargetMotherlodes,
+                ExtraConfig,
+                maps:put(TargetId, Config, Acc0)
+            );
+        {error, Reason} ->
+            {config_error, {TargetId, Reason}}
+    end.
+
+target_tree(Targets, main) ->
+    maps:get(main, Targets);
+target_tree(Targets, TargetId) ->
+    target_auxiliary_tree(maps:get(auxiliaries, Targets, []), TargetId).
+
+target_auxiliary_tree([Auxiliary | Rest], TargetId) ->
+    case maps:get(id, Auxiliary) of
+        TargetId ->
+            maps:get(tree, Auxiliary);
+        _Other ->
+            target_auxiliary_tree(Rest, TargetId)
     end.
 
 format_load_error({invalid_path, Path, Posix}) ->
@@ -627,6 +741,70 @@ format_capabilities_error({duplicate_sdk_output, TargetId, OutputId, FirstNugget
     );
 format_capabilities_error(Reason) ->
     io_lib:format("plan: capability discovery failed: ~tp", [Reason]).
+
+format_extra_config_error({invalid_extra_config, Entry}) ->
+    io_lib:format(
+        "plan: invalid --extra-config '~ts'; expected KEY=VALUE",
+        [Entry]
+    );
+format_extra_config_error({reserved_extra_config_key, Key}) ->
+    io_lib:format(
+        "plan: --extra-config must not set reserved key '~ts'",
+        [Key]
+    );
+format_extra_config_error(Reason) ->
+    io_lib:format("plan: invalid extra config: ~tp", [Reason]).
+
+format_config_error({TargetId, {duplicate_export, Key, NuggetId1, NuggetId2}}) ->
+    io_lib:format(
+        "plan: target '~ts' has duplicate export key '~ts' in nuggets '~ts' and '~ts'",
+        [
+            atom_to_list(TargetId),
+            atom_to_list(Key),
+            atom_to_list(NuggetId1),
+            atom_to_list(NuggetId2)
+        ]
+    );
+format_config_error({TargetId, {export_config_conflict, Key, ExportNuggetId, ConfigNuggetId}}) ->
+    io_lib:format(
+        "plan: target '~ts' export key '~ts' from nugget '~ts' conflicts with config in nugget '~ts'",
+        [
+            atom_to_list(TargetId),
+            atom_to_list(Key),
+            atom_to_list(ExportNuggetId),
+            atom_to_list(ConfigNuggetId)
+        ]
+    );
+format_config_error({TargetId, {config_export_conflict, NuggetId, Key}}) ->
+    io_lib:format(
+        "plan: target '~ts' nugget '~ts' declares key '~ts' in both config and exports",
+        [atom_to_list(TargetId), atom_to_list(NuggetId), atom_to_list(Key)]
+    );
+format_config_error({TargetId, {path_resolution_failed, NuggetId, Path, Detail}}) ->
+    io_lib:format(
+        "plan: target '~ts' could not resolve path '~ts' for nugget '~ts': ~tp",
+        [atom_to_list(TargetId), Path, atom_to_list(NuggetId), Detail]
+    );
+format_config_error({TargetId, {exec_failed, NuggetId, Key, Reason}}) ->
+    io_lib:format(
+        "plan: target '~ts' exec value for key '~ts' in nugget '~ts' failed: ~tp",
+        [atom_to_list(TargetId), atom_to_list(Key), atom_to_list(NuggetId), Reason]
+    );
+format_config_error({TargetId, {invalid_flavor, NuggetId, Detail}}) ->
+    io_lib:format(
+        "plan: target '~ts' could not resolve flavor-dependent config for nugget '~ts': ~tp",
+        [atom_to_list(TargetId), atom_to_list(NuggetId), Detail]
+    );
+format_config_error({TargetId, {template_error, NuggetId, Key, Detail}}) ->
+    io_lib:format(
+        "plan: target '~ts' could not resolve computed config key '~ts' in nugget '~ts': ~tp",
+        [atom_to_list(TargetId), atom_to_list(Key), atom_to_list(NuggetId), Detail]
+    );
+format_config_error({TargetId, Reason}) ->
+    io_lib:format(
+        "plan: target '~ts' config consolidation failed: ~tp",
+        [atom_to_list(TargetId), Reason]
+    ).
 
 format_version(undefined) ->
     "undefined";
