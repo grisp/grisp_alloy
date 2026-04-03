@@ -108,6 +108,11 @@ For every task, execute these steps in order.
    - Keep scope constrained to the selected task.
    - Favor small, explicit, readable changes.
    - Avoid unrelated refactors unless necessary for correctness.
+   - For Smelterl Erlang code, treat `smelterl.erl` as the canonical home for
+     cross-module shared types. Before adding a new shared `-type`, check
+     whether the shape already exists there; prefer remote type references
+     (`smelterl:type_name()`) over duplicating shared type declarations across
+     modules.
    - For reusable/exported functions and similar callable interfaces
      (for example shell functions, Erlang functions, or other developer-facing
      helper APIs), keep the implementation-facing documentation in sync with

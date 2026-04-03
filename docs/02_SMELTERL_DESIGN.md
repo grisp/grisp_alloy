@@ -1018,7 +1018,14 @@ The escript output is be `_build/default/bin/smelterl`.
 
 This section defines the **implementation** representation of all data structures passed between modules. It is the **reference for input and output types** of the modules described in §5.7: every function that takes or returns one of these structures must use the types defined here. Data formats (nugget metadata, manifest on disk) are specified in [Data Design](01_DATA_DESIGN.md); this section specifies how the implementation models them in Erlang.
 
-The following types use Erlang `-type` and `-spec` notation. All shared data type specifications are defined in the **smelterl** module (`smelterl.erl`); other modules reference these types for their function specs. The implementation may use records, maps, or proplists as long as the effective shape matches these definitions.
+The following types use Erlang `-type` and `-spec` notation. All shared data
+type specifications are defined in the **smelterl** module (`smelterl.erl`);
+other modules reference these types with remote types such as
+`smelterl:nugget_tree()` in their function specs. Cross-module shared shapes
+must not be re-declared locally in each module. Module-local helper types that
+do not form part of a shared contract should remain local to the implementing
+module. The implementation may use records, maps, or proplists as long as the
+effective shape matches these definitions.
 
 #### 5.6.1 Identifiers and primitives
 
@@ -3114,6 +3121,10 @@ This appendix shows a single example Erlang module that illustrates every docume
   when is_binary(Value) ->
   ```
 - **Exports:** One `-export([...])` per function name per line (repeat `-export` for each function); use a single `-export([name/1, name/2])` when one function has multiple arities.
+- **Shared types:** If an Erlang type is consumed by multiple Smelterl modules,
+  define and export it from `smelterl.erl`, then reference it remotely
+  (`smelterl:type_name()`) instead of duplicating the `-type` declaration in
+  each module. Keep purely module-private helper types local.
 - No spec or documentation needed for bahviour callback implementations.
 
 **Example:**

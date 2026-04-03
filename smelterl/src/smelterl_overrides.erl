@@ -16,32 +16,6 @@ planning stages.
 -export([apply_overrides/3]).
 
 
-%=== TYPES =====================================================================
-
--type nugget_id() :: atom().
--type nugget_tree() :: #{
-    root := nugget_id(),
-    edges := #{nugget_id() => [nugget_id()]}
-}.
--type auxiliary_target() :: #{
-    id := nugget_id(),
-    root_nugget := nugget_id(),
-    constraints := [{version, binary()} | {flavor, atom()}],
-    specific_tree := nugget_tree(),
-    tree := nugget_tree()
-}.
--type target_trees() :: #{
-    main := nugget_tree(),
-    auxiliaries := [auxiliary_target()]
-}.
--type motherlode() :: #{
-    nuggets := #{nugget_id() => map()},
-    repositories := map()
-}.
--type topology_orders() :: #{nugget_id() => [nugget_id()]}.
--type target_motherlodes() :: #{nugget_id() => motherlode()}.
-
-
 %=== API FUNCTIONS =============================================================
 
 -doc """
@@ -50,8 +24,15 @@ Apply override metadata collected from the main target tree.
 Returns updated targets, recomputed topology orders, and target-specific
 motherlode views carrying effective config overrides.
 """.
--spec apply_overrides(target_trees(), topology_orders(), motherlode()) ->
-    {ok, target_trees(), topology_orders(), target_motherlodes()} |
+-spec apply_overrides(
+    smelterl:target_trees(),
+    smelterl:topology_orders(),
+    smelterl:motherlode()
+) ->
+    {ok,
+        smelterl:target_trees(),
+        smelterl:topology_orders(),
+        smelterl:target_motherlodes()} |
         {error, term()}.
 apply_overrides(Targets, TopologyOrders, Motherlode) ->
     maybe

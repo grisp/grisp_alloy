@@ -16,31 +16,6 @@ auxiliary targets and compose effective auxiliary trees with the main backbone.
 -export([build_targets/2]).
 
 
-%=== TYPES =====================================================================
-
--type nugget_id() :: atom().
--type motherlode() :: #{
-    nuggets := #{nugget_id() => map()},
-    repositories := map()
-}.
--type nugget_tree() :: #{
-    root := nugget_id(),
-    edges := #{nugget_id() => [nugget_id()]}
-}.
--type auxiliary_constraint_prop() :: {version, binary()} | {flavor, atom()}.
--type auxiliary_target() :: #{
-    id := nugget_id(),
-    root_nugget := nugget_id(),
-    constraints := [auxiliary_constraint_prop()],
-    specific_tree := nugget_tree(),
-    tree := nugget_tree()
-}.
--type target_trees() :: #{
-    main := nugget_tree(),
-    auxiliaries := [auxiliary_target()]
-}.
-
-
 %=== API FUNCTIONS =============================================================
 
 -doc """
@@ -50,8 +25,8 @@ Only nugget-kind dependency constraints contribute edges. Category and
 capability constraints are ignored at this stage, while cycles and missing
 required nugget dependencies abort the build.
 """.
--spec build(nugget_id(), motherlode()) ->
-    {ok, nugget_tree()} | {error, term()}.
+-spec build(smelterl:nugget_id(), smelterl:motherlode()) ->
+    {ok, smelterl:nugget_tree()} | {error, term()}.
 build(ProductId, Motherlode) ->
     case lookup_nugget(ProductId, Motherlode) of
         undefined ->
@@ -74,8 +49,8 @@ auxiliary-specific subtree is built independently, and then the main backbone
 (`builder`, `toolchain`, `platform`, `system` plus their transitive nugget
 dependencies) is merged into each effective auxiliary tree.
 """.
--spec build_targets(nugget_id(), motherlode()) ->
-    {ok, target_trees()} | {error, term()}.
+-spec build_targets(smelterl:nugget_id(), smelterl:motherlode()) ->
+    {ok, smelterl:target_trees()} | {error, term()}.
 build_targets(ProductId, Motherlode) ->
     case build(ProductId, Motherlode) of
         {ok, MainTree} ->

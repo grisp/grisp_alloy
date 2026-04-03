@@ -27,32 +27,12 @@ against the pre-built target trees returned by `smelterl_tree`.
 
 %=== TYPES =====================================================================
 
--type nugget_id() :: atom().
--type motherlode() :: #{
-    nuggets := #{nugget_id() => map()},
-    repositories := map()
-}.
--type nugget_tree() :: #{
-    root := nugget_id(),
-    edges := #{nugget_id() => [nugget_id()]}
-}.
--type auxiliary_target() :: #{
-    id := nugget_id(),
-    root_nugget := nugget_id(),
-    constraints := [{version, binary()} | {flavor, atom()}],
-    specific_tree := nugget_tree(),
-    tree := nugget_tree()
-}.
--type target_trees() :: #{
-    main := nugget_tree(),
-    auxiliaries := [auxiliary_target()]
-}.
--type flavor_map() :: #{nugget_id() => atom()}.
--type category_map() :: #{atom() => [nugget_id()]}.
--type capability_map() :: #{atom() => [nugget_id()]}.
+-type flavor_map() :: #{smelterl:nugget_id() => atom()}.
+-type category_map() :: #{atom() => [smelterl:nugget_id()]}.
+-type capability_map() :: #{atom() => [smelterl:nugget_id()]}.
 -type tree_context() :: #{
-    node_ids := [nugget_id()],
-    node_set := #{nugget_id() => true},
+    node_ids := [smelterl:nugget_id()],
+    node_set := #{smelterl:nugget_id() => true},
     categories := category_map(),
     capabilities := capability_map()
 }.
@@ -66,7 +46,8 @@ Validate one target tree against the loaded motherlode metadata.
 This entry point enforces category cardinality, dependency constraints,
 conflicts, and version/flavor requirements for a single tree.
 """.
--spec validate_tree(nugget_tree(), motherlode()) -> ok | {error, term()}.
+-spec validate_tree(smelterl:nugget_tree(), smelterl:motherlode()) ->
+    ok | {error, term()}.
 validate_tree(Tree, Motherlode) ->
     maybe
         {ok, _FlavorMap} ?= validate_tree_with_flavors(Tree, Motherlode, #{}),
@@ -82,7 +63,12 @@ Validate one nugget replacement against the current target tree.
 The replacement must keep the category stable and must not introduce missing
 dependencies after the replaced nugget is removed from the tree.
 """.
--spec validate_replacement(nugget_id(), nugget_id(), nugget_tree(), motherlode()) ->
+-spec validate_replacement(
+    smelterl:nugget_id(),
+    smelterl:nugget_id(),
+    smelterl:nugget_tree(),
+    smelterl:motherlode()
+) ->
     ok | {error, term()}.
 validate_replacement(NewNuggetId, ReplacedNuggetId, Tree, Motherlode) ->
     maybe
@@ -116,7 +102,8 @@ rules, auxiliary-specific subtree restrictions, shared-flavor consistency
 between main and auxiliaries, and hook-scope validity against the declared
 auxiliary ids.
 """.
--spec validate_targets(target_trees(), motherlode()) -> ok | {error, term()}.
+-spec validate_targets(smelterl:target_trees(), smelterl:motherlode()) ->
+    ok | {error, term()}.
 validate_targets(Targets, Motherlode) ->
     MainTree = maps:get(main, Targets),
     Auxiliaries = maps:get(auxiliaries, Targets, []),
@@ -146,7 +133,12 @@ validate_targets(Targets, Motherlode) ->
 
 %=== INTERNAL FUNCTIONS ========================================================
 
--spec validate_auxiliaries([auxiliary_target()], flavor_map(), nugget_tree(), motherlode()) ->
+-spec validate_auxiliaries(
+    [smelterl:auxiliary_target()],
+    flavor_map(),
+    smelterl:nugget_tree(),
+    smelterl:motherlode()
+) ->
     ok | {error, term()}.
 validate_auxiliaries([], _MainFlavors, _MainTree, _Motherlode) ->
     ok;
@@ -173,7 +165,11 @@ validate_auxiliaries([Auxiliary | Rest], MainFlavors, MainTree, Motherlode) ->
             Error
     end.
 
--spec validate_replacement_category(nugget_id(), nugget_id(), motherlode()) ->
+-spec validate_replacement_category(
+    smelterl:nugget_id(),
+    smelterl:nugget_id(),
+    smelterl:motherlode()
+) ->
     ok | {error, term()}.
 validate_replacement_category(NewNuggetId, ReplacedNuggetId, Motherlode) ->
     NewCategory = nugget_category(NewNuggetId, Motherlode),
@@ -189,7 +185,7 @@ validate_replacement_category(NewNuggetId, ReplacedNuggetId, Motherlode) ->
                     ReplacedCategory}}
     end.
 
--spec validate_auxiliary_ids([auxiliary_target()]) -> ok | {error, term()}.
+-spec validate_auxiliary_ids([smelterl:auxiliary_target()]) -> ok | {error, term()}.
 validate_auxiliary_ids(Auxiliaries) ->
     validate_auxiliary_ids(Auxiliaries, #{}).
 
@@ -227,7 +223,10 @@ validate_auxiliary_specific_nodes(AuxiliaryId, [NuggetId | Rest], Motherlode) ->
             validate_auxiliary_specific_nodes(AuxiliaryId, Rest, Motherlode)
     end.
 
--spec validate_auxiliary_constraints(auxiliary_target(), motherlode()) ->
+-spec validate_auxiliary_constraints(
+    smelterl:auxiliary_target(),
+    smelterl:motherlode()
+) ->
     {ok, flavor_map()} | {error, term()}.
 validate_auxiliary_constraints(Auxiliary, Motherlode) ->
     AuxiliaryId = maps:get(id, Auxiliary),
@@ -309,7 +308,11 @@ validate_target_hook_scopes(Targets, Motherlode, AuxiliaryIds) ->
     NuggetIds = target_nugget_ids(Targets),
     validate_hook_scopes(NuggetIds, Motherlode, AuxiliaryIdSet).
 
- -spec validate_hook_scopes([nugget_id()], motherlode(), #{nugget_id() => true}) ->
+-spec validate_hook_scopes(
+    [smelterl:nugget_id()],
+    smelterl:motherlode(),
+    #{smelterl:nugget_id() => true}
+) ->
     ok | {error, term()}.
 validate_hook_scopes([], _Motherlode, _AuxiliaryIdSet) ->
     ok;
@@ -390,8 +393,13 @@ valid_hook_type(HookType) ->
 firmware_hook_type(HookType) ->
     lists:member(HookType, ?FIRMWARE_HOOK_TYPES).
 
--spec replacement_tree(nugget_id(), nugget_id(), nugget_tree(), motherlode()) ->
-    {ok, nugget_tree()} | {error, term()}.
+-spec replacement_tree(
+    smelterl:nugget_id(),
+    smelterl:nugget_id(),
+    smelterl:nugget_tree(),
+    smelterl:motherlode()
+) ->
+    {ok, smelterl:nugget_tree()} | {error, term()}.
 replacement_tree(NewNuggetId, ReplacedNuggetId, Tree, Motherlode) ->
     Edges0 = maps:get(edges, Tree),
     AvailableNodes =
@@ -549,7 +557,11 @@ rewrite_edge_dependencies(
         maps:put(NodeId, Dependencies, Acc)
     ).
 
--spec validate_tree_with_flavors(nugget_tree(), motherlode(), flavor_map()) ->
+-spec validate_tree_with_flavors(
+    smelterl:nugget_tree(),
+    smelterl:motherlode(),
+    flavor_map()
+) ->
     {ok, flavor_map()} | {error, term()}.
 validate_tree_with_flavors(Tree, Motherlode, InitialFlavors) ->
     case validate_category_cardinality(Tree, Motherlode) of
@@ -929,7 +941,8 @@ rewrite_dependency_spec(
 rewrite_dependency_spec(Spec, _ReplacedNuggetId, _NewNuggetId) ->
     Spec.
 
--spec build_tree_context(nugget_tree(), motherlode()) -> tree_context().
+-spec build_tree_context(smelterl:nugget_tree(), smelterl:motherlode()) ->
+    tree_context().
 build_tree_context(Tree, Motherlode) ->
     NodeIds = tree_node_ids(Tree),
     #{

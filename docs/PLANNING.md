@@ -253,7 +253,7 @@ Backlog policy:
   - Tests: Unit tests for variant/output/param merging and sdk output mapping.
   - Done when: Discovery map is complete for context/manifest generation.
 
-- [ ] **Task 3.7a: Shared Smelterl type centralization in `smelterl.erl`**
+- [x] **Task 3.7a: Shared Smelterl type centralization in `smelterl.erl`**
   - Scope: Move shared plan/generate Erlang types into `smelterl.erl` as the
     canonical source of truth and replace duplicated local type declarations in
     Smelterl modules with remote type references.
@@ -287,6 +287,9 @@ Backlog policy:
     emitted by `smelterl_overrides`, not the raw motherlode; nugget
     replacements rewrite nugget-id references in `depends_on`, and config
     overrides already mutate `{Key, Value, OriginNugget}` entries per target.
+  - Refinement note (from Task 3.7a): Add any new cross-module configuration or
+    plan payload types to `smelterl.erl` and use remote type references from
+    implementation modules instead of duplicating shared `-type` declarations.
   - Done when: Consolidated config is deterministic and spec-compliant.
 
 - [ ] **Task 3.9: `smelterl_gen_defconfig` plan-stage model build**

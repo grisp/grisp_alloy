@@ -15,16 +15,6 @@ before-dependent order with the tree root last.
 -export([topology_order/1]).
 
 
-%=== TYPES =====================================================================
-
--type nugget_id() :: atom().
--type nugget_tree() :: #{
-    root := nugget_id(),
-    edges := #{nugget_id() => [nugget_id()]}
-}.
--type nugget_topology_order() :: [nugget_id()].
-
-
 %=== API FUNCTIONS =============================================================
 
 -doc """
@@ -33,8 +23,8 @@ Return one deterministic topological order for a nugget tree.
 Dependencies are emitted before their dependents, and the tree root is last.
 If the input graph contains a cycle, return the detected cycle path.
 """.
--spec topology_order(nugget_tree()) ->
-    {ok, nugget_topology_order()} | {error, term()}.
+-spec topology_order(smelterl:nugget_tree()) ->
+    {ok, smelterl:nugget_topology_order()} | {error, term()}.
 topology_order(Tree) ->
     Root = maps:get(root, Tree),
     Edges = maps:get(edges, Tree),
