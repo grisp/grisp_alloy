@@ -1,75 +1,15 @@
-# GRiSP Alloy - Smelterl Design
+# Smelterl Design Redirect
 
-**Version:** 2.0 (Draft)  
-**Status:** Design Document  
-**Last Updated:** 2026-02-09
+The authoritative Smelterl design document now lives in the standalone
+`smelterl` repository.
 
-This document specifies the **smelterl** Erlang tool: its role, responsibilities, CLI, processes, and implementation. It is self-contained for the tool; data formats (nugget metadata, manifest) are defined in [Data Design](01_DATA_DESIGN.md). For overview and glossary see [Overview](00_OVERVIEW.md).
+Use one of these:
 
----
+- Local checkout/submodule: `smelterl/docs/DESIGN.md`
+- Web documentation: `<SMELTERL_GITHUB_URL>/blob/<branch>/docs/DESIGN.md`
 
-## Table of Contents
-
-1. [Overview](#1-overview)
-2. [Responsibilities](#2-responsibilities)
-3. [Commands](#3-commands)
-4. [Processes](#4-processes)
-5. [Implementation Details](#5-implementation-details)
-6. [Appendix A - Examples of Generated Files](#appendix-a-examples-of-generated-files)
-7. [Appendix B - Format and Documentation](#appendix-b-format-and-documentation)
-
----
-
-## 1. Overview
-
-### 1.1 Role
-
-**smelterl** is an Erlang-based code generator that:
-
-- Discovers and parses nugget repositories from a **motherlode** directory.
-- Builds a validated multi-target SDK build plan (main target + auxiliary targets).
-- Resolves dependencies, validates target trees, and computes deterministic topological order per target.
-- Consolidates nugget configuration per target (config, exports, overrides, paths, computed, exec).
-- Generates Buildroot integration files (BR2_EXTERNAL content: `external.desc`, `Config.in`, `external.mk`) and a merged defconfig.
-- Generates a target-scoped build-context shell script (`alloy_context.sh`) with nugget paths, config, and hook lists for every target; firmware-time capabilities and SDK embedding metadata are emitted only for the main target context.
-- Generates and optionally augments the SDK manifest (including auxiliary products and SDK outputs capability data).
-
-The tool does **not** clone VCS repositories, create directories or symlinks, or run Buildroot. It only reads the motherlode (assumed already staged by the caller), performs resolution and validation, and writes the files specified via `--output-*` parameters.
-
-### 1.2 Invocation Model
-
-- **Entry point:** Single executable (escript): `smelterl` or `smelterl-{VERSION}`.
-- **Primary flow:** `smelterl plan` (resolve+validate all targets) followed by one or more `smelterl generate` calls (one selected target per invocation).
-- **Platform:** Pure Erlang (no NIFs, no port drivers); one escript runs on any host with a compatible Erlang/OTP version.
-
-### 1.3 Inputs and Outputs (Summary)
-
-| Input | Description |
-|-------|-------------|
-| `--motherlode` | Directory containing one subdirectory per nugget repository; each repo has a `.nuggets` registry and one or more `.nugget` files. |
-| `--product` | Nugget identifier of the top-level (main product) nugget. Used by `plan`. |
-| `--extra-config` | Optional key=value pairs accepted by `plan` only. Used at plan-time for config/defconfig resolution and stored for `generate` Config.in Kconfig declarations. **ALLOY_MOTHERLODE must not** be specified here; it is always added to Config.in by smelterl and is not defined in alloy_context.sh (see [§1.4](#14-alloy_motherlode)). |
-| `--buildroot-legal` | Optional **repeatable** path to Buildroot `legal-info/`, allowed only on main-target `generate` (no `--auxiliary`). Use one occurrence per target legal tree to consolidate legal and manifest data in one main pass. |
-| `--export-legal` | Optional output directory for full legal-info tree export. Path is **relative to the generated manifest** (the directory of the file written to `--output-manifest`). |
-| `--include-sources` | Optional flag (main-target `generate` only) to include Buildroot/alloy source trees in legal export; valid only with `--export-legal` and `--output-manifest`. |
-| `--log`, `--verbose`, `--debug` | Optional logging controls. `--verbose` and `--debug` are equivalent to `--log debug`. |
-
-| Output | Description |
-|--------|-------------|
-| `--output-plan` | Full Erlang-term build plan (`plan` command). |
-| `--output-plan-env` | Bash-friendly target summary (`plan` command, optional). |
-| `--output-external-desc` | Buildroot external tree descriptor (name, description). |
-| `--output-config-in` | Kconfig file sourcing nugget packages and declaring extra-config variables. |
-| `--output-external-mk` | Top-level makefile including nugget package `.mk` files. |
-| `--output-defconfig` | Merged defconfig from nugget fragments (with template substitution and auto-injected target-local wrapper hook entries). |
-| `--output-context` | Shell script `alloy_context.sh` for the selected target. |
-| `--output-manifest` | Path for `ALLOY_SDK_MANIFEST` output and export-root anchoring. Main-target generation only (no `--auxiliary`). |
-
-### 1.4 ALLOY_MOTHERLODE
-
-- **ALLOY_MOTHERLODE** is **always** considered an extra-config variable (resolving to `${ALLOY_MOTHERLODE}`) for **Config.in** generation and template substitution: smelterl always emits a Kconfig declaration for `ALLOY_MOTHERLODE` in the generated Config.in (so that Buildroot accepts it when passed as a make parameter). The caller **must not** pass `--extra-config ALLOY_MOTHERLODE=...`; ALLOY_MOTHERLODE is never taken from `--extra-config`. The caller is expected to set `ALLOY_MOTHERLODE` before sourcing alloy_context.sh.
-- **ALLOY_MOTHERLODE is not defined in alloy_context.sh.** The generated context script assumes `ALLOY_MOTHERLODE` is already set by the environment (e.g. by the wrapper that sources the script). The script may assert that it is set (e.g. `: "${ALLOY_MOTHERLODE:?..."`) but must not assign it, so that no local path information is embedded.
-- **Path resolution for config/exports:** All `{path, PathSpec}` entries in `config` and `exports` that refer to nugget resources (relative paths or `@nugget/path`) are resolved to a path **prefixed by the bash variable `${ALLOY_MOTHERLODE}`**-e.g. `"${ALLOY_MOTHERLODE}/<repo>/<nugget>/path"`-rather than a fully specified absolute filesystem path. This keeps the generated alloy_context.sh free of host-specific paths; at runtime, when `ALLOY_MOTHERLODE` is set, the path becomes absolute. Only PathSpec values that are already absolute (leading `/`) are emitted as-is.
+This Alloy-side page is intentionally non-authoritative and exists only as a
+stable redirect/reference point for local and web readers.
 
 ---
 
