@@ -1,14 +1,15 @@
-# Smelterl Design Redirect
+# Smelterl Design
 
-The authoritative Smelterl design document now lives in the standalone
-`smelterl` repository.
+Smelterl design, implementation notes, and planning live in the `smelterl`
+repository.
 
 Use one of these:
 
-- Local checkout/submodule:
+- Local checkout, design:
   [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md)
-- Web documentation:
+- Local checkout, planning:
+  [smelterl/docs/PLANNING.md](../smelterl/docs/PLANNING.md)
+- Web design:
   [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md)
-
-This Alloy-side page is intentionally non-authoritative and exists only as a
-stable redirect/reference point for local and web readers.
+- Web planning:
+  [github.com/grisp/smelter/docs/PLANNING.md](https://github.com/grisp/smelter/blob/main/docs/PLANNING.md)

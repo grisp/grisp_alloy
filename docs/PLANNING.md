@@ -11,9 +11,9 @@ Design references for implementation:
 - [Smelterl Design](02_SMELTERL_DESIGN.md)
 - [Alloy Design](03_ALLOY_DESIGN.md)
 
-Smelterl backlog ownership:
-- Local checkout/submodule: `smelterl/docs/PLANNING.md`
-- Web view: `<SMELTERL_GITHUB_URL>/blob/<branch>/docs/PLANNING.md`
+Smelterl planning:
+- Local checkout: `smelterl/docs/PLANNING.md`
+- Web view: [github.com/grisp/smelter/docs/PLANNING.md](https://github.com/grisp/smelter/blob/main/docs/PLANNING.md)
 
 Status convention:
 - TODO: `- [ ] **Task ...**`

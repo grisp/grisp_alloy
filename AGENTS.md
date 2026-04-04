@@ -10,7 +10,7 @@ Use this read order before implementation:
 2. Read the design source of truth:
    - `docs/00_OVERVIEW.md`
    - `docs/01_DATA_DESIGN.md`
-   - `docs/02_SMELTERL_DESIGN.md` (Alloy-side redirect/reference page)
+   - `docs/02_SMELTERL_DESIGN.md`
    - `docs/03_ALLOY_DESIGN.md`
    - if the task touches Smelterl itself and a local checkout is present:
      `smelterl/docs/DESIGN.md`
@@ -41,10 +41,12 @@ Primary goal: preserve deterministic, reproducible, secure SDK, project, and fir
 
 - The design documents define the canonical CLI as `alloy ...`.
 - This repository still contains transitional wrapper scripts such as `build-sdk.sh`, `build-project.sh`, and `build-firmware.sh`.
-- Authoritative Smelterl implementation, planning, and history now live in the
-  standalone `smelterl` repository; in a superproject checkout that usually
-  appears at `./smelterl`.
-- When implementing backlog tasks, align behavior and user-facing semantics with the design docs, but validate against the current repository state and existing tests instead of assuming the migration is already complete.
+- Smelterl implementation, planning, and history live in the local
+  `smelterl/` checkout when present; treat it as a separately owned
+  repository.
+- When implementing backlog tasks, align behavior and user-facing semantics
+  with the design docs, but validate against the current repository state and
+  existing tests before changing behavior.
 
 ## Project Layout
 
@@ -52,8 +54,8 @@ Primary goal: preserve deterministic, reproducible, secure SDK, project, and fir
 - `scripts/commands/`: command handlers.
 - `scripts/utils/`: shared bash utilities. Reuse these instead of re-implementing helpers.
 - `scripts/tests/`: shell test harness, gates, fixtures, and targeted tests.
-- `smelterl/`: standalone Smelterl checkout/submodule when present locally;
-  treat it as an external repository for ownership purposes.
+- `smelterl/`: local Smelterl checkout when present; treat it as a separately
+  owned repository for implementation, planning, and history.
 - `system_common/`, `system_grisp2/`, `system_kontron-albl-imx8mm/`: current-repo Buildroot trees, overlays, packages, and patches from the implementation-era layout. Treat them as transitional structure, not the long-term architectural source of truth.
 - `toolchain/`: current-repo toolchain configs and patches. Useful for the existing implementation, but long-term behavior should be guided by the nugget-based design rather than expanding legacy top-level layout.
 - `docs/`: design, workflow, and planning.

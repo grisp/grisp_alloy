@@ -7,8 +7,8 @@
 This document is the entry point for the GRiSP Alloy architecture. It defines goals, glossary, conventions, and a high-level architecture overview. Detailed design is split into:
 
 - **[Data Design](01_DATA_DESIGN.md)** - Repository and SDK directory structure, nugget discovery, metadata (`.nuggets`, `.nugget`), and manifest specification.
-- **[Smelterl Design Redirect](02_SMELTERL_DESIGN.md)** - Alloy-side redirect to the authoritative Smelterl design document:
-  local checkout/submodule [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md),
+- **[Smelterl Design](02_SMELTERL_DESIGN.md)** - Reference entrypoint for the Smelterl design document:
+  local checkout [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md),
   web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md).
 - **[Alloy Design](03_ALLOY_DESIGN.md)** - Alloy bash orchestrator: how it uses smelterl and Buildroot, SDK and project generation, toolchain and builder nuggets, commands (repository vs SDK), security pack concept and contract.
 
@@ -112,7 +112,7 @@ GRiSP Alloy is a build system for embedded Linux firmware targeting Erlang/Elixi
 | **SDK** | Self-contained kit to build firmware: images, host tools, scripts, cross-compiler, host Erlang/OTP, and metadata generated from all SDK build targets (main + auxiliaries). No grisp_alloy checkout or system-installed toolchains needed. |
 | **Firmware** | Final flashable image, built from an SDK with optional secure boot or disk encryption. |
 | **BR2_EXTERNAL** | Buildroot’s mechanism for external tree overlays; smelterl generates it from nuggets. |
-| **smelterl** | The Erlang tool that plans and generates SDK build targets from nugget metadata (`plan` + target-scoped `generate`). See the Alloy-side [Smelterl Design Redirect](02_SMELTERL_DESIGN.md), the local standalone document [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md), or the web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md). |
+| **smelterl** | The Erlang tool that plans and generates SDK build targets from nugget metadata (`plan` + target-scoped `generate`). See [Smelterl Design](02_SMELTERL_DESIGN.md), the local checkout [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md), or the web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md). |
 | **SDK Manifest** | Build metadata (nuggets, repos, Buildroot packages, environment, licensing). Stored as `ALLOY_SDK_MANIFEST`. |
 | **Project Manifest** | Project build metadata (release name, release version, main OTP application name and version, dependencies, SDK provenance). Stored as `ALLOY_PROJECT_MANIFEST`. |
 | **Firmware Manifest** | Firmware-level metadata combining SDK and project manifests. Stored as `ALLOY_FIRMWARE_MANIFEST`. |
@@ -271,8 +271,8 @@ Naming patterns for build outputs (recommendations; not enforced):
 - All build-context and hook-visible variables use the **`ALLOY_`** prefix.
 - **Template substitution:** In computed config and defconfig fragments, markers use the form **`[[KEY]]`** (e.g. `[[ALLOY_CONFIG_INIT_SYSTEM]]`, `[[ALLOY_ARTEFACT_DIR]]`).
 
-Variable naming details are in [Data Design](01_DATA_DESIGN.md#environment-variables-and-functions); the full context script content is in the standalone Smelterl design document:
-local checkout/submodule [smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](../smelterl/docs/DESIGN.md#412-generating-alloy_contextsh),
+Variable naming details are in [Data Design](01_DATA_DESIGN.md#environment-variables-and-functions); the full context script content is in the Smelterl design document:
+local checkout [smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](../smelterl/docs/DESIGN.md#412-generating-alloy_contextsh),
 web view [github.com/grisp/smelter/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
 
 ---
@@ -423,4 +423,4 @@ Firmware build assembles a flashable image from the SDK’s base images, host to
   └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-For detailed flows and component responsibilities, see the Alloy-side [Smelterl Design Redirect](02_SMELTERL_DESIGN.md), the local standalone document [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md), the web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md), and [Alloy Design](03_ALLOY_DESIGN.md).
+For detailed flows and component responsibilities, see [Smelterl Design](02_SMELTERL_DESIGN.md), the local checkout [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md), the web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md), and [Alloy Design](03_ALLOY_DESIGN.md).
