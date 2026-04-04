@@ -28,6 +28,7 @@ delegates argument handling to `smelterl_cli`.
     config_entry/0,
     config/0,
     target_configs/0,
+    defconfig_model/0,
     firmware_output_spec/0,
     firmware_parameter_spec/0,
     sdk_output_spec/0,
@@ -104,6 +105,12 @@ and the version string is shown by `--version`.
 
 -doc "Per-target consolidated configs keyed by `main` or auxiliary id.".
 -type target_configs() :: #{target_id() => config()}.
+
+-doc "Plan-stage merged defconfig data rendered later by `generate`.".
+-type defconfig_model() :: #{
+    regular := [{binary(), binary()}],
+    cumulative := [{binary(), binary()}]
+}.
 
 -doc "Plan-stage selectable firmware output metadata carried into later generators.".
 -type firmware_output_spec() :: #{

@@ -292,7 +292,7 @@ Backlog policy:
     implementation modules instead of duplicating shared `-type` declarations.
   - Done when: Consolidated config is deterministic and spec-compliant.
 
-- [ ] **Task 3.9: `smelterl_gen_defconfig` plan-stage model build**
+- [x] **Task 3.9: `smelterl_gen_defconfig` plan-stage model build**
   - Scope: Build structured defconfig model (not rendered file) at plan time.
   - Tests: Unit tests for cumulative keys and wrapper hook injection.
   - Done when: Model can be rendered later without re-resolution.
@@ -348,6 +348,10 @@ Backlog policy:
 - [ ] **Task 4.5: `smelterl_gen_defconfig` generate-stage render**
   - Scope: Render selected target defconfig from plan model.
   - Tests: Golden output test.
+  - Refinement note (from Task 3.9): Consume the precomputed
+    `smelterl:defconfig_model()` directly; cumulative entries already carry
+    resolved paths, injected wrapper hooks, and final quoted value strings, so
+    the render stage must not re-split or re-resolve them.
   - Done when: Generate stage does render only (no resolution).
 
 - [ ] **Task 4.6: `smelterl_gen_context` selected-target context**

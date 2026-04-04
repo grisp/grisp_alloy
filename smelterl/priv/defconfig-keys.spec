@@ -1,0 +1,12 @@
+[
+    {<<"BR2_ROOTFS_OVERLAY">>, path},
+    {<<"BR2_ROOTFS_POST_BUILD_SCRIPT">>, path},
+    {<<"BR2_ROOTFS_POST_IMAGE_SCRIPT">>, path},
+    {<<"BR2_ROOTFS_POST_FAKEROOT_SCRIPT">>, path},
+    {<<"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES">>, path},
+    {<<"BR2_LINUX_KERNEL_EXT_CONFIG_FRAGMENT_FILES">>, path},
+    {<<"BR2_BUSYBOX_CONFIG_FRAGMENT_FILES">>, path},
+    {<<"BR2_GLOBAL_PATCH_DIR">>, path},
+    {<<"BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES">>, path},
+    {<<"BR2_ENABLE_LOCALE_WHITELIST">>, plain}
+].

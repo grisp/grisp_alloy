@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `smelterl_gen_defconfig` with plan-stage defconfig model building,
+  cumulative-key specification under `smelterl/priv/defconfig-keys.spec`,
+  target-local wrapper-hook injection, and dedicated Common Test coverage for
+  cumulative merging and flavor-mapped fragment selection.
 - Added `smelterl_config` with plan-stage target-local config consolidation
   for overridden inputs, including export-conflict validation, flavor-aware
   value selection, relocatable path resolution, deferred `computed`/`exec`
@@ -63,6 +67,12 @@ and this project adheres to Semantic Versioning.
   repository/SDK mode detection, and command dispatch.
 
 ### Changed
+- Updated `smelterl plan` to build per-target defconfig models after config
+  consolidation, merging normalized extra-config values into the substitution
+  environment while keeping plan serialization/rendering for later tasks.
+- Updated Smelterl Common Test temp-directory helpers in the defconfig and
+  config suites to retry on `eexist`, keeping repeated local/full-gate reruns
+  deterministic without manual `/tmp` cleanup.
 - Updated `smelterl plan` to parse and normalize `--extra-config`, reject
   user-specified `ALLOY_MOTHERLODE`, inject the reserved motherlode template
   value for later stages, execute config consolidation after capability

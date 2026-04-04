@@ -288,10 +288,22 @@ extra_config() ->
     }.
 
 make_temp_dir(Prefix) ->
-    Base = os:getenv("TMPDIR", "/tmp"),
-    Dir = filename:join(Base, Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))),
-    ok = file:make_dir(Dir),
-    Dir.
+    make_temp_dir(Prefix, 0).
+
+make_temp_dir(Prefix, Attempt) ->
+    Suffix =
+        integer_to_list(erlang:system_time(nanosecond)) ++
+        "-" ++
+        integer_to_list(erlang:unique_integer([monotonic, positive])) ++
+        "-" ++
+        integer_to_list(Attempt),
+    Base = filename:join(os:getenv("TMPDIR", "/tmp"), Prefix ++ "-" ++ Suffix),
+    case file:make_dir(Base) of
+        ok ->
+            Base;
+        {error, eexist} ->
+            make_temp_dir(Prefix, Attempt + 1)
+    end.
 
 assert_entry(Expected, Key, Config) ->
     assert_equal(Expected, maps:get(Key, Config)).

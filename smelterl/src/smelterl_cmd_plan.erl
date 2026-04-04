@@ -81,11 +81,21 @@ run_plan(Opts) ->
             OverriddenTopologyOrders,
             TargetMotherlodes
         ),
-        {ok, _TargetConfigs} ?= consolidate_target_configs(
+        {ok, TargetConfigs0} ?= consolidate_target_configs(
             OverriddenTargets,
             OverriddenTopologyOrders,
             TargetMotherlodes,
             ExtraConfig
+        ),
+        TargetConfigs = merge_extra_config_into_target_configs(
+            TargetConfigs0,
+            ExtraConfig
+        ),
+        {ok, _DefconfigModels} ?= build_defconfig_models(
+            OverriddenTargets,
+            OverriddenTopologyOrders,
+            TargetMotherlodes,
+            TargetConfigs
         ),
         smelterl_log:error("plan execution not implemented yet.~n", []),
         1
@@ -110,6 +120,9 @@ run_plan(Opts) ->
             1;
         {config_error, Reason} ->
             smelterl_log:error("~ts~n", [format_config_error(Reason)]),
+            1;
+        {defconfig_error, Reason} ->
+            smelterl_log:error("~ts~n", [format_defconfig_error(Reason)]),
             1;
         {topology_error, Reason} ->
             smelterl_log:error("~ts~n", [format_topology_error(Reason)]),
@@ -309,6 +322,69 @@ consolidate_target_configs(
             );
         {error, Reason} ->
             {config_error, {TargetId, Reason}}
+    end.
+
+merge_extra_config_into_target_configs(TargetConfigs, ExtraConfig) ->
+    maps:map(
+        fun(_TargetId, Config) ->
+            maps:merge(
+                Config,
+                maps:from_list([
+                    {Key, {extra, undefined, Value}}
+                 || {Key, Value} <- maps:to_list(ExtraConfig)
+                ])
+            )
+        end,
+        TargetConfigs
+    ).
+
+build_defconfig_models(Targets, TopologyOrders, TargetMotherlodes, TargetConfigs) ->
+    MainTree = maps:get(main, Targets),
+    MainSpec = {main, maps:get(root, MainTree)},
+    AuxiliarySpecs = [
+        {maps:get(id, Auxiliary), maps:get(root_nugget, Auxiliary)}
+     || Auxiliary <- maps:get(auxiliaries, Targets, [])
+    ],
+    build_defconfig_models(
+        [MainSpec | AuxiliarySpecs],
+        TopologyOrders,
+        TargetMotherlodes,
+        TargetConfigs,
+        #{}
+    ).
+
+build_defconfig_models(
+    [],
+    _TopologyOrders,
+    _TargetMotherlodes,
+    _TargetConfigs,
+    Acc
+) ->
+    {ok, Acc};
+build_defconfig_models(
+    [{TargetId, ProductId} | Rest],
+    TopologyOrders,
+    TargetMotherlodes,
+    TargetConfigs,
+    Acc
+) ->
+    case smelterl_gen_defconfig:build_model(
+        TargetId,
+        maps:get(TargetId, TopologyOrders),
+        maps:get(TargetId, TargetMotherlodes),
+        maps:get(TargetId, TargetConfigs),
+        ProductId
+    ) of
+        {ok, Model} ->
+            build_defconfig_models(
+                Rest,
+                TopologyOrders,
+                TargetMotherlodes,
+                TargetConfigs,
+                maps:put(TargetId, Model, Acc)
+            );
+        {error, Reason} ->
+            {defconfig_error, {TargetId, Reason}}
     end.
 
 target_tree(Targets, main) ->
@@ -805,6 +881,14 @@ format_config_error({TargetId, Reason}) ->
         "plan: target '~ts' config consolidation failed: ~tp",
         [atom_to_list(TargetId), Reason]
     ).
+
+format_defconfig_error({TargetId, Reason}) ->
+    io_lib:format(
+        "plan: target '~ts' defconfig model build failed: ~tp",
+        [atom_to_list(TargetId), Reason]
+    );
+format_defconfig_error(Reason) ->
+    io_lib:format("plan: defconfig model build failed: ~tp", [Reason]).
 
 format_version(undefined) ->
     "undefined";
