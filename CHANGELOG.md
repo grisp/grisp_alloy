@@ -7,6 +7,15 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+- Prepared the Alloy repository for the standalone Smelterl split by moving
+  Smelterl backlog ownership out of the root planning file, turning
+  `docs/02_SMELTERL_DESIGN.md` into a redirect/reference page, replacing
+  Alloy-side Smelterl design links with canonical local-checkout and GitHub
+  targets, and updating workflow/test-harness guidance to treat Smelterl
+  Common Test and Dialyzer as delegated validation from the external
+  repository.
+
 ### Added
 - Added end-to-end artefact-server tests covering direct HTTP serving,
   manual-TLS HTTPS serving, and tar-member serving from `<name>.tar`.
