@@ -1922,7 +1922,7 @@ This follows the uniform `{Tag, Version, [Fields]}` convention used by all Alloy
   - `{host_os, HostOs}`: Operating system of the build host (e.g. `<<"Linux">>`).
   - `{host_arch, HostArch}`: Architecture of the build host (e.g. `<<"x86_64">>`).
   - `{smelterl_version, SmelterlVersion}`: Version of the smelterl tool.
-  - `{smelterl_repository, RepoId}`: Atom referencing an entry in the `repositories` list (e.g. the grisp_alloy repo); optional.
+  - `{smelterl_repository, RepoId}`: Atom referencing an entry in the `repositories` list (e.g. the smelter repository entry); optional.
   - `{buildroot_version, BuildrootVersion}`: Buildroot version used (e.g. `<<"2021.02.3">>`).
 
 `HostOs`, `HostArch`, `SmelterlVersion`, `BuildrootVersion`: string (binary)
@@ -1940,7 +1940,7 @@ This follows the uniform `{Tag, Version, [Fields]}` convention used by all Alloy
     {host_os, <<"Linux">>},
     {host_arch, <<"x86_64">>},
     {smelterl_version, <<"2.0.0">>},
-    {smelterl_repository, grisp_alloy},
+    {smelterl_repository, smelter},
     {buildroot_version, <<"2021.02.3">>}
 ]}
 ```
@@ -2360,11 +2360,18 @@ The following example shows all sections in one manifest. Paths are relative to 
         {host_os, <<"Linux">>},
         {host_arch, <<"x86_64">>},
         {smelterl_version, <<"2.0.0">>},
-        {smelterl_repository, grisp_alloy},
+        {smelterl_repository, smelter},
         {buildroot_version, <<"2021.02.3">>}
     ]},
 
     {repositories, [
+        {smelter, [
+            {name, <<"smelter">>},
+            {url, <<"https://github.com/grisp/smelter.git">>},
+            {commit, <<"789abc012def">>},
+            {describe, <<"v2.0.0">>},
+            {dirty, false}
+        ]},
         {grisp_alloy, [
             {name, <<"grisp_alloy">>},
             {url, <<"https://github.com/grisp/grisp_alloy.git">>},
