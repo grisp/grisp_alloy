@@ -16,6 +16,7 @@ Global options:
   -F, --force-vagrant        Force Vagrant execution
   -K, --keep-vagrant         Keep Vagrant VM running after completion
   -P, --provision            Force Vagrant provisioning before execution
+      --init-deps            Initialize required repository dependencies on demand
       --forward-env PATTERN  Forward extra environment variable patterns
       --forward-env=PATTERN  Forward extra environment variable patterns
 EOF
@@ -91,6 +92,7 @@ GLOBAL_DEV_MODE=false
 GLOBAL_FORCE_VAGRANT=false
 GLOBAL_KEEP_VAGRANT=false
 GLOBAL_PROVISION=false
+GLOBAL_INIT_DEPS=false
 GLOBAL_HELP=false
 GLOBAL_VERSION=false
 declare -a GLOBAL_FORWARD_ENV_PATTERNS=()
@@ -127,6 +129,9 @@ parse_global_options() {
                 ;;
             --provision)
                 GLOBAL_PROVISION=true
+                ;;
+            --init-deps)
+                GLOBAL_INIT_DEPS=true
                 ;;
             --forward-env)
                 [[ $# -gt 0 ]] || fail "--forward-env requires a value"
@@ -227,6 +232,9 @@ check_required_runtime_commands() {
     if [[ "${GLOBAL_FORCE_VAGRANT}" == true ]] || [[ "${OSTYPE:-}" != linux* ]]; then
         required_commands+=(rsync)
     fi
+    if [[ "${GLOBAL_INIT_DEPS}" == true ]]; then
+        required_commands+=(git)
+    fi
 
     if [[ ${#required_commands[@]} -eq 0 ]]; then
         return 0
@@ -257,6 +265,55 @@ else
 fi
 
 export ALLOY_MODE ALLOY_BUILD_DIR ALLOY_ARTEFACT_DIR ALLOY_CACHE_DIR
+
+repo_declares_smelterl_submodule() {
+    local gitmodules_path="${ALLOY_ROOT}/.gitmodules"
+    [[ -f "${gitmodules_path}" ]] || return 1
+    grep -Fq '[submodule "smelterl"]' "${gitmodules_path}" &&
+        grep -Fq 'path = smelterl' "${gitmodules_path}"
+}
+
+smelterl_checkout_ready() {
+    [[ -f "${ALLOY_ROOT}/smelterl/rebar.config" ]] &&
+        [[ -f "${ALLOY_ROOT}/smelterl/src/smelterl.app.src" ]]
+}
+
+init_smelterl_checkout() {
+    print_note "Initializing smelterl checkout via git submodule..."
+    (
+        cd "${ALLOY_ROOT}"
+        git submodule sync --recursive smelterl
+        git submodule update --init --recursive smelterl
+    )
+}
+
+ensure_repo_build_sdk_dependencies() {
+    [[ "${ALLOY_MODE}" == "repo" ]] || return 0
+    [[ "${COMMAND_KEY:-}" == "build sdk" ]] || return 0
+    [[ "${GLOBAL_HELP}" == true ]] && return 0
+
+    if smelterl_checkout_ready; then
+        return 0
+    fi
+
+    local init_hint="git submodule sync --recursive smelterl && git submodule update --init --recursive smelterl"
+
+    if [[ "${GLOBAL_INIT_DEPS}" == true ]]; then
+        if ! repo_declares_smelterl_submodule; then
+            fail "smelterl checkout missing at ${ALLOY_ROOT}/smelterl and no smelterl submodule is configured"
+        fi
+        init_smelterl_checkout || fail "Failed to initialize smelterl checkout"
+        smelterl_checkout_ready ||
+            fail "smelterl checkout at ${ALLOY_ROOT}/smelterl is incomplete after initialization"
+        return 0
+    fi
+
+    if repo_declares_smelterl_submodule; then
+        fail "build sdk in repository mode requires smelterl checkout at ${ALLOY_ROOT}/smelterl; run '${init_hint}' or rerun with --init-deps"
+    fi
+
+    fail "build sdk in repository mode requires smelterl checkout at ${ALLOY_ROOT}/smelterl"
+}
 
 parse_global_options "$@"
 
@@ -332,6 +389,8 @@ if ! command_allowed_in_mode "${COMMAND_KEY}" "${ALLOY_MODE}"; then
     fi
     fail "${COMMAND_KEY} is not available in ${ALLOY_MODE} mode"
 fi
+
+ensure_repo_build_sdk_dependencies
 
 if [[ "${GLOBAL_HELP}" == true ]]; then
     COMMAND_ARGS=(--help "${COMMAND_ARGS[@]}")

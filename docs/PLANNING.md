@@ -173,14 +173,25 @@ Backlog policy:
   - Refinement note (from Task 1.7): Resolve `--allow-dirty` and `ALLOY_ALLOW_DIRTY` in the command layer, then pass an explicit `true|false` dirty-policy argument into `vcs_clone_or_validate` for staged VCS sources.
   - Done when: Staging is reproducible and conflict-safe.
 
-- [ ] **Task 5.3: Smelterl binary management**
+- [x] **Task 5.3: Smelterl binary management**
   - Scope: Resolve/build/provision smelterl executable.
   - Tests: Command tests for resolution and fallback behavior.
+  - Refinement note (migration follow-up): Treat the repository `smelterl/`
+    checkout as an explicit prerequisite for repository-mode `alloy build sdk`.
+    Add clear missing-checkout guidance, support optional explicit dependency
+    initialization (`--init-deps`), document fresh-clone bootstrap in
+    `README.md`, and make validation/CI setup initialize the submodule
+    explicitly instead of mutating the checkout implicitly.
   - Done when: SDK build always has a valid smelterl binary.
 
 - [ ] **Task 5.4: Plan invocation and plan artefact handling**
   - Scope: Invoke `smelterl plan` and store `build_plan.term` (+ optional env).
   - Tests: Integration test validating produced plan artifacts.
+  - Refinement note (from Task 5.3): Submodule/bootstrap validation is now in
+    place, but end-to-end repository-mode `alloy build sdk` equivalence still
+    depends on replacing the transitional legacy wrapper in
+    `scripts/commands/build-sdk.sh` with the documented Smelterl-backed
+    orchestration flow.
   - Done when: One plan pass feeds all target generation passes.
 
 - [ ] **Task 5.5: Target loop and per-target generate invocation**

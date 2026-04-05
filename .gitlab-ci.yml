@@ -1,12 +1,21 @@
 stages:
+  - validate
   - toolchain
   - sdk
 
 variables:
   GIT_DEPTH: "1"
+  GIT_SUBMODULE_STRATEGY: recursive
   CACHE_REQUEST_TIMEOUT: 30
   CACHE_COMPRESSION_LEVEL: "fastest"
   FF_ENABLE_JOB_CLEANUP: "true"
+
+validate:
+  stage: validate
+  tags: [build]
+  script:
+    - git submodule sync --recursive
+    - ALLOY_INIT_SMELTERL_SUBMODULE=1 ./scripts/tests/gates/full.sh
 
 toolchain:
   stage: toolchain

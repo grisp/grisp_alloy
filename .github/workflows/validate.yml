@@ -1,0 +1,41 @@
+name: Validate
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions: {}
+
+jobs:
+  validate:
+    name: Full Validation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Set up Erlang and rebar3
+        uses: erlef/setup-beam@fc68ffb90438ef2936bbb3251622353b3dcb2f93 # v1.24.0
+        with:
+          otp-version: "28.4.1"
+          rebar3-version: "3.27.0"
+          version-type: strict
+
+      - name: Install shell dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          sudo curl -fsSL \
+            https://raw.githubusercontent.com/bash-unit/bash_unit/d527e717c8fe8de0b288e6fd125fa5df4c77c355/bash_unit \
+            -o /usr/local/bin/bash_unit
+          sudo chmod 0755 /usr/local/bin/bash_unit
+
+      - name: Run validation gate
+        run: |
+          git submodule sync --recursive
+          ALLOY_INIT_SMELTERL_SUBMODULE=1 ./scripts/tests/gates/full.sh

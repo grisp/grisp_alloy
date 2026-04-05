@@ -17,6 +17,10 @@ Smelterl tests (delegated, not hosted here):
 
 - If executable, full gate runs `./smelterl/scripts/tests/run_tests.sh`.
 - Otherwise, if `./smelterl/rebar.config` exists, full gate runs `rebar3 as test ct` in `./smelterl`.
+- Set `ALLOY_INIT_SMELTERL_SUBMODULE=1` to let the full gate run
+  `git submodule sync --recursive smelterl` and
+  `git submodule update --init --recursive smelterl` before probing Smelterl
+  tests.
 - When touching Smelterl/Erlang code, also run `rebar3 dialyzer` in `./smelterl`;
   workflow requires Common Test to pass and Dialyzer to report zero warnings.
 - Set `ALLOY_REQUIRE_SMELTERL_TESTS=1` to fail when Smelterl tests cannot run.

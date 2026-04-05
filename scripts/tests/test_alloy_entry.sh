@@ -80,6 +80,52 @@ alloy_test_make_sdk_entrypoint() {
     echo "${temp_dir}/alloy"
 }
 
+alloy_test_make_repo_entrypoint() {
+    local temp_dir="$1"
+    local repo_root
+    repo_root="$(harness_repo_root)"
+    cp "${repo_root}/alloy" "${temp_dir}/alloy"
+    chmod +x "${temp_dir}/alloy"
+    mkdir -p "${temp_dir}/scripts/utils"
+    cp "${repo_root}/scripts/utils/console_utils.sh" "${temp_dir}/scripts/utils/console_utils.sh"
+    cp "${repo_root}/scripts/utils/common.sh" "${temp_dir}/scripts/utils/common.sh"
+    cp "${repo_root}/scripts/utils/debug_utils.sh" "${temp_dir}/scripts/utils/debug_utils.sh"
+    echo "${temp_dir}/alloy"
+}
+
+alloy_test_make_fake_git_for_submodule_init() {
+    local temp_dir="$1"
+    local bin_dir="${temp_dir}/bin"
+    mkdir -p "${bin_dir}"
+    cat > "${bin_dir}/git" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -ge 4 ]] &&
+    [[ "$1" == "submodule" ]] &&
+    [[ "$2" == "sync" ]] &&
+    [[ "$3" == "--recursive" ]]; then
+    exit 0
+fi
+
+if [[ "$#" -ge 4 ]] &&
+    [[ "$1" == "submodule" ]] &&
+    [[ "$2" == "update" ]] &&
+    [[ "$3" == "--init" ]]; then
+    repo_root="${FAKE_SUBMODULE_ROOT:?}"
+    mkdir -p "${repo_root}/smelterl/src"
+    : > "${repo_root}/smelterl/rebar.config"
+    : > "${repo_root}/smelterl/src/smelterl.app.src"
+    exit 0
+fi
+
+echo "unexpected git invocation: $*" >&2
+exit 1
+EOF
+    chmod +x "${bin_dir}/git"
+    echo "${bin_dir}"
+}
+
 alloy_test_make_minimal_path_without_rsync() {
     local temp_dir
     temp_dir="$(harness_make_temp_dir "alloy-path")"
@@ -102,6 +148,7 @@ test_alloy_help_flag_shows_global_usage() {
     local output
     output="$("${alloy}" --help 2>&1)"
     assert_matches "Usage: alloy" "${output}"
+    assert_matches "--init-deps" "${output}"
 }
 
 test_alloy_help_lists_only_repository_mode_commands_in_repo_mode() {
@@ -258,6 +305,58 @@ test_alloy_rejects_build_sdk_in_sdk_mode() {
 
     assert_equals "2" "${status}"
     assert_matches "build sdk is only available in repository mode" "${output}"
+}
+
+test_alloy_build_sdk_requires_smelterl_checkout_in_repo_mode() {
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-entry")"
+    local alloy
+    alloy="$(alloy_test_make_repo_entrypoint "${temp_dir}")"
+    local command_dir="${temp_dir}/commands"
+    alloy_test_make_command_handlers "${command_dir}"
+
+    cat > "${temp_dir}/.gitmodules" <<'EOF'
+[submodule "smelterl"]
+	path = smelterl
+	url = git@github.com:grisp/smelter.git
+	branch = main
+EOF
+
+    local output status
+    output="$(ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" build sdk 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "requires smelterl checkout" "${output}"
+    assert_matches "git submodule sync --recursive smelterl" "${output}"
+    assert_matches "git submodule update --init --recursive smelterl" "${output}"
+    assert_matches "--init-deps" "${output}"
+}
+
+test_alloy_init_deps_initializes_smelterl_checkout_for_build_sdk() {
+    local temp_dir
+    temp_dir="$(harness_make_temp_dir "alloy-entry")"
+    local alloy
+    alloy="$(alloy_test_make_repo_entrypoint "${temp_dir}")"
+    local command_dir="${temp_dir}/commands"
+    alloy_test_make_command_handlers "${command_dir}"
+    local fake_git_dir
+    fake_git_dir="$(alloy_test_make_fake_git_for_submodule_init "${temp_dir}")"
+
+    cat > "${temp_dir}/.gitmodules" <<'EOF'
+[submodule "smelterl"]
+	path = smelterl
+	url = git@github.com:grisp/smelter.git
+	branch = main
+EOF
+
+    local output
+    output="$(PATH="${fake_git_dir}:${PATH}" FAKE_SUBMODULE_ROOT="${temp_dir}" \
+        ALLOY_COMMANDS_DIR="${command_dir}" "${alloy}" --init-deps build sdk alpha 2>&1)"
+
+    assert_matches "Initializing smelterl checkout via git submodule" "${output}"
+    assert_matches "HANDLER=build-sdk" "${output}"
+    assert_matches "ARGS: <alpha>" "${output}"
 }
 
 test_alloy_allows_build_project_in_sdk_mode() {

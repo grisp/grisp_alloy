@@ -170,6 +170,7 @@ alloy [GLOBAL_OPTIONS] verb [noun] [COMMAND_OPTIONS] [ARGUMENTS]
 | `--force-vagrant` / `-F` | Force Vagrant VM usage even on Linux. |
 | `--keep-vagrant` / `-K` | Keep Vagrant VM running after command completes. |
 | `--provision` / `-P` | Force Vagrant VM provisioning before command execution (system upgrade, dependency installation, cache disk mount). This is **not** required for picking up changes to `scripts/` or `nuggets/` during development - repository files are synced into the VM for each delegated command (see [§5.3](#53-vagrant-abstraction-flow)). |
+| `--init-deps` | Explicitly initialize required repository dependencies before command execution. Currently used by repository-mode `alloy build sdk` to initialize the local `smelterl/` checkout via `git submodule sync --recursive smelterl` followed by `git submodule update --init --recursive smelterl` when it is missing. Never implied automatically. |
 | `--forward-env PATTERN` | Forward additional environment variables to the Vagrant VM. `PATTERN` is a variable name (e.g. `SIGNING_TOKEN`) or a prefix pattern ending with `*` (e.g. `SIGNING_*`). Repeatable. Only effective when the build runs in a Vagrant VM; ignored on native Linux builds. Can also be specified via the `ALLOY_FORWARD_ENV` environment variable (comma-separated list of patterns). **Forwarded variables are passed as-is** (no path rewriting). They must **not** be used for paths to files or directories that must exist in the VM: such paths are not synced and will not be available in the Vagrant VM. For the security pack path use `--security-pack` or `ALLOY_SECURITY_PACK`, which are synced and rewritten. See [§5.3 Vagrant Abstraction Flow - Environment Forwarding](#environment-forwarding). |
 | `--help` / `-h` | Display help for the command. |
 | `--version` / `-v` | Display alloy version. |
@@ -1541,15 +1542,16 @@ See [§8.6.13 plugin_utils.sh](#8613-pluginutilssh) for the framework implementa
 
 **Steps:**
 
-1. **Parse global options** - Scan the entire argument list and extract all recognized global options (`--debug`, `--dev`, `--force-vagrant`, `--keep-vagrant`, `--provision`, `--forward-env`, `--help`, `--version`) regardless of their position. Global options are consumed and removed from the token stream; the remaining tokens are passed to subsequent steps. This allows users to place global options before, between, or after the verb and command arguments (e.g. `alloy -d build firmware my_app` and `alloy build firmware -d my_app` are equivalent).
+1. **Parse global options** - Scan the entire argument list and extract all recognized global options (`--debug`, `--dev`, `--force-vagrant`, `--keep-vagrant`, `--provision`, `--init-deps`, `--forward-env`, `--help`, `--version`) regardless of their position. Global options are consumed and removed from the token stream; the remaining tokens are passed to subsequent steps. This allows users to place global options before, between, or after the verb and command arguments (e.g. `alloy -d build firmware my_app` and `alloy build firmware -d my_app` are equivalent).
 2. **Extract command** - Identify the verb (and optional noun) from the remaining arguments. Examples: `build sdk`, `build firmware`, `serve artefacts`, `grispio`.
 3. **Source common utilities** - Load `scripts/utils/common.sh` (error handling, logging). Set up `ALLOY_*` environment variables.
 4. **Detect mode** - See [§5.2](#52-mode-detection). Determine repository or SDK mode.
 5. **Validate command for mode** - Check that the extracted command is available in the current mode. If not, exit with a clear error (e.g. "The `build sdk` command is only available in repository mode").
-6. **Validate required runtime commands for the selected execution path** - Check only the host commands required before the next phase of execution. Example: when Vagrant delegation is required (non-Linux host or `--force-vagrant`), validate host-side sync prerequisites such as `rsync` via `require_commands` from `common.sh`. Fail fast with a clear error if a required command is missing.
-7. **Check if Vagrant is needed** - Detect host OS. If not Linux (or if `--force-vagrant` is set), set `ALLOY_MODE` to the detected mode (`repo` or `sdk`). In SDK mode, also set `VAGRANT_DOTFILE_PATH=~/.grisp_alloy/vagrant/.vagrant` to relocate Vagrant state out of the potentially read-only SDK directory. Then enter the Vagrant flow (see [§5.3](#53-vagrant-abstraction-flow)). If Linux, continue to direct execution.
-8. **Dispatch to command script** - Map command to script path: `verb noun` -> `scripts/commands/verb-noun.sh`; single-word command `verb` -> `scripts/commands/verb.sh`. Source the script or execute it with all remaining arguments and environment.
-9. **Handle errors and cleanup** - Trap errors (`ERR`, `EXIT`). Clean up temporary files. Exit with the command script's exit code.
+6. **Validate required runtime commands for the selected execution path** - Check only the host commands required before the next phase of execution. Example: when Vagrant delegation is required (non-Linux host or `--force-vagrant`), validate host-side sync prerequisites such as `rsync` via `require_commands` from `common.sh`. If `--init-deps` is set, also require `git` because dependency initialization mutates the local checkout. Fail fast with a clear error if a required command is missing.
+7. **Validate repository-local dependencies for the selected command** - Before dispatching repository-mode `build sdk`, ensure the local `smelterl/` checkout is present and structurally valid. If it is missing and `--init-deps` was provided, initialize it with `git submodule sync --recursive smelterl` followed by `git submodule update --init --recursive smelterl`; otherwise fail with a clear message that tells the user to initialize the submodule or rerun with `--init-deps`.
+8. **Check if Vagrant is needed** - Detect host OS. If not Linux (or if `--force-vagrant` is set), set `ALLOY_MODE` to the detected mode (`repo` or `sdk`). In SDK mode, also set `VAGRANT_DOTFILE_PATH=~/.grisp_alloy/vagrant/.vagrant` to relocate Vagrant state out of the potentially read-only SDK directory. Then enter the Vagrant flow (see [§5.3](#53-vagrant-abstraction-flow)). If Linux, continue to direct execution.
+9. **Dispatch to command script** - Map command to script path: `verb noun` -> `scripts/commands/verb-noun.sh`; single-word command `verb` -> `scripts/commands/verb.sh`. Source the script or execute it with all remaining arguments and environment.
+10. **Handle errors and cleanup** - Trap errors (`ERR`, `EXIT`). Clean up temporary files. Exit with the command script's exit code.
 
 ### 5.2 Mode Detection
 
@@ -2357,10 +2359,11 @@ Embedded files from different source trees may contain absolute build-machine pa
 
 1. **Read version** - Extract smelterl version from `smelterl/src/smelterl.app.src`.
 2. **Compute artefact path** - `${ALLOY_ARTEFACT_DIR}/tools/smelterl-${VERSION}`.
-3. **Check mode:**
+3. **Ensure checkout is present** - Repository-mode `build sdk` requires a local `smelterl/` checkout. If it is missing, fail with a clear message telling the user to run `git submodule sync --recursive smelterl` followed by `git submodule update --init --recursive smelterl`, or rerun `alloy build sdk` with `--init-deps`. When `--init-deps` is provided, the orchestrator may initialize the checkout explicitly before continuing.
+4. **Check mode:**
    - **Development mode** (`--dev` or `ALLOY_DEV_MODE=true`): Always rebuild. Run `cd smelterl && rebar3 clean && rebar3 escriptize`. Copy result to artefact path.
    - **Normal mode**: Check if artefact exists at the artefact path. If yes, use it. If no, build (`cd smelterl && rebar3 escriptize`), create tools directory if needed, copy to artefact path, make executable.
-4. **Use artefact** - The command script invokes smelterl at the artefact path.
+5. **Use artefact** - The command script invokes smelterl at the artefact path.
 
 ---
 

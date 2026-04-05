@@ -8,10 +8,22 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Switched the repository `smelterl` dependency to an HTTPS Git submodule
+  bootstrap flow and updated `alloy build sdk` to fail fast with explicit
+  checkout/init guidance instead of assuming a local embedded Smelterl tree.
 - Aligned Alloy-side Smelterl references, documentation links, and validation
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added explicit Smelterl submodule bootstrap guidance in `README.md`, an
+  opt-in `--init-deps` initialization path for repository-mode `alloy build
+  sdk`, and a GitLab CI validation job that syncs/initializes the submodule
+  before running the full gate.
+- Added a GitHub Actions validation workflow that checks out submodules,
+  installs the shell/Erlang test dependencies, and runs the same explicit
+  submodule-aware full gate used locally.
+- Added focused shell coverage for missing-Smelterl and explicit submodule-init
+  paths in `alloy` entry and full-gate tests.
 - Added end-to-end artefact-server tests covering direct HTTP serving,
   manual-TLS HTTPS serving, and tar-member serving from `<name>.tar`.
 - Added focused shell tests covering the artefact-server CLI validation

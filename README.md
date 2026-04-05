@@ -38,6 +38,38 @@ Supported targets in this repository:
 
 ## Getting Started
 
+### Repository Bootstrap
+
+Initialize the Smelterl checkout before repository-mode SDK work:
+
+```sh
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+The `smelterl` submodule uses an HTTPS remote so read-only developer checkouts
+and CI runners do not need GitHub SSH access.
+
+For `alloy build sdk`, you can also let the entrypoint initialize the required
+checkout explicitly. This is opt-in; normal `alloy` execution does not mutate
+the repository automatically:
+
+```sh
+./alloy --init-deps build sdk <PRODUCT_NUGGET>
+```
+
+### Validation From A Fresh Clone
+
+Run the standard gates after submodule bootstrap:
+
+```sh
+./scripts/tests/gates/baseline.sh
+ALLOY_INIT_SMELTERL_SUBMODULE=1 ./scripts/tests/gates/full.sh
+```
+
+GitHub Actions runs the same full validation gate for pushes and pull requests
+via [.github/workflows/validate.yml](.github/workflows/validate.yml).
+
 ### Prerequisites (Linux)
 
 Install build dependencies:
@@ -111,6 +143,7 @@ VAGRANT_DEFAULT_PROVIDER=virtualbox VAGRANT_DISABLE_NFS=1 ./build-toolchain.sh g
 ### First Successful Build
 
 ```sh
+./alloy --init-deps build sdk <PRODUCT_NUGGET>
 ./build-toolchain.sh <TARGET>
 ./build-sdk.sh <TARGET>
 ./build-project.sh <TARGET> <PROJECT_DIR>
@@ -120,6 +153,7 @@ VAGRANT_DEFAULT_PROVIDER=virtualbox VAGRANT_DISABLE_NFS=1 ./build-toolchain.sh g
 Example:
 
 ```sh
+./alloy --init-deps build sdk grisp2_vanilla
 ./build-toolchain.sh grisp2
 ./build-sdk.sh grisp2
 ./build-project.sh grisp2 samples/hello_grisp
