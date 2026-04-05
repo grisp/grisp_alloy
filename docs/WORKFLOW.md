@@ -47,10 +47,60 @@ Goals:
   - after each completed task, refine future planning items with newly
     discovered constraints/notes so critical implementation details are not
     forgotten.
+- Repository-local ownership:
+  - in a multi-repository checkout, work is tracked per repository, even when
+    development starts from one superproject root.
+
+## Multi-Repository Development Model
+
+Development starts from the `grisp_alloy` repository root. That checkout is
+the daily working context even when the active implementation task is owned by
+the `smelterl/` submodule.
+
+Ownership rules:
+- `grisp_alloy` planning/workflow/history/changelog cover Alloy orchestration,
+  shared workflow, and Alloy-owned design/docs.
+- `smelterl/` planning/workflow/history/changelog cover Smelterl
+  implementation, tests, and Smelterl-owned planning/history.
+- A user request that touches both repositories must be represented as linked
+  repo-local tasks, not as one unowned cross-repo change.
+
+Execution rules for linked tasks:
+- Keep only one task marked `[IN_PROGRESS]` at a time across the active
+  planning files.
+- Start with the repository that owns the current implementation change.
+- If `smelterl/` changes are required, complete and commit the Smelterl task
+  first.
+- After the Smelterl commit exists, move the linked `grisp_alloy` follow-up
+  task to `[IN_PROGRESS]`, update the submodule pointer plus any Alloy-side
+  code/docs/tests, and commit in `grisp_alloy`.
+- A cross-repository feature/fix is not fully complete until every touched
+  repository task is done and `grisp_alloy` records the final Smelterl
+  submodule commit.
+
+Current-repository terms used below:
+- `current repository`: the repository that owns the task currently marked
+  `[IN_PROGRESS]` (`grisp_alloy` or `smelterl/`).
+- `current planning file`: `docs/PLANNING.md` in the current repository.
+- `current history directory`: `history/` in the current repository.
+- `current changelog`: `CHANGELOG.md` in the current repository.
+- `current commit-message file`: `$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG`
+  when run in the current repository root. In a superproject checkout, a
+  Smelterl task may use `git -C smelterl rev-parse --git-dir` to resolve the
+  Smelterl repository git dir without relying on `smelterl/.git` being a
+  directory.
+
+Standalone Smelterl note:
+- The same repository-local rules apply when `smelterl` is checked out on its
+  own.
+- A standalone Smelterl change that would require a later `grisp_alloy`
+  submodule-pointer update, shared-doc update, or orchestration change must
+  call out that downstream follow-up explicitly in planning/history/completion
+  reporting instead of silently treating the Smelterl commit as the whole job.
 
 ## Task Status Convention
 
-Use these conventions in `docs/PLANNING.md`:
+Use these conventions in the current planning file:
 - TODO: `- [ ] **Task ...**`
 - IN_PROGRESS: `- [ ] **[IN_PROGRESS] Task ...**`
 - DONE: `- [x] **Task ...**`
@@ -60,18 +110,20 @@ Rationale:
 - In-progress state is represented by an unchecked item with an explicit `[IN_PROGRESS]` label.
 
 Rules:
-- only one task marked `[IN_PROGRESS]` per agent at a time,
+- only one task marked `[IN_PROGRESS]` per agent at a time across the active
+  repository planning files,
 - select from the highest-priority pending task unless instructed otherwise.
 
 ## Task ID Source (Mandatory)
 
 Task ID must be explicit in every context file and must come from:
-- primary source: the selected task identifier in `docs/PLANNING.md`
+- primary source: the selected task identifier in the current planning file
   (example: `Task 3.7`),
-- if no matching planning task exists: create one in `docs/PLANNING.md` first,
-  then use that ID.
+- if no matching planning task exists: create one in the current planning file
+  first, then use that ID.
 
-Do not invent standalone IDs that are not represented in `docs/PLANNING.md`.
+Do not invent standalone IDs that are not represented in the current planning
+file.
 
 ## Mandatory Task Lifecycle
 
@@ -82,7 +134,11 @@ For every task, execute these steps in order.
    - Read current code paths related to the task.
    - Validate assumptions against actual implementation.
 
-2. Select task and mark it `[IN_PROGRESS]` in `docs/PLANNING.md`.
+2. Select task and mark it `[IN_PROGRESS]` in the current planning file.
+   - If the task is Smelterl-owned, use `smelterl/docs/PLANNING.md` instead.
+   - If the request spans both repositories, split it into linked repo-local
+     tasks and mark only the currently edited repository task
+     `[IN_PROGRESS]`.
 
 3. Perform focused investigation.
    - Deep-read relevant design sections for the selected task.
@@ -91,8 +147,9 @@ For every task, execute these steps in order.
 
 4. Create initial task context file.
    - Location:
-     `history/<YYYYMMDDTHHMMSSZ>__task-<task-id>__<short-description>.md`.
-   - Create `history/` if missing.
+     `history/<YYYYMMDDTHHMMSSZ>__task-<task-id>__<short-description>.md` in
+     the current repository.
+   - Create the current history directory if missing.
    - Write initial version before implementation starts.
    - Timestamp must be UTC and generated at context-file creation time.
 
@@ -156,10 +213,10 @@ For every task, execute these steps in order.
    - Avoid chronological transcripts and low-signal planning leftovers.
 
 12. Finalize records and commit preparation.
-   - Update root `CHANGELOG.md` using Keep a Changelog:
+   - Update the current changelog using Keep a Changelog:
      - https://keepachangelog.com/en/1.1.0/
-   - MUST create a fresh `.git/ALLOY_COMMIT_MSG` for the current task with a
-     clear commit message (scope + final outcomes). Do not duplicate
+   - MUST create a fresh current commit-message file for the current task with
+     a clear commit message (scope + final outcomes). Do not duplicate
      commit-message text in the history context file.
    - Commit-message content MUST focus on final task outcomes (behavior,
      architecture, key user-visible effects). Avoid administrative noise
@@ -169,23 +226,32 @@ For every task, execute these steps in order.
      logs (for example: `tests: ...`, gate names, PASS/FAIL statements).
      Validation evidence belongs in task context and completion reporting.
    - If the repository or user workflow requires signed commits, the agent MUST
-     stop after preparing `.git/ALLOY_COMMIT_MSG`, the staged changes, and the
-     completion report, then ask the human manager to run the signed commit.
+     stop after preparing the current commit-message file, the staged changes,
+     and the completion report, then ask the human manager to run the signed
+     commit.
      The agent must not weaken or bypass signing requirements in repository or
      test configuration just to complete the commit non-interactively.
-   - MUST commit using this file:
-     `git commit -F .git/ALLOY_COMMIT_MSG`
+   - In cross-repository work, apply this per repository:
+     - prepare and complete the Smelterl repository commit first when
+       `smelterl/` changed,
+     - then prepare and complete the `grisp_alloy` commit that records the new
+       submodule pointer and any Alloy-side changes.
+   - MUST commit using the current commit-message file.
+   - Example resolution:
+     `COMMIT_MSG_FILE="$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`
    - Example draft command:
-     `cat > .git/ALLOY_COMMIT_MSG <<'EOF'
+     `cat > "${COMMIT_MSG_FILE}" <<'EOF'
      feat(scope): short summary
 
      - key change 1
      - key change 2
      EOF`
-   - Mark task DONE in `docs/PLANNING.md`.
+   - Example commit command:
+     `git commit -F "${COMMIT_MSG_FILE}"`
+   - Mark task DONE in the current planning file.
 
 13. Refine future planning items.
-   - Review `docs/PLANNING.md` and update relevant future tasks with
+   - Review the current planning file and update relevant future tasks with
      implementation knowledge discovered in the completed task.
    - Scope is flexible: update any future task that benefits from the
      refinement, not only immediately next tasks.
@@ -207,23 +273,33 @@ For every task, execute these steps in order.
      - design changes (if any),
      - residual risks/follow-ups,
      - planning refinements applied for future tasks.
+   - For cross-repository work, also include:
+     - which repository task(s) were completed,
+     - whether the Smelterl commit already exists,
+     - whether the `grisp_alloy` submodule-pointer follow-up commit is still
+       pending.
 
 ## Definition of Done (Per Task)
 
 A task is DONE only if all are true:
-- task marked `[x]` in `docs/PLANNING.md`,
+- task marked `[x]` in the current planning file,
 - context file exists and is fully updated,
 - tests added/updated and passing,
 - full relevant suites rerun after code changes,
 - for touched Erlang code, Common Test passes and Dialyzer reports zero
   warnings,
 - design docs updated when behavior/spec changed,
-- `CHANGELOG.md` updated,
-- `.git/ALLOY_COMMIT_MSG` prepared,
+- current changelog updated,
+- current commit-message file prepared,
 - when signed commits are required, the user has been asked to perform the
   signed commit after reviewing the prepared staged changes and commit message,
 - planning refinement pass completed for future tasks (or explicitly `None`),
 - completion report provided to human manager.
+
+For linked cross-repository work, the overall user request is DONE only when:
+- each touched repository task meets the definition of done in its own repo,
+- the Smelterl commit exists before the `grisp_alloy` submodule-pointer commit,
+- the `grisp_alloy` repository records the final `smelterl/` submodule commit.
 
 ## Commit Quality Policy
 
@@ -254,15 +330,18 @@ Before finalizing a task:
   - never add suppressions just to silence warnings or make gates pass quickly,
 - docs:
   - update design docs for approved design changes,
-  - update `CHANGELOG.md`,
+  - update the current changelog,
 - planning:
-  - refine relevant future tasks in `docs/PLANNING.md` based on discovered
-    implementation constraints (or explicitly record `None` in task context),
+  - refine relevant future tasks in the current planning file based on
+    discovered implementation constraints (or explicitly record `None` in task
+    context),
 - commit preparation:
-  - `.git/ALLOY_COMMIT_MSG` exists, is non-empty, and reflects the current
-    task (check: `test -s .git/ALLOY_COMMIT_MSG`),
+  - the current commit-message file exists, is non-empty, and reflects the
+    current task,
+  - example check:
+    `test -s "$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`,
 - context history quality:
-  - task id is present and matches `docs/PLANNING.md`,
+  - task id is present and matches the current planning file,
   - filename is prefixed with UTC timestamp for deterministic ordering,
   - context includes decisions/rationale/test evidence,
   - context and changelog describe final commit state (not implementation
@@ -284,7 +363,8 @@ Exclude (noise):
 - copied large code blocks already in the repository,
 - repetitive step-by-step notes without decisions or deviations,
 - speculative alternatives that did not influence implementation.
-- proposed commit messages (store ephemeral drafts in `.git/` instead).
+- proposed commit messages (store ephemeral drafts in the current repository
+  git dir instead).
 - within-task rewrites described as change-chains (`A -> B -> C`) when only the
   final result matters.
 
@@ -295,7 +375,8 @@ Rule of thumb:
 ## Task Context File Template (Mandatory)
 
 Filename format is mandatory and must be sortable:
-- `history/<YYYYMMDDTHHMMSSZ>__task-<task-id>__<short-description>.md`
+- `history/<YYYYMMDDTHHMMSSZ>__task-<task-id>__<short-description>.md` in the
+  current repository
 - Example:
   `history/20260301T154210Z__task-3.7__smelterl-capabilities.md`
 
@@ -305,7 +386,7 @@ Every context file using this format must contain at least:
 2. Metadata block
    - Date,
    - Author/Agent identifier,
-   - Related task id (from `docs/PLANNING.md`) and design anchors.
+   - Related task id (from the current planning file) and design anchors.
 3. `## Objective`
    - problem statement and intended outcome.
 4. `## Design References`
