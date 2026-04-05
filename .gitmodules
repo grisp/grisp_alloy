@@ -1,4 +1,4 @@
 [submodule "smelterl"]
 	path = smelterl
-	url = https://github.com/grisp/smelter.git
+	url = https://github.com/grisp/smelterl.git
 	branch = main

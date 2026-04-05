@@ -1,6 +1,6 @@
 # GRiSP Alloy - Data Design
 
-This document defines repository and SDK directory structure, metadata specification (`.nuggets` registry and `.nugget` files), and manifest specification. For overview and glossary see [Overview](00_OVERVIEW.md); for smelterl behavior see [Smelterl Design](02_SMELTERL_DESIGN.md), the local checkout [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md), or the web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md).
+This document defines repository and SDK directory structure, metadata specification (`.nuggets` registry and `.nugget` files), and manifest specification. For overview and glossary see [Overview](00_OVERVIEW.md); for smelterl behavior see [Smelterl Design](02_SMELTERL_DESIGN.md), the local checkout [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md), or the web view [github.com/grisp/smelterl/docs/DESIGN.md](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md).
 
 ---
 
@@ -724,7 +724,7 @@ Last-wins for global `kernel_version`; export `target_arch` is set only by platf
 3. **Parse:** Parse the expanded text into key-value pairs (and comments). Preserve comments for the final file.
 4. **Cumulative keys:** Define the set of **cumulative keys** (e.g. `BR2_ROOTFS_OVERLAY`, `BR2_ROOTFS_POST_BUILD_SCRIPT`, `BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES`, `BR2_BUSYBOX_CONFIG_FRAGMENT_FILES`, `BR2_GLOBAL_PATCH_DIR`). For these, the resolver **accumulates** values across all fragments in topological order: each fragment may contribute zero or more space-separated values; all are collected into one list per key. Cumulative keys are either **path-valued** or **plain-valued**; the resolver must know which is which (defined in the Smelterl design document:
    local checkout [smelterl/docs/DESIGN.md#411-generating-defconfig](../smelterl/docs/DESIGN.md#411-generating-defconfig),
-   web view [github.com/grisp/smelter/docs/DESIGN.md#411-generating-defconfig](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#411-generating-defconfig)). Only path-valued cumulative keys undergo relative-to-absolute conversion (relative paths become `"${ALLOY_MOTHERLODE}/<nugget_relative_path>/<value>"`); plain-valued cumulative keys are accumulated as-is.
+   web view [github.com/grisp/smelterl/docs/DESIGN.md#411-generating-defconfig](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#411-generating-defconfig)). Only path-valued cumulative keys undergo relative-to-absolute conversion (relative paths become `"${ALLOY_MOTHERLODE}/<nugget_relative_path>/<value>"`); plain-valued cumulative keys are accumulated as-is.
 5. **Regular keys:** For keys not in the cumulative set, **last-wins**: the last nugget that sets the key in topological order determines the final value. Paths in values are resolved to absolute as needed.
 6. **Emit defconfig:** Write the final defconfig:
   1. optional comment header listing nuggets (identifier and version);
@@ -1338,7 +1338,7 @@ The value of a `fun_` export MUST be a `{path, PathSpec}` pointing to an executa
 - For each declared variant, separate firmware-time hook chains are produced (`pre_firmware`, `firmware_build`, and `post_firmware`): each includes all variant-less nuggets plus all nuggets whose `firmware_variant` list includes that variant, in topological order.
 - See the Smelterl design document:
   local checkout [smelterl/docs/DESIGN.md](../smelterl/docs/DESIGN.md),
-  web view [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md),
+  web view [github.com/grisp/smelterl/docs/DESIGN.md](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md),
   and [Alloy Design](03_ALLOY_DESIGN.md#57-firmware-build-flow) for how the orchestrator selects and executes a variant's hook chain at firmware build time.
 
 **Examples:**
@@ -1526,7 +1526,7 @@ Note: outputs with `{default, false}` are never selected unless the user explici
 
 **Processing:** Smelterl collects `firmware_outputs` from the **main target tree** and generates the `ALLOY_FIRMWARE_OUTPUTS` ID array, per-output `ALLOY_FIRMWARE_OUT_<ID>_*` metadata variables (including `ALLOY_FIRMWARE_OUT_<ID>_DEFAULT`), and `ALLOY_OUTPUT_SELECTABLE` list in main `alloy_context.sh`. Auxiliary contexts do not emit these variables. See the Smelterl design section on generating `alloy_context.sh`:
 local checkout [smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](../smelterl/docs/DESIGN.md#412-generating-alloy_contextsh),
-web view [github.com/grisp/smelter/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
+web view [github.com/grisp/smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
 For hook usage and runtime registration, see [Alloy Design - Firmware Hook API](03_ALLOY_DESIGN.md#59-firmware-hook-api).
 
 #### Firmware Parameters Metadata
@@ -1576,7 +1576,7 @@ For hook usage and runtime registration, see [Alloy Design - Firmware Hook API](
 
 Multiple nuggets may declare the same `ParamId`. Smelterl merges them during the Smelterl design section on capability discovery:
 local checkout [smelterl/docs/DESIGN.md#46-discovering-firmware-variants-selectable-outputs-and-parameters](../smelterl/docs/DESIGN.md#46-discovering-firmware-variants-selectable-outputs-and-parameters),
-web view [github.com/grisp/smelter/docs/DESIGN.md#46-discovering-firmware-variants-selectable-outputs-and-parameters](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#46-discovering-firmware-variants-selectable-outputs-and-parameters):
+web view [github.com/grisp/smelterl/docs/DESIGN.md#46-discovering-firmware-variants-selectable-outputs-and-parameters](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#46-discovering-firmware-variants-selectable-outputs-and-parameters):
 
 - **`type`** - must match across all nuggets declaring the same `ParamId`. Mismatched types are a validation error (e.g., "Parameter `serial_number` declared as `string` in `platform_imx8` but as `integer` in `feature_provisioning`").
 - **`required`** - if ANY nugget declares `{required, true}`, the merged parameter is required (OR semantics).
@@ -1632,7 +1632,7 @@ web view [github.com/grisp/smelter/docs/DESIGN.md#46-discovering-firmware-varian
 
 **Processing:** Smelterl collects `firmware_parameters` from the **main target tree**, merges parameters with the same ID (validating type consistency and default consistency), and generates the `ALLOY_FIRMWARE_PARAMETERS` array and per-parameter metadata variables in main `alloy_context.sh`. Auxiliary contexts do not emit these variables. See the Smelterl design section on generating `alloy_context.sh`:
 local checkout [smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](../smelterl/docs/DESIGN.md#412-generating-alloy_contextsh),
-web view [github.com/grisp/smelter/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
+web view [github.com/grisp/smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
 For orchestrator usage, see [Alloy Design - Firmware Build Parameters](03_ALLOY_DESIGN.md#48-firmware-build-parameters).
 
 #### Filesystem Priority Metadata
@@ -1680,7 +1680,7 @@ For orchestrator usage, see [Alloy Design - Firmware Build Parameters](03_ALLOY_
 
 **Processing:** Smelterl reads each nugget's `fs_priorities` field (if present) in the **main target tree**, resolves the path relative to the nugget directory (prefixed by `${ALLOY_MOTHERLODE}`), and emits a per-nugget variable `ALLOY_NUGGET_<NAME>_FS_PRIORITIES` in main `alloy_context.sh`. It also generates an `ALLOY_FS_PRIORITIES_FRAGMENTS` array listing, in topological order, the `<NUGGET_IDENTIFIER>:<PATH>` entries for all nuggets that declare `fs_priorities`. Auxiliary contexts do not emit filesystem-priority arrays. See the Smelterl design section on generating `alloy_context.sh`:
 local checkout [smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](../smelterl/docs/DESIGN.md#412-generating-alloy_contextsh),
-web view [github.com/grisp/smelter/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
+web view [github.com/grisp/smelterl/docs/DESIGN.md#412-generating-alloy_contextsh](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#412-generating-alloy_contextsh).
 For consolidation at firmware build time, see [Alloy Design - Filesystem Priority Consolidation](03_ALLOY_DESIGN.md#filesystem-priority-consolidation).
 
 #### SBOM & Legal Metadata
@@ -1755,7 +1755,7 @@ For consolidation at firmware build time, see [Alloy Design - Filesystem Priorit
   - **Computed** - `{computed, Template}`: see [Nugget Configuration Metadata](#nugget-configuration-metadata).
   - **Exec:** `{exec, ScriptPath}`: see [Nugget Configuration Metadata](#nugget-configuration-metadata). When used for legal-info source export, exec scripts are run with consolidated config and extra-config; their output may contain shell variable references (e.g. `${ALLOY_CACHE_DIR}/file.tgz`). For source export the exporter must resolve that output to a concrete path by evaluating it in bash with the smelterl (caller) environment; see the Smelterl design document:
     local checkout [smelterl/docs/DESIGN.md#413-collecting-legal-info-and-export](../smelterl/docs/DESIGN.md#413-collecting-legal-info-and-export),
-    web view [github.com/grisp/smelter/docs/DESIGN.md#413-collecting-legal-info-and-export](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#413-collecting-legal-info-and-export).
+    web view [github.com/grisp/smelterl/docs/DESIGN.md#413-collecting-legal-info-and-export](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#413-collecting-legal-info-and-export).
 
 **Validation:**
 - All components must have a unique `id`.
@@ -1888,7 +1888,7 @@ This follows the uniform `{Tag, Version, [Fields]}` convention used by all Alloy
 - GNU target architecture triplet of the SDK's cross-compilation toolchain (e.g. `<<"arm-buildroot-linux-gnueabihf">>`).
 - Sourced from the consolidated config: the well-known export key `target_arch_triplet` (see the Smelterl design section on well-known export keys:
   local checkout [smelterl/docs/DESIGN.md#well-known-export-keys](../smelterl/docs/DESIGN.md#well-known-export-keys),
-  web view [github.com/grisp/smelter/docs/DESIGN.md#well-known-export-keys](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md#well-known-export-keys)). `smelterl` reads this value after config consolidation and writes it to the manifest. If no nugget exports `target_arch_triplet`, manifest generation fails with a validation error.
+  web view [github.com/grisp/smelterl/docs/DESIGN.md#well-known-export-keys](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md#well-known-export-keys)). `smelterl` reads this value after config consolidation and writes it to the manifest. If no nugget exports `target_arch_triplet`, manifest generation fails with a validation error.
 - Example: `<<"arm-buildroot-linux-gnueabihf">>`.
 
 `BuildDate`: string (binary)
@@ -2367,7 +2367,7 @@ The following example shows all sections in one manifest. Paths are relative to 
     {repositories, [
         {smelter, [
             {name, <<"smelter">>},
-            {url, <<"https://github.com/grisp/smelter.git">>},
+            {url, <<"https://github.com/grisp/smelterl.git">>},
             {commit, <<"789abc012def">>},
             {describe, <<"v2.0.0">>},
             {dirty, false}

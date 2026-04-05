@@ -13,7 +13,7 @@ Design references for implementation:
 
 Smelterl planning:
 - Local checkout: `smelterl/docs/PLANNING.md`
-- Web view: [github.com/grisp/smelter/docs/PLANNING.md](https://github.com/grisp/smelter/blob/main/docs/PLANNING.md)
+- Web view: [github.com/grisp/smelterl/docs/PLANNING.md](https://github.com/grisp/smelterl/blob/main/docs/PLANNING.md)
 
 Status convention:
 - TODO: `- [ ] **Task ...**`

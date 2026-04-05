@@ -10,6 +10,6 @@ Use one of these:
 - Local checkout, planning:
   [smelterl/docs/PLANNING.md](../smelterl/docs/PLANNING.md)
 - Web design:
-  [github.com/grisp/smelter/docs/DESIGN.md](https://github.com/grisp/smelter/blob/main/docs/DESIGN.md)
+  [github.com/grisp/smelterl/docs/DESIGN.md](https://github.com/grisp/smelterl/blob/main/docs/DESIGN.md)
 - Web planning:
-  [github.com/grisp/smelter/docs/PLANNING.md](https://github.com/grisp/smelter/blob/main/docs/PLANNING.md)
+  [github.com/grisp/smelterl/docs/PLANNING.md](https://github.com/grisp/smelterl/blob/main/docs/PLANNING.md)
