@@ -209,11 +209,11 @@ of the matching `.img`.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant host as Host (fwup)
+    participant host as Host fwup
     participant SD as SD card
     participant ENV as uboot-env
 
-    host->>SD: mbr_write(mbr)
+    host->>SD: mbr_write mbr
     host->>SD: fat_mkfs AUTOBOOT / BOOT-A / BOOT-B
     host->>SD: fat_mkdir overlays/ on BOOT-A + BOOT-B
     host->>SD: trim ROOTFS-A/B + APP
@@ -221,19 +221,19 @@ sequenceDiagram
     host->>ENV: uboot_clearenv
     host->>ENV: alloy_env_ver=1, valid=a, active=a, upgrade=0, rollback=0
     host->>ENV: system_platform=rpi0w, system_architecture=...
-    host->>ENV: systema_firmware_uuid=${FWUP_META_UUID}, version, vcs_id, author
+    host->>ENV: systema_firmware_uuid=$FWUP_META_UUID + version + vcs_id + author
     host->>ENV: systemb_firmware_* = ""
 
     host->>SD: bootcode.bin -> AUTOBOOT
-    host->>SD: autoboot-a.txt -> AUTOBOOT (as itself and as autoboot.txt)
+    host->>SD: autoboot-a.txt -> AUTOBOOT -- as itself and as autoboot.txt
     host->>SD: autoboot-b.txt -> AUTOBOOT
     host->>SD: start.elf / fixup.dat / config.txt / zImage / DTBs / overlays/* -> BOOT-A + BOOT-B
     host->>SD: cmdline-a.txt -> BOOT-A as cmdline.txt
     host->>SD: cmdline-b.txt -> BOOT-B as cmdline.txt
 
-    host->>SD: rootfs.img -> ROOTFS-A (raw_write)
-    host->>SD: raw_memset ROOTFS-B (invalidate)
-    host->>SD: raw_memset APP (force first-boot format)
+    host->>SD: rootfs.img -> ROOTFS-A via raw_write
+    host->>SD: raw_memset ROOTFS-B -- invalidate
+    host->>SD: raw_memset APP -- force first-boot format
 ```
 
 **Why both BOOT-A _and_ BOOT-B are populated at factory time**: it means
@@ -248,9 +248,9 @@ The happy path A → B and back.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant user as Operator / grisp_updater
-    participant device as Pi Zero W (userland)
-    participant fwup as fwup (on device)
+    participant user as Operator or grisp_updater
+    participant device as Pi Zero W userland
+    participant fwup as fwup on device
     participant gpu as VideoCore firmware
     participant env as uboot-env
 
@@ -260,7 +260,7 @@ sequenceDiagram
     fwup->>env: upgrade_available=0, rollback_available=0
     fwup->>env: systemb_firmware_* = ""
     fwup->>env: trim ROOTFS-B
-    fwup->>fwup: fat_write all BOOT-B assets<br/>(incl. cmdline-b.txt as cmdline.txt)
+    fwup->>fwup: fat_write all BOOT-B assets<br/>incl. cmdline-b.txt as cmdline.txt
     fwup->>fwup: raw_write rootfs.img -> ROOTFS-B
     fwup->>env: systemb_firmware_{uuid,version,vcs_id,author}<br/>active_system=b, upgrade_available=1, bootcount=0
     fwup->>gpu: reboot_param 0 tryboot
@@ -268,9 +268,9 @@ sequenceDiagram
     gpu->>gpu: reset, read autoboot.txt, tryboot one-shot selects BOOT-B
     gpu->>device: boot BOOT-B -> kernel -> erlinit
     Note over device: State B_pending_val<br/>running=B, active=b, valid=a, upgrade=1
-    device->>fwup: fwup -t validate.b<br/>(erlinit hook or app-driven)
+    device->>fwup: fwup -t validate.b<br/>from erlinit hook or app
     fwup->>env: valid_system=b, upgrade_available=0, bootcount=0, rollback_available=1
-    fwup->>fwup: fat_write AUTOBOOT autoboot.txt = autoboot-b.txt (sticky)
+    fwup->>fwup: fat_write AUTOBOOT autoboot.txt = autoboot-b.txt -- now sticky
     Note over device: State B_validated_rb<br/>running=B, active=b, valid=b, upgrade=0, rollback=1
 ```
 
@@ -310,9 +310,9 @@ sequenceDiagram
     fwup->>env: systemb_firmware_* = ""
     fwup->>fwup: fat_write AUTOBOOT autoboot.txt = autoboot-a.txt
     Note over device: Transient status.b.rollback_pending_reboot<br/>running=B, active=b, valid=a, upgrade=0, rollback=0
-    user->>device: reboot (explicit; fwup does NOT reboot itself)
+    user->>device: reboot -- explicit, fwup does NOT reboot itself
     Note over device: GPU reads autoboot.txt, sticky default selects BOOT-A
-    Note over device: State A_validated<br/>running=A, active=a (stale until next validate/upgrade), valid=a
+    Note over device: State A_validated<br/>running=A, active=a -- stale until next validate or upgrade<br/>valid=a
 ```
 
 **Known quirk**: post-rollback-reboot, `active_system` in `env` still
