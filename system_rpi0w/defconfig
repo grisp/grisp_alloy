@@ -1,2 +1,81 @@
 # Target-specific Buildroot overrides for Raspberry Pi Zero W.
-# Appended to system_common/defconfig by build-sdk.sh.
+# Appended to system_common/defconfig by build-sdk.sh. Paths use the
+# ${GRISP_*_DIR} placeholders expanded during `make menuconfig` merge.
+
+BR2_ROOTFS_OVERLAY="${GRISP_COMMON_SYSTEM_DIR}/board/grisp-common/rootfs_overlay ${GRISP_TARGET_SYSTEM_DIR}/rootfs_overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="${GRISP_COMMON_SYSTEM_DIR}/board/grisp-common/post-build.sh ${GRISP_TARGET_SYSTEM_DIR}/post-build.sh"
+
+# --- Architecture: ARMv6, arm1176jzf-s, hard-float VFP ---------------------
+# (Pi Zero W v1.1 — BCM2835 — NOT compatible with Pi Zero 2 W / ARMv8.)
+
+BR2_arm=y
+BR2_arm1176jzf_s=y
+BR2_TAR_OPTIONS="--no-same-owner"
+
+# --- External toolchain produced by build-toolchain.sh rpi0w --------------
+
+BR2_TOOLCHAIN_EXTERNAL=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
+BR2_TOOLCHAIN_EXTERNAL_DOWNLOAD=y
+BR2_TOOLCHAIN_EXTERNAL_URL="file://${GRISP_TOP_DIR}/artefacts/grisp_toolchain_armv6_unknown_linux_gnueabihf-0.1.linux-${GRISP_BUILD_HOST_ARCH}.tar.xz"
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="armv6-unknown-linux-gnueabihf"
+BR2_TOOLCHAIN_EXTERNAL_GCC_13=y
+BR2_TOOLCHAIN_EXTERNAL_HEADERS_5_4=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
+BR2_TOOLCHAIN_EXTERNAL_CXX=y
+
+# --- Linux kernel: RPi downstream tag stable_20250916 (6.12) ---------------
+
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://github.com/raspberrypi/linux/archive/refs/tags/stable_20250916.tar.gz"
+
+# Base config: upstream RPi `bcmrpi_defconfig` (ARMv6 family: Pi 1 / Zero / Zero W).
+# Already enables BCM2835 MMC, BRCMFMAC, USB_DWC2, SQUASHFS+XZ, EXT4, F2FS.
+# The fragment below adds ramoops, forces squashfs builtin, etc.
+BR2_LINUX_KERNEL_USE_DEFCONFIG=y
+BR2_LINUX_KERNEL_DEFCONFIG="bcmrpi"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="${GRISP_TARGET_SYSTEM_DIR}/linux/linux.fragment"
+
+BR2_LINUX_KERNEL_XZ=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2708-rpi-zero-w broadcom/bcm2708-rpi-zero"
+# Keep BR2_LINUX_KERNEL_INSTALL_TARGET=n from system_common/defconfig:12.
+# fwup reads zImage and DTBs from $BINARIES_DIR directly.
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+
+# No bootloader (no BR2_TARGET_BAREBOX*, no BR2_TARGET_UBOOT*).
+# VideoCore GPU firmware loads the kernel directly via config.txt.
+
+# --- RPi firmware (GPU blobs + DT overlays) --------------------------------
+
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_CUSTOM_VERSION=y
+BR2_PACKAGE_RPI_FIRMWARE_CUSTOM_VERSION_VALUE="1.20250915"
+BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI_X=y
+
+# --- Wi-Fi (BCM43430) + wpa_supplicant -------------------------------------
+
+BR2_PACKAGE_RPI_DISTRO_FIRMWARE_NONFREE=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_AP_SUPPORT=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
+BR2_PACKAGE_WPA_SUPPLICANT_CTRL_IFACE=y
+
+# --- Userspace filesystem tooling ------------------------------------------
+
+BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_DTC=y
+
+# --- Device management + console -------------------------------------------
+
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_TARGET_GENERIC_GETTY_PORT="ttyAMA0"
+
+# --- Debugging aids (mirror system_grisp2:66-68; optional for factory) -----
+
+BR2_PACKAGE_OPENSSH=y
+BR2_TOOLCHAIN_EXTERNAL_GDB_SERVER_COPY=y
+BR2_PACKAGE_STRACE=y

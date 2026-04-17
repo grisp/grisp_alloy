@@ -1,0 +1,22 @@
+# Linux kernel config fragment for system_rpi0w.
+# Applied on top of upstream `bcmrpi_defconfig` (RPi downstream kernel, ARMv6).
+#
+# Kept deliberately small: upstream already enables BCM2835 MMC, BRCMFMAC,
+# USB_DWC2, SQUASHFS+XZ, EXT4, F2FS, NLS. Only add what is either required
+# for boot or planned for Phase 5+ peripheral bring-up.
+
+# --- Required for boot ------------------------------------------------------
+# rootfs.squashfs is mounted by the kernel before userland; must be builtin.
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+CONFIG_SQUASHFS_ZLIB=y
+
+# /root is /dev/mmcblk0p7 (ext4) mounted by erlinit. Builtin avoids a module
+# dep at first boot of an unformatted partition.
+CONFIG_EXT4_FS=y
+CONFIG_EXT4_USE_FOR_EXT2=y
+
+# --- Phase 5: ramoops / kernel crash capture --------------------------------
+CONFIG_PSTORE=y
+CONFIG_PSTORE_DEFLATE_COMPRESS=y
+CONFIG_PSTORE_RAM=y
