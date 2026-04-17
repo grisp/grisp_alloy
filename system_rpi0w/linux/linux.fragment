@@ -3,7 +3,7 @@
 #
 # Kept deliberately small: upstream already enables BCM2835 MMC, BRCMFMAC,
 # USB_DWC2, SQUASHFS+XZ, EXT4, F2FS, NLS. Only add what is either required
-# for boot or planned for Phase 5+ peripheral bring-up.
+# for boot or planned for peripheral bring-up.
 
 # --- Required for boot ------------------------------------------------------
 # rootfs.squashfs is mounted by the kernel before userland; must be builtin.
@@ -16,7 +16,26 @@ CONFIG_SQUASHFS_ZLIB=y
 CONFIG_EXT4_FS=y
 CONFIG_EXT4_USE_FOR_EXT2=y
 
-# --- Phase 5: ramoops / kernel crash capture --------------------------------
+# --- USB-OTG CDC-ACM serial gadget (ttyGS0) --------------------------------
+# Exposes a USB-CDC ACM serial device on the Pi Zero W's micro-USB OTG port
+# (the middle one, labelled "USB"). On a host Mac / Linux the board appears
+# as /dev/tty.usbmodem* (or /dev/ttyACM* on Linux); `picocom -b 115200` on
+# that device gets the BEAM prompt without any UART cable. The same port
+# also powers the board, so only one micro-USB cable is needed for
+# headless bring-up.
+#
+# dwc2 must already be in peripheral or otg mode via `dtoverlay=dwc2` in
+# config.txt (present). g_serial defaults to use_acm=1 (CDC-ACM), which
+# matches macOS' built-in class driver.
+CONFIG_USB_DWC2=y
+CONFIG_USB_DWC2_PERIPHERAL=y
+CONFIG_USB_GADGET=y
+CONFIG_USB_LIBCOMPOSITE=y
+CONFIG_USB_U_SERIAL=y
+CONFIG_USB_F_ACM=y
+CONFIG_USB_G_SERIAL=y
+
+# --- ramoops / kernel crash capture ---------------------------------------
 CONFIG_PSTORE=y
 CONFIG_PSTORE_DEFLATE_COMPRESS=y
 CONFIG_PSTORE_RAM=y
