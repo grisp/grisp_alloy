@@ -1,0 +1,2 @@
+# Target-specific Buildroot overrides for Raspberry Pi Zero W.
+# Appended to system_common/defconfig by build-sdk.sh.

@@ -1,0 +1,2 @@
+# Target-specific Buildroot options for system_rpi0w go here.
+# Sourced by system_common/Config.in via $BR2_EXTERNAL_GRISP_PATH.
