@@ -10,7 +10,7 @@ commands see the repo-level [`README.md`](../README.md).
 |---|---|---|
 | `system_grisp2` | Supported | (no design doc yet) |
 | `system_kontron-albl-imx8mm` | Supported | (no design doc yet) |
-| `system_rpi0w` | Work-in-progress (Phases 1–4 files shipped; builds + hardware bring-up pending) | [`system_rpi0w.md`](./system_rpi0w.md) |
+| `system_rpi0w` | In development; hardware bring-up pending | [`system_rpi0w.md`](./system_rpi0w.md) |
 
 ## What a target design doc should cover
 
@@ -25,7 +25,7 @@ Consistency pattern to adopt when filling out the other targets:
 6. **Build pipeline** — which `build-*.sh` scripts consume what and
    produce what.
 7. **File tree** — `system_<target>/` manifest.
-8. **Phase / roadmap status** — what's done and what's queued.
+8. **Status / roadmap** — what's done and what's queued.
 
 The Mermaid diagrams in `system_rpi0w.md` are the reference shapes for
 the other two targets when we get to them.
