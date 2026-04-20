@@ -11,8 +11,10 @@ CONFIG_SQUASHFS=y
 CONFIG_SQUASHFS_XZ=y
 CONFIG_SQUASHFS_ZLIB=y
 
-# /root is /dev/mmcblk0p7 (ext4) mounted by erlinit. Builtin avoids a module
-# dep at first boot of an unformatted partition.
+# The APP partition (/dev/mmcblk0p7) is ext4. erlinit itself does not mount
+# it today (/root is a tmpfs), but application / grisp_runtime code is
+# expected to mount or auto-format it on first boot, so ext4 must be builtin
+# -- there is no /lib/modules/ in the squashfs rootfs to fall back on.
 CONFIG_EXT4_FS=y
 CONFIG_EXT4_USE_FOR_EXT2=y
 
@@ -39,3 +41,33 @@ CONFIG_USB_G_SERIAL=y
 CONFIG_PSTORE=y
 CONFIG_PSTORE_DEFLATE_COMPRESS=y
 CONFIG_PSTORE_RAM=y
+
+# --- Wi-Fi: Broadcom FullMAC over SDIO (BCM43430 on Pi Zero W) -------------
+# bcmrpi_defconfig builds these as modules. We flatten them to =y because the
+# current build does not populate /lib/modules/<ver>/ in the squashfs rootfs
+# (BR2_LINUX_KERNEL_INSTALL_TARGET=n in system_common/defconfig), so modprobe
+# has nothing to load. Compiling built-in also means brcmfmac is available to
+# SDIO coldplug on the very first boot without any init ordering concerns.
+# cfg80211 and mac80211 come in as dependencies of brcmfmac and must match
+# (=y, not =m) to avoid unresolved symbol errors at link.
+CONFIG_CFG80211=y
+CONFIG_CFG80211_DEFAULT_PS=y
+CONFIG_MAC80211=y
+CONFIG_WLAN=y
+CONFIG_WLAN_VENDOR_BROADCOM=y
+CONFIG_BRCMUTIL=y
+CONFIG_BRCMFMAC=y
+CONFIG_BRCMFMAC_SDIO=y
+
+# --- Bluetooth: BCM43438 HCI over UART (miniuart-bt) -----------------------
+# Same rationale as Wi-Fi: build-in the hciuart + BCM subdriver so btattach
+# can open /dev/ttyAMA1 and hand it to the kernel without module loading.
+# BT_BREDR covers classic; BT_LE is optional but tiny and commonly needed.
+CONFIG_BT=y
+CONFIG_BT_BREDR=y
+CONFIG_BT_LE=y
+CONFIG_BT_RFCOMM=y
+CONFIG_BT_HCIUART=y
+CONFIG_BT_HCIUART_H4=y
+CONFIG_BT_HCIUART_BCM=y
+CONFIG_BT_HCIUART_SERDEV=y

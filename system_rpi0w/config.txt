@@ -6,6 +6,10 @@
 # Keep this file identical on BOOT-A and BOOT-B unless a slot-specific quirk
 # demands otherwise: fwup's complete / upgrade.* tasks write the same
 # config.txt to both partitions.
+#
+# Several values and the miniuart-bt routing trick follow
+# nerves_system_rpi0/rpi-firmware/config.txt; individual lines are marked
+# "matches nerves_system_rpi0" where the specific choice is non-obvious.
 
 kernel=zImage
 
@@ -24,8 +28,9 @@ dtparam=audio=on
 # is connected; the kernel just skips it.
 camera_auto_detect=1
 
-# USB OTG / gadget mode (used optionally by Phase 5 for CDC serial console
-# over the micro-USB port — see tests/rpi0w/PHASE-HARDWARE.md).
+# USB OTG / gadget mode for the CDC-ACM serial console on ttyGS0, exposed
+# over the middle micro-USB port. On the host, `picocom -b 115200
+# /dev/tty.usbmodem*` (macOS) or `/dev/ttyACM0` (Linux) lands on the BEAM.
 dtoverlay=dwc2
 
 # Route Bluetooth to the mini-UART and keep PL011 (ttyAMA0) free for the
@@ -41,6 +46,10 @@ core_freq=250
 dtparam=act_led_activelow=on
 dtparam=act_led_trigger=heartbeat
 
-# Phase 5: enable once system_rpi0w/linux/ ships a ramoops-overlay.dts and
-# fwup.conf stages ramoops.dtbo onto BOOT-A/B.
-# dtoverlay=ramoops
+# Ramoops: reserve a small RAM region for pstore so kernel oopses survive
+# a warm reboot. The upstream RPi kernel already ships overlays/ramoops.dtbo
+# (arch/arm/boot/dts/overlays/ramoops.dtbo); fwup.conf stages it onto
+# BOOT-A/B alongside dwc2 and miniuart-bt. peripherals-init.sh (run by
+# erlinit as --pre-run-exec) mounts pstore at /sys/fs/pstore so
+# `ls /sys/fs/pstore` shows the previous boot's dmesg.
+dtoverlay=ramoops

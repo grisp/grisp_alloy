@@ -23,6 +23,16 @@ BR2_TOOLCHAIN_EXTERNAL_GCC_13=y
 BR2_TOOLCHAIN_EXTERNAL_HEADERS_5_4=y
 BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
 BR2_TOOLCHAIN_EXTERNAL_CXX=y
+# The crosstool-NG toolchain build enables CT_CC_LANG_FORTRAN and
+# CT_CC_GCC_LIBGOMP (see toolchain/configs/rpi0w_linux_*_defconfig). Buildroot
+# inspects the external toolchain and errors out if any supported language
+# advertised by the toolchain is not opted into here -- matches grisp2/kontron.
+BR2_TOOLCHAIN_EXTERNAL_FORTRAN=y
+BR2_TOOLCHAIN_EXTERNAL_OPENMP=y
+# glibc >= 2.32 dropped Sun RPC (tirpc lives in libtirpc now), and
+# Buildroot defaults BR2_TOOLCHAIN_EXTERNAL_INET_RPC=y. The toolchain
+# probe fails unless we explicitly opt out -- matches system_kontron.
+BR2_TOOLCHAIN_EXTERNAL_INET_RPC=n
 
 # --- Linux kernel: RPi downstream tag stable_20250916 (6.12) ---------------
 
@@ -56,13 +66,38 @@ BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y
 BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI_X=y
 
 # --- Wi-Fi (BCM43430) + wpa_supplicant -------------------------------------
+# brcmfmac_sdio-firmware-rpi is the LibreELEC-sourced package that ships the
+# Broadcom firmware + the Pi-specific NVRAM txt files under /lib/firmware/brcm
+# (e.g. brcmfmac43430-sdio.bin, brcmfmac43430-sdio.clm_blob, and
+# brcmfmac43430-sdio.raspberrypi,model-zero-w.txt). BR2_PACKAGE_..._WIFI also
+# installs the per-board NVRAM for Pi Zero W. _BT pulls in the BlueZ-format
+# .hcd needed to load the onboard BCM43438 BT controller over UART.
+# Package choice follows nerves_system_rpi0's nerves_defconfig.
 
-BR2_PACKAGE_RPI_DISTRO_FIRMWARE_NONFREE=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_WIFI=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_BT=y
 BR2_PACKAGE_WIRELESS_REGDB=y
 BR2_PACKAGE_WPA_SUPPLICANT=y
 BR2_PACKAGE_WPA_SUPPLICANT_AP_SUPPORT=y
 BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
 BR2_PACKAGE_WPA_SUPPLICANT_CTRL_IFACE=y
+# wpa_cli ships by default with wpa_supplicant in Buildroot, but keep this
+# explicit so a later Kconfig change upstream doesn't quietly drop it.
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+# `iw` provides `iw dev` / `iw scan` for bring-up diagnostics (separate
+# tool from the unrelated `iwd` daemon, which we do NOT ship).
+BR2_PACKAGE_IW=y
+
+# --- Bluetooth (BCM43438 over mini-UART) -----------------------------------
+# miniuart-bt overlay (already in config.txt) routes the BT controller to
+# ttyAMA1 at 3 Mbps. btattach (modern) / hciattach (deprecated) then attach a
+# BCM HCI node. bluez5_utils provides the userspace stack + bluetoothctl.
+
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
+BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y
 
 # --- Userspace filesystem tooling ------------------------------------------
 

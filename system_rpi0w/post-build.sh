@@ -23,7 +23,7 @@ cp -f "${GLB_TARGET_SYSTEM_DIR}/autoboot-b.txt" "${BINARIES_DIR}/"
 # later mounts /dev/mmcblk0p2 (BOOT-A) here read-only (see erlinit.config).
 mkdir -p "${TARGET_DIR}/boot"
 
-# Phase 7: generate ops.fw here for runtime partition maintenance.
+# generate ops.fw here for runtime partition maintenance.
 # mkdir -p "${TARGET_DIR}/usr/share/fwup"
 # ${HOST_DIR}/usr/bin/fwup -c -f "${GLB_TARGET_SYSTEM_DIR}/fwup-ops.conf" \
 #     -o "${TARGET_DIR}/usr/share/fwup/ops.fw"
