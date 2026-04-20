@@ -1,4 +1,4 @@
-# `system_rpi0w` — Architecture & Design Reference
+# `system_rpi0w`: Architecture and Design Reference
 
 Design-level documentation for the Raspberry Pi Zero W target. Captures
 the key decisions and runtime behaviour: partition layout, boot chain,
@@ -28,7 +28,7 @@ while adopting `grisp_alloy`'s runtime conventions (same `GRISP_FW_*`
 defines, same `uboot-env` KV schema, same `fwup` task vocabulary)
 verbatim from `system_kontron-albl-imx8mm/fwup.conf`. The only
 rpi0w-specific deviation from the alloy task set is a `fat_write` of
-`autoboot.txt` inside `validate.*` / `rollback.*` — the
+`autoboot.txt` inside `validate.*` / `rollback.*`, the
 bootloader-less equivalent of what kontron's U-Boot does at boot
 time.
 
@@ -90,8 +90,8 @@ reference the same macros.
 | Partition | Contents                                                                                                                                                            |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AUTOBOOT  | `bootcode.bin`, `autoboot.txt` (= `autoboot-a.txt`), `autoboot-a.txt`, `autoboot-b.txt`                                                                             |
-| BOOT-A    | `start.elf`, `fixup.dat`, `config.txt`, `cmdline.txt` (= `cmdline-a.txt`), `zImage`, `bcm2708-rpi-zero{,-w}.dtb`, `overlays/dwc2.dtbo`, `overlays/miniuart-bt.dtbo` |
-| BOOT-B    | Same files as BOOT-A, except `cmdline.txt` = `cmdline-b.txt`                                                                                                        |
+| BOOT-A    | `start.elf`, `fixup.dat`, `config.txt`, `cmdline.txt` (= `cmdline-a.txt`), `zImage`, `bcm2708-rpi-zero{,-w}.dtb`, `overlays/dwc2.dtbo`, `overlays/miniuart-bt.dtbo`, `overlays/ramoops.dtbo` |
+| BOOT-B    | Same files as BOOT-A, except `cmdline.txt` = `cmdline-b.txt`                                                                                                                                  |
 | ROOTFS-A  | `rootfs.squashfs`                                                                                                                                                   |
 | ROOTFS-B  | zero-filled (invalidated by `raw_memset`)                                                                                                                           |
 | APP       | zero-filled (first boot auto-formats ext4)                                                                                                                          |
@@ -100,28 +100,29 @@ reference the same macros.
 
 ```mermaid
 flowchart TD
-    ROM["VideoCore ROM — BCM2835"]
+    ROM["VideoCore ROM, BCM2835"]
     BC["Load bootcode.bin from AUTOBOOT"]
     AT["Read autoboot.txt"]
     DEC{"tryboot_a_b selects slot"}
-    BA["Switch to BOOT-A — mmcblk0p2"]
-    BB["Switch to BOOT-B — mmcblk0p3"]
+    BA["Switch to BOOT-A (mmcblk0p2)"]
+    BB["Switch to BOOT-B (mmcblk0p3)"]
     CT["Read config.txt + cmdline.txt"]
     FW["Load start.elf + fixup.dat"]
     KN["Load zImage + DTB + overlays"]
-    LIN["Linux — init=erlinit, console=ttyAMA0"]
-    EI["erlinit mounts /boot vfat ro, /root ext4, tmpfs /var/log"]
-    BEAM["BEAM on /srv/erlang"]
+    LIN["Linux: init=erlinit, kernel console=ttyAMA0 + ttyGS0"]
+    EI["erlinit: mount /boot vfat ro, tmpfs /root, tmpfs /var/log"]
+    PI["pre-run-exec: rngd + peripherals-init.sh (pstore, btattach)"]
+    BEAM["BEAM on /srv/erlang, prompt on ttyGS0 (USB-OTG CDC-ACM)"]
 
     ROM --> BC --> AT --> DEC
     DEC -->|"sticky = A (default), or tryboot one-shot = A"| BA
     DEC -->|"sticky = B, or tryboot one-shot = B"| BB
     BA --> CT
     BB --> CT
-    CT --> FW --> KN --> LIN --> EI --> BEAM
+    CT --> FW --> KN --> LIN --> EI --> PI --> BEAM
 ```
 
-**Slot selection is entirely driven by `autoboot.txt`** — the live copy
+**Slot selection is entirely driven by `autoboot.txt`**, the live copy
 on the AUTOBOOT partition. Whichever slot was validated last is the
 sticky default target; the other slot is the tryboot one-shot target.
 That file is rewritten by `fwup -t validate.{a,b}` and
@@ -130,7 +131,7 @@ That file is rewritten by `fwup -t validate.{a,b}` and
 ## 4. `uboot-env` runtime schema
 
 An 8 KiB raw KV store at block 16. **No U-Boot actually reads this at
-boot** — it's userland-only state, queried with `fw_printenv` and
+boot**: it's userland-only state, queried with `fw_printenv` and
 mutated by `fwup` tasks. Adopted verbatim from
 `system_kontron-albl-imx8mm/fwup.conf:230-272` so `grisp_updater` and
 friends treat rpi0w the same as kontron from userland.
@@ -198,7 +199,7 @@ status.<name>` errors out if none match):
 | `B_upgrading_A`                                     | `status.b.upgrading`                   |
 | `A_pending_val`                                     | `status.a.upgraded`                    |
 | `B_pending_val`                                     | `status.b.upgraded`                    |
-| _(transient, post-rollback, pre-reboot — see §5.4)_ | `status.{a,b}.rollback_pending_reboot` |
+| _(transient, post-rollback, pre-reboot; see §5.4)_ | `status.{a,b}.rollback_pending_reboot` |
 
 ### 5.2 Factory flash (`fwup -t complete`)
 
@@ -274,7 +275,7 @@ sequenceDiagram
     Note over device: State B_validated_rb<br/>running=B, active=b, valid=b, upgrade=0, rollback=1
 ```
 
-**Failure branch** — if the kernel or userland on the new slot crashes
+**Failure branch**: if the kernel or userland on the new slot crashes
 before `validate.b` runs and the board power-cycles:
 
 - `autoboot.txt` still contains `autoboot-a.txt`'s bytes (validate.b
@@ -286,13 +287,13 @@ before `validate.b` runs and the board power-cycles:
   subsequent `fwup -t upgrade.b` resets it.
 
 This is the rpi0w analogue of kontron's "bootcount expired, revert to
-`valid_system`" — the mechanism differs but the observable outcome is
+`valid_system`": the mechanism differs but the observable outcome is
 the same.
 
 ### 5.4 Rollback
 
 Explicit operator action. Unlike upgrade, rollback does **not** use
-tryboot — it rewrites `autoboot.txt` to point at the other slot as
+tryboot. It rewrites `autoboot.txt` to point at the other slot as
 the sticky default, so the next normal reboot goes there.
 
 ```mermaid
@@ -320,7 +321,7 @@ reports the pre-rollback slot until the next `upgrade.*` or
 `validate.*` runs. `fw_printenv active_system` will lie briefly.
 Callers that care should reconcile against `/proc/cmdline` or
 `findmnt /`. Setting `active_system` inside `rollback.*` would fix
-this, but would also lie during the pre-reboot transient window —
+this, but would also lie during the pre-reboot transient window;
 neither choice is correct in all moments without a proper boot hook.
 Revisit when we wire up a systemd / erlinit "sync active_system on
 boot" unit.
@@ -391,8 +392,8 @@ system_rpi0w/
 ├── README.md                        high-level target notes
 ├── fwup.conf                        full alloy task set (complete + upgrade.* + validate.* + rollback.* + status.*)
 ├── post-build.sh                    stage fwup_include/ + config.txt + cmdline-*.txt + autoboot-*.txt into $BINARIES_DIR
-├── config.txt                       GPU firmware config (gpu_mem, dtoverlay=dwc2, miniuart-bt, ACT LED)
-├── cmdline-a.txt                    root=/dev/mmcblk0p5 rootwait rootfstype=squashfs console=serial0,115200 quiet
+├── config.txt                       GPU firmware config (gpu_mem, dtoverlay=dwc2 + miniuart-bt + ramoops, ACT LED)
+├── cmdline-a.txt                    root=/dev/mmcblk0p5 rootwait rootfstype=squashfs console=ttyAMA0,115200 console=ttyGS0
 ├── cmdline-b.txt                    root=/dev/mmcblk0p6 (same)
 ├── autoboot-a.txt                   sticky=BOOT-A, tryboot=BOOT-B
 ├── autoboot-b.txt                   sticky=BOOT-B, tryboot=BOOT-A
@@ -401,11 +402,16 @@ system_rpi0w/
 │   └── provisioning.conf            empty include stub
 ├── linux/
 │   └── linux.fragment               kernel config overlay on bcmrpi_defconfig
-│                                    (squashfs/ext4 builtin + PSTORE_RAM)
+│                                    (squashfs/ext4 builtin; brcmfmac + cfg80211/mac80211 builtin;
+│                                     BT_HCIUART + BT_HCIUART_BCM builtin; PSTORE_RAM)
 └── rootfs_overlay/
-    └── etc/
-        ├── erlinit.config           -c ttyAMA0, -m /dev/mmcblk0p2:/boot:vfat:ro..., -m tmpfs, -r /srv/erlang, -n rpi0w-%s
-        └── fw_env.config            /dev/mmcblk0 0x2000 0x2000 0x200 16
+    ├── etc/
+    │   ├── erlinit.config           -c ttyGS0, --pre-run-exec rngd + peripherals-init.sh,
+    │   │                            -m /dev/mmcblk0p2:/boot:vfat:ro..., tmpfs /root + /var/log,
+    │   │                            -r /srv/erlang, -n rpi0w-%s
+    │   └── fw_env.config            /dev/mmcblk0 0x2000 0x2000 0x200 16
+    └── sbin/
+        └── peripherals-init.sh      mount pstore; btattach BCM43438 on /dev/ttyAMA1 (non-fatal)
 
 toolchain/configs/
 ├── rpi0w_linux_x86_64_defconfig     crosstool-NG: ARMv6 / arm1176jzf-s / VFP / GCC 13
@@ -414,26 +420,30 @@ toolchain/configs/
 
 ## 8. Status
 
-| Area                                                         | State                                          |
-| ------------------------------------------------------------ | ---------------------------------------------- |
-| Scaffolding + toolchain config                               | Files shipped                                  |
-| ARMv6 crosstool-NG toolchain                                 | Files shipped; actual build pending            |
-| Minimal SDK (Linux kernel + rootfs.squashfs)                 | Files shipped; actual build pending            |
-| Firmware image (`.fw` / `.img`) with full alloy task set     | Files shipped; actual build + bring-up pending |
-| Peripheral bring-up (Wi-Fi, BT, USB-OTG, ramoops)            | Not started                                    |
-| Update package (`BOOTSCHEME=RPI` plugin + `ops.fw` + `.tar`) | Not started                                    |
+| Area                                                         | State                                                                                                                                                           |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scaffolding + toolchain config                               | Files shipped                                                                                                                                                   |
+| ARMv6 crosstool-NG toolchain                                 | Built + cached                                                                                                                                                  |
+| Minimal SDK (Linux kernel + rootfs.squashfs)                 | Built                                                                                                                                                           |
+| Firmware image (`.fw` / `.img`) with full alloy task set     | Built + flashed; `hello_grisp` boots to BEAM prompt on `ttyGS0`                                                                                                 |
+| USB-OTG CDC-ACM serial console (`ttyGS0`)                    | Working                                                                                                                                                         |
+| Ramoops / pstore                                             | Overlay staged, `CONFIG_PSTORE_RAM=y`, pstore mounted by `peripherals-init.sh`; warm-reboot capture not yet end-to-end validated on hardware                    |
+| Wi-Fi (BCM43430)                                             | Firmware package + `brcmfmac` builtin + `wpa_supplicant` + `iw` shipped; association not yet validated on hardware                                              |
+| Bluetooth (BCM43438)                                         | Firmware `.hcd` + `BT_HCIUART_BCM` builtin + `bluez5_utils` + `btattach` bring-up shipped; HCI association not yet validated on hardware                        |
+| A/B update lifecycle (upgrade / validate / rollback)         | `fwup` task set implemented; tryboot + validate + rollback paths not yet exercised end-to-end on hardware                                                       |
+| Update package (`BOOTSCHEME=RPI` plugin + `ops.fw` + `.tar`) | Not started                                                                                                                                                     |
 
 ## 9. References
 
 **Internal:**
 
-- [`../system_rpi0w/fwup.conf`](../system_rpi0w/fwup.conf) — authoritative definition of the task set.
-- [`../system_rpi0w/fwup_include/fwup-common.conf`](../system_rpi0w/fwup_include/fwup-common.conf) — authoritative partition layout.
-- [`../system_kontron-albl-imx8mm/fwup.conf`](../system_kontron-albl-imx8mm/fwup.conf) — the template that drove the `uboot-env` schema and task vocabulary adopted here.
-- [`../system_grisp2/fwup.conf`](../system_grisp2/fwup.conf) — reference for `GRISP_FW_*` defines + MBR partitioning conventions.
+- [`../system_rpi0w/fwup.conf`](../system_rpi0w/fwup.conf): authoritative definition of the task set.
+- [`../system_rpi0w/fwup_include/fwup-common.conf`](../system_rpi0w/fwup_include/fwup-common.conf): authoritative partition layout.
+- [`../system_kontron-albl-imx8mm/fwup.conf`](../system_kontron-albl-imx8mm/fwup.conf): the template that drove the `uboot-env` schema and task vocabulary adopted here.
+- [`../system_grisp2/fwup.conf`](../system_grisp2/fwup.conf): reference for `GRISP_FW_*` defines + MBR partitioning conventions.
 
 **External:**
 
-- [Raspberry Pi tryboot documentation](https://www.raspberrypi.com/documentation/computers/config_txt.html#tryboot) — `tryboot_a_b`, `autoboot.txt`, one-shot semantics.
-- [fwup config reference](https://github.com/fwup-home/fwup/blob/main/docs/configuration.md) — `mbr`, `uboot-environment`, `on-resource`, `fat_write`, `raw_write`, `reboot_param`.
-- [Buildroot manual — external trees](https://buildroot.org/downloads/manual/manual.html#outside-br-custom) — how `BR2_EXTERNAL` resolves `system_common` + `system_<target>`.
+- [Raspberry Pi tryboot documentation](https://www.raspberrypi.com/documentation/computers/config_txt.html#tryboot): `tryboot_a_b`, `autoboot.txt`, one-shot semantics.
+- [fwup config reference](https://github.com/fwup-home/fwup/blob/main/docs/configuration.md): `mbr`, `uboot-environment`, `on-resource`, `fat_write`, `raw_write`, `reboot_param`.
+- [Buildroot manual, external trees](https://buildroot.org/downloads/manual/manual.html#outside-br-custom): how `BR2_EXTERNAL` resolves `system_common` + `system_<target>`.
