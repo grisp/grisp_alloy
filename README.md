@@ -36,6 +36,29 @@ Supported targets in this repository:
 - `grisp2`
 - `kontron-albl-imx8mm`
 
+**Table of contents**
+
+- [Overview](#overview)
+- [Getting Started](#getting-started)
+  - [Prerequisites (Linux)](#prerequisites-linux)
+  - [Prerequisites (macOS)](#prerequisites-macos)
+  - [Vagrant Variables (Useful Overrides)](#vagrant-variables-useful-overrides)
+  - [Optional: NFS for `artefacts/` (VirtualBox)](#optional-nfs-for-artefacts-virtualbox)
+  - [First Successful Build](#first-successful-build)
+- [Build Pipeline](#build-pipeline)
+  - [1. Build Toolchain](#1-build-toolchain)
+  - [2. Build SDK](#2-build-sdk)
+  - [3. Build Project Artefact](#3-build-project-artefact)
+  - [4. Build Firmware](#4-build-firmware)
+- [Disk Images & Deployment](#disk-images-deployment)
+  - [Generate firmware + disk images](#generate-firmware-disk-images)
+  - [Write firmware to device with `fwup`](#write-firmware-to-device-with-fwup)
+  - [Convert `.fw` to `.img`](#convert-fw-to-img)
+  - [Inspect image partitions](#inspect-image-partitions)
+- [Troubleshooting](#troubleshooting)
+- [Advanced Use Cases](#advanced-use-cases)
+- [Platform Source-of-Truth Notes](#platform-source-of-truth-notes)
+
 ## Getting Started
 
 ### Prerequisites (Linux)
@@ -58,16 +81,46 @@ macOS is supported via Vagrant VM execution:
 
 ```sh
 brew install vagrant qemu
+brew install --cask virtualbox
 ```
 
 The scripts start the VM automatically when needed. Use `-P` to reprovision.
+
+**Troubleshooting (macOS / VirtualBox):** On Ruby 3.2+, run **`./scripts/vagrant/patch-vagrant-vbguest-ruby3.sh`**
+on the host once (after **`vagrant plugin install vagrant-vbguest`**) so the gem stops using the
+removed **`File.exists?`** API. For a quick environment snapshot, run **`./scripts/vagrant/vagrant-diagnose.sh --compact`**;
+for a full report (for example when opening an issue), run **`./scripts/vagrant/vagrant-diagnose.sh`**.
+The `Vagrantfile` sets `vagrant-vbguest` **`auto_update` to false** by default on Ruby 3.2+ so an
+unpatched gem does not hit the broken path; after patching, you can enable Guest Additions updates
+with **`VAGRANT_VBGUEST_AUTO_UPDATE=1 vagrant up`**.
+
+Vagrant-only helpers live under **`scripts/vagrant/`**. Builds invoked via `vagrant exec` use
+**`GLB_VAGRANT_REPO_ROOT`** (default **`/vagrant`** on VirtualBox with rsync), so inside the VM
+the same scripts are at **`/vagrant/scripts/vagrant/`** (for example
+`/vagrant/scripts/vagrant/vagrant-diagnose.sh`). Use that path when you need the tree that stays
+in sync with the host; the provisioned copy at `/home/vagrant/scripts/` updates when you run
+`vagrant provision` or `./build-*.sh -P`.
 
 ### Vagrant Variables (Useful Overrides)
 
 You can control `Vagrantfile` behavior with environment variables:
 
 - `VAGRANT_DEFAULT_PROVIDER`: force provider (for example `virtualbox`)
+- `VAGRANT_VB_CACHE_STORAGectl`, `VAGRANT_VB_CACHE_PORT`, `VAGRANT_VB_CACHE_DEVICE`: VirtualBox
+  cache-disk attachment. If **`VAGRANT_VB_CACHE_STORAGectl`** is unset, the name comes from the box
+  **OVF** under **`~/.vagrant.d/boxes/`**, then from **`storagecontrollername0`** in **`showvminfo`**.
+  On **`vagrant up`** / **`reload`**, if the box is not cached yet, the **`Vagrantfile` runs
+  **`vagrant box add`** once so the OVF exists (disable with **`VAGRANT_SKIP_BOX_PREFETCH=1`**). You
+  can still set **`VAGRANT_VB_CACHE_STORAGectl`** to override. Port / device default to **`1`** /
+  **`0`**.
 - `VAGRANT_DISABLE_NFS=1`: disable NFS path for VirtualBox and use default shared folders
+- `GLB_VAGRANT_REPO_ROOT`: repo path inside the guest for `vagrant exec` (default **`/vagrant`**;
+  use **`/home/vagrant`** on VMware if there is no `/vagrant` mount)
+- `VAGRANT_VBGUEST_AUTO_UPDATE=1`: turn `vagrant-vbguest` automatic Guest Additions updates back on
+- `VAGRANT_VIRTUALBOX_SYNC_TYPE`: `virtualbox` (vboxsf) or `rsync` (on **Apple Silicon** Macs,
+  VirtualBox often defaults to **rsync**; Intel-based Macs may use either); with rsync, macOS syncs
+  `./artefacts/` via **`scripts/common.sh`**
+- `VAGRANT_USE_NFS`, `VAGRANT_DISABLE_NFS`: NFS for `artefacts/` on VirtualBox (see subsection below)
 - `VM_MEMORY`: VM RAM in MB (default `16384`)
 - `VM_CORES`: VM CPU cores (default `8`)
 - `VM_PRIMARY_DISK_SIZE`: primary VM disk size (for example `96GB`)
@@ -76,37 +129,19 @@ You can control `Vagrantfile` behavior with environment variables:
 Examples:
 
 ```sh
+# VirtualBox on Linux: `VAGRANT_DISABLE_NFS=1` skips the NFS-backed `artefacts/` sync (no host-only adapter).
 VAGRANT_DEFAULT_PROVIDER=virtualbox VAGRANT_DISABLE_NFS=1 ./build-toolchain.sh grisp2
+# macOS + VirtualBox: omit `VAGRANT_DISABLE_NFS=1` (typical on Apple Silicon and Intel; see NFS/rsync above).
 VM_MEMORY=8192 VM_CORES=4 ./build-sdk.sh grisp2
 VM_PRIMARY_DISK_SIZE=96GB VM_CACHE_DISK_SIZE=20480 ./build-toolchain.sh -P grisp2
 ```
 
-### Optional: Enable NFS (VirtualBox)
+### Optional: NFS for `artefacts/` (VirtualBox)
 
-NFS can improve shared-folder performance, but VirtualBox needs a host-only network.
-
-Requirements:
-
-- A VirtualBox host-only adapter exists (with DHCP or static IP).
-- `VAGRANT_DISABLE_NFS` is not set to `1`.
-
-Run with NFS:
-
-```sh
-VAGRANT_DEFAULT_PROVIDER=virtualbox ./build-toolchain.sh -P grisp2
-```
-
-If you get:
-
-```text
-NFS requires a host-only network to be created.
-```
-
-create a host-only adapter in VirtualBox and reprovision (`-P`), or use:
-
-```sh
-VAGRANT_DEFAULT_PROVIDER=virtualbox VAGRANT_DISABLE_NFS=1 ./build-toolchain.sh grisp2
-```
+NFS can be faster than `vboxsf` but needs a **host-only network** in VirtualBox. Set
+`VAGRANT_USE_NFS=1` (and do not force `rsync` sync). If you see `NFS requires a host-only network`,
+either add that adapter in VirtualBox or stay on the default **rsync** (common on **Apple Silicon**
+Macs) or **VirtualBox shared folders** (other hosts, including Intel-based Macs).
 
 ### First Successful Build
 

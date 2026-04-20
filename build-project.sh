@@ -147,8 +147,12 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
     cd "$GLB_TOP_DIR"
-    vagrant exec "${GLB_VAGRANT_TOP_DIR}/build-project.sh" "${NEW_ARGS[@]}"
-    exit $?
+    vagrant exec "${GLB_VAGRANT_REPO_ROOT}/build-project.sh" "${NEW_ARGS[@]}"
+    rc=$?
+    if [[ "$HOST_OS" == "darwin" ]]; then
+        vagrant_sync_artefacts_from_guest || true
+    fi
+    exit "$rc"
 fi
 
 # NATIVE LINUX EXECUTION STARTS HERE

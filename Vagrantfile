@@ -5,6 +5,10 @@
 ################################################################################
 
 require 'rbconfig'
+require 'fileutils'
+
+# Host path for rsync / VirtualBox shared folder (must exist on the host).
+FileUtils.mkdir_p(File.expand_path('artefacts', __dir__))
 
 VM_PRIMARY_DISK_SIZE = (ENV['VM_PRIMARY_DISK_SIZE']&.strip)
 VALID_DISK_SIZE = /\A\d+\s*(KB|MB|GB|TB)\z/i
@@ -33,6 +37,26 @@ def host_platform
   else
     raise "Unsupported host OS: #{host_os}"
   end
+end
+
+# True on Apple Silicon Macs, including a Terminal/iTerm running under Rosetta (host_cpu
+# may report x86_64 but sysctl still shows e.g. "Apple M3 Pro").
+def macos_apple_silicon_for_vbox_rsync?
+  return false unless host_platform == :macos
+  return true if is_arm64?
+
+  brand = `sysctl -n machdep.cpu.brand_string 2>/dev/null`.to_s
+  brand.match?(/Apple M\d/)
+end
+
+# VirtualBox: `virtualbox` sync needs Guest Additions (vboxsf). On Apple Silicon, vboxsf
+# often fails until GA match the guest kernel. `rsync` avoids vboxsf. Override with
+# VAGRANT_VIRTUALBOX_SYNC_TYPE=virtualbox or rsync.
+def virtualbox_sync_type
+  v = ENV['VAGRANT_VIRTUALBOX_SYNC_TYPE'].to_s.strip
+  return v if %w[rsync virtualbox].include?(v)
+
+  macos_apple_silicon_for_vbox_rsync? ? 'rsync' : 'virtualbox'
 end
 
 def ensure_vagrant_cache_disk
@@ -87,25 +111,58 @@ def ensure_vagrant_cache_disk
   cache_path
 end
 
-def register_vmdk_for_virtualbox(path)
-    unless File.exist?(path)
-        raise "VMDK file #{path} not found on disk"
+# VirtualBox cache VMDK: register medium; storagectl from env / box OVF / showvminfo (README).
+def register_vmdk_for_virtualbox_if_needed(path)
+  return unless ENV['VAGRANT_DEFAULT_PROVIDER'] == 'virtualbox' ||
+                ARGV.any? { |arg| arg.include?('virtualbox') }
+  raise "VMDK file #{path} not found on disk" unless File.exist?(path)
+  return if system("VBoxManage showmediuminfo '#{path}' > /dev/null 2>&1")
+
+  puts "Registering #{path} as VirtualBox medium..."
+  return if system("VBoxManage openmedium disk '#{path}' --format VMDK")
+
+  raise 'Failed to register VMDK disk with VirtualBox (see VBoxManage output above)'
+end
+
+def virtualbox_cache_storagectl_name(repo_dir, box_name)
+  manual = ENV['VAGRANT_VB_CACHE_STORAGectl'].to_s.strip
+  return manual unless manual.empty?
+
+  strict = %w[up reload].include?(ARGV[0])
+  boxes = File.expand_path('~/.vagrant.d/boxes')
+  slug = box_name.gsub('/', '-VAGRANTSLASH-')
+  glob = File.join(boxes, slug, '**', 'virtualbox', '*.ovf')
+  ovf = Dir.exist?(boxes) ? Dir.glob(glob).max_by { |f| File.mtime(f) } : nil
+  if strict && ENV['VAGRANT_SKIP_BOX_PREFETCH'] != '1' && !ovf
+    warn "grisp_alloy: downloading base box #{box_name} (OVF for cache disk)…"
+    unless system('vagrant', 'box', 'add', box_name, '--provider', 'virtualbox')
+      raise "grisp_alloy: vagrant box add #{box_name} failed; run it manually."
     end
-    if system("VBoxManage showmediuminfo '#{path}' > /dev/null 2>&1")
-        return
-    end
-    puts "Registering #{path} as VirtualBox medium..."
-    unless system("VBoxManage openmedium disk '#{path}' --format VMDK")
-        raise "Failed to register VMDK disk with VirtualBox (see VBoxManage output above)"
-    end
+    ovf = Dir.glob(glob).max_by { |f| File.mtime(f) }
+  end
+  if ovf && File.file?(ovf)
+    m = File.read(ovf).match(/<StorageController\s+[^>]*\bname="([^"]*)"/i)
+    return m[1] if m
+  end
+  idf = File.expand_path('.vagrant/machines/default/virtualbox/id', repo_dir)
+  if File.exist?(idf)
+    out = `VBoxManage showvminfo "#{File.read(idf).strip}" --machinereadable 2>/dev/null`
+    m = out.match(/^storagecontrollername0="([^"]*)"/m)
+    return m[1] if m
+  end
+  return 'SATA Controller' unless strict
+
+  raise 'Cannot resolve VirtualBox storagectl for cache VMDK. Set VAGRANT_VB_CACHE_STORAGectl (README).'
 end
 
 CACHE_DISK_PATH = ensure_vagrant_cache_disk
 
+VM_BOX = 'bento/ubuntu-24.04'
+
 Vagrant.configure('2') do |config|
 
     required_plugins = %w( vagrant-scp vagrant-exec )
-    config.vm.box = "bento/ubuntu-24.04"
+    config.vm.box = VM_BOX
 
     if VM_PRIMARY_DISK_SIZE
         config.vm.disk :disk, size: VM_PRIMARY_DISK_SIZE, primary: true
@@ -151,14 +208,12 @@ Vagrant.configure('2') do |config|
         v.cpus = VM_CORES
         required_plugins = %w( vagrant-vbguest )
 
-        if ENV['VAGRANT_DEFAULT_PROVIDER'] == 'virtualbox' || ARGV.any? { |arg| arg.include?('virtualbox') }
-            register_vmdk_for_virtualbox(CACHE_DISK_PATH)
-        end
-
-        # Base boxes already ship with a SATA controller; re-adding it fails.
-        # Attach the cache disk on the existing controller.
-        v.customize ['storageattach', :id, '--storagectl', 'SATA Controller',
-                     '--port', 1, '--device', 0, '--type', 'hdd',
+        register_vmdk_for_virtualbox_if_needed(CACHE_DISK_PATH)
+        vb_ctl = virtualbox_cache_storagectl_name(__dir__, VM_BOX)
+        vb_port = Integer(ENV.fetch('VAGRANT_VB_CACHE_PORT', '1'))
+        vb_dev = Integer(ENV.fetch('VAGRANT_VB_CACHE_DEVICE', '0'))
+        v.customize ['storageattach', :id, '--storagectl', vb_ctl,
+                     '--port', vb_port, '--device', vb_dev, '--type', 'hdd',
                      '--medium', CACHE_DISK_PATH]
     end
 
@@ -288,11 +343,25 @@ Vagrant.configure('2') do |config|
     end
 
     config.vm.provider :virtualbox do |v, override|
-        if ENV['VAGRANT_DISABLE_NFS'] == '1'
-            # Use VirtualBox shared folders when NFS is explicitly disabled.
-            override.vm.synced_folder "artefacts/", "/home/vagrant/artefacts", create: true
+        vt = virtualbox_sync_type
+        if vt == 'rsync'
+          # No vboxsf: host must have `rsync` (macOS/Linux do). After builds, run
+          # Guest→host sync uses `rsync` over SSH (see `vagrant_sync_artefacts_from_guest` in
+          # scripts/common.sh); `vagrant rsync` only pushes host→guest.
+          rsync_excl = [
+            '.git/', '.vagrant/', 'output/', '_build/', '_cache/', '.cursor/',
+            '.vagrant.cache.vmdk', '.vagrant.cache.raw'
+          ]
+          override.vm.synced_folder '.', '/vagrant', type: 'rsync',
+            rsync__exclude: rsync_excl, rsync__auto: true
+          override.vm.synced_folder 'artefacts/', '/home/vagrant/artefacts', create: true,
+            type: 'rsync', rsync__auto: true
+        elsif ENV['VAGRANT_USE_NFS'] == '1' && ENV['VAGRANT_DISABLE_NFS'] != '1'
+          override.vm.synced_folder 'artefacts/', '/home/vagrant/artefacts', create: true,
+            type: 'nfs', nfs_version: 3, nfs_udp: false,
+            mount_options: ['vers=3,tcp']
         else
-            override.vm.synced_folder "artefacts/", "/home/vagrant/artefacts", create: true, type: "nfs", nfs_version: 3, nfs_udp: false, mount_options: ['vers=3,tcp']
+          override.vm.synced_folder 'artefacts/', '/home/vagrant/artefacts', create: true
         end
     end
 
