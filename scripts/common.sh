@@ -143,6 +143,9 @@ esac
 GLB_SCRIPT_DIR="$(readlink_f "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" )"
 GLB_TOP_DIR="$( cd "$GLB_SCRIPT_DIR" && cd .. && pwd )"
 GLB_VAGRANT_TOP_DIR="/home/vagrant"
+# Live repo sync in the guest (VirtualBox: `.` -> `/vagrant`). Invoked from here so host
+# edits apply without `vagrant provision`; provision copies under /home/vagrant stay stale.
+GLB_VAGRANT_REPO_ROOT="${GLB_VAGRANT_REPO_ROOT:-/vagrant}"
 GLB_SDK_NAME="grisp_alloy_sdk"
 GLB_SDK_PARENT_DIR="/opt"
 GLB_SDK_BASE_DIR="${GLB_SDK_PARENT_DIR}/${GLB_SDK_NAME}"
@@ -181,17 +184,73 @@ else
     GLB_FIRMWARE_BUILD_DIR="${GLB_BUILD_DIR}/firmware"
     GLB_VAGRANT_FIRMWARE_BUILD_DIR="${GLB_VAGRANT_BUILD_DIR}/firmware"
 
-    if [[ ! -z $ARG_TARGET ]] && [[ -d "$GLB_TOP_DIR/system_${ARG_TARGET}" ]]; then
+    # Repo at /vagrant: keep outputs on /home/vagrant (artefacts + cache mounts; see Vagrantfile).
+    if [[ "$GLB_TOP_DIR" == "/vagrant" ]]; then
+        GLB_ARTEFACTS_DIR="/home/vagrant/artefacts"
+        GLB_CACHE_DIR="/home/vagrant/_cache"
+        GLB_BUILD_DIR="/home/vagrant/_build"
+        GLB_TOOLCHAIN_CACHE_DIR="${GLB_CACHE_DIR}/toolchain"
+        GLB_TOOLCHAIN_BUILD_DIR="${GLB_BUILD_DIR}/toolchain"
+        GLB_SYSTEM_CACHE_DIR="${GLB_CACHE_DIR}/system"
+        GLB_SYSTEM_BUILD_DIR="${GLB_BUILD_DIR}/system"
+        GLB_PROJECT_BUILD_DIR="${GLB_BUILD_DIR}/project"
+        GLB_FIRMWARE_BUILD_DIR="${GLB_BUILD_DIR}/firmware"
+    fi
+
+    # Target name is always the requested ARG_TARGET (toolchain defconfig path needs it).
+    # system_* paths exist only when that target has a system overlay in the repo.
+    if [[ -n "${ARG_TARGET:-}" ]]; then
         GLB_TARGET_NAME="$ARG_TARGET"
-        GLB_COMMON_SYSTEM_DIR="$GLB_TOP_DIR/system_common"
-        GLB_TARGET_SYSTEM_DIR="$GLB_TOP_DIR/system_${GLB_TARGET_NAME}"
-        GLB_COMMON_SYSTEM_VER="$( cat "${GLB_COMMON_SYSTEM_DIR}/VERSION" )"
-        GLB_TARGET_SYSTEM_VER="$( cat "${GLB_TARGET_SYSTEM_DIR}/VERSION" )"
-        GLB_SDK_DIR="${GLB_SDK_BASE_DIR}/${GLB_COMMON_SYSTEM_VER}/${GLB_TARGET_NAME}/${GLB_TARGET_SYSTEM_VER}"
-        GLB_SDK_HOST_DIR="${GLB_SDK_DIR}/host"
-        GLB_SDK_FILENAME="${GLB_SDK_NAME}-${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_NAME}-${GLB_TARGET_SYSTEM_VER}-${HOST_OS}-${HOST_ARCH}.tar.gz"
+        if [[ -d "$GLB_TOP_DIR/system_${ARG_TARGET}" ]]; then
+            GLB_COMMON_SYSTEM_DIR="$GLB_TOP_DIR/system_common"
+            GLB_TARGET_SYSTEM_DIR="$GLB_TOP_DIR/system_${GLB_TARGET_NAME}"
+            GLB_COMMON_SYSTEM_VER="$( cat "${GLB_COMMON_SYSTEM_DIR}/VERSION" )"
+            GLB_TARGET_SYSTEM_VER="$( cat "${GLB_TARGET_SYSTEM_DIR}/VERSION" )"
+            GLB_SDK_DIR="${GLB_SDK_BASE_DIR}/${GLB_COMMON_SYSTEM_VER}/${GLB_TARGET_NAME}/${GLB_TARGET_SYSTEM_VER}"
+            GLB_SDK_HOST_DIR="${GLB_SDK_DIR}/host"
+            GLB_SDK_FILENAME="${GLB_SDK_NAME}-${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_NAME}-${GLB_TARGET_SYSTEM_VER}-${HOST_OS}-${HOST_ARCH}.tar.gz"
+        fi
     fi
 fi
 
 GLB_DEBUG="${GLB_DEBUG:-0}"
 set_debug_level "$GLB_DEBUG"
+
+# Copy guest artefacts to host ./artefacts/. Vagrant rsync folders only push host→guest;
+# there is no `vagrant rsync-back` in Vagrant 2.4.x — use rsync over `vagrant ssh-config`.
+vagrant_sync_artefacts_from_guest()
+{
+    local ssh_config vm_host guest_path host_path
+    guest_path="${GLB_VAGRANT_ARTEFACTS_DIR:-/home/vagrant/artefacts}"
+    host_path="${GLB_TOP_DIR}/artefacts"
+    ssh_config="$(mktemp)"
+    cleanup_ssh() { rm -f "$ssh_config"; }
+    trap cleanup_ssh RETURN
+
+    cd "$GLB_TOP_DIR" || return 0
+    if ! command -v vagrant >/dev/null 2>&1; then
+        echo "WARNING: vagrant not in PATH; skip artefacts sync." >&2
+        return 0
+    fi
+    if ! command -v rsync >/dev/null 2>&1; then
+        echo "WARNING: rsync not found on host; skip artefacts sync." >&2
+        return 0
+    fi
+    if ! vagrant ssh-config > "$ssh_config" 2>/dev/null; then
+        echo "WARNING: vagrant ssh-config failed; skip artefacts sync." >&2
+        return 0
+    fi
+    vm_host="$(awk '/^Host / {print $2; exit}' "$ssh_config")"
+    if [[ -z "$vm_host" ]]; then
+        echo "WARNING: could not parse vagrant ssh-config; skip artefacts sync." >&2
+        return 0
+    fi
+    mkdir -p "$host_path"
+    echo "Syncing guest artefacts to host (rsync via SSH)..."
+    if ! rsync -az \
+        -e "ssh -F \"$ssh_config\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+        "${vm_host}:${guest_path}/" "${host_path}/"
+    then
+        echo "WARNING: rsync from guest artefacts failed." >&2
+    fi
+}

@@ -103,8 +103,15 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
-    vagrant exec "${GLB_VAGRANT_TOP_DIR}/build-toolchain.sh" "${NEW_ARGS[@]}"
-    exit $?
+    vagrant exec "${GLB_VAGRANT_REPO_ROOT}/build-toolchain.sh" "${NEW_ARGS[@]}"
+    rc=$?
+    # VirtualBox rsync (default on Apple Silicon) syncs host→guest only; the toolchain writes
+    # to artefacts/ inside the VM. Sync guest→host so ./artefacts/ on the Mac is updated.
+    # Linux native / vboxsf do not need this.
+    if [[ "$HOST_OS" == "darwin" ]]; then
+        vagrant_sync_artefacts_from_guest || true
+    fi
+    exit "$rc"
 fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
