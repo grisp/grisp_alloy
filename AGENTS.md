@@ -31,6 +31,12 @@ Use this read order before implementation:
      planning file, add it there first.
 
 Treat the design docs and workflow doc as authoritative. If implementation and docs disagree, do not guess; identify the gap and resolve it deliberately.
+Before implementing, analyze the requested behavior and the relevant command,
+schema, and workflow contracts thoroughly enough to detect ambiguities,
+incoherences, or conflicting requirements. If any conflict is found, stop,
+summarize the issue clearly for the human, and ask for direction before
+continuing. Do not preserve both behaviors or invent compatibility
+workarounds unless the human explicitly chooses that path.
 When durable human or agent feedback improves the development process, codify
 that improvement in the owning repository `AGENTS.md`, `docs/WORKFLOW.md`,
 and/or planning notes instead of leaving it only in conversation.
@@ -176,6 +182,10 @@ Follow `docs/WORKFLOW.md` exactly:
 - Security-pack interface or secret-handling changes.
 - New dependencies, large refactors, or major planning reprioritization.
 - Any case where implementation cannot satisfy the design docs without changing the design.
+- Any requirement, CLI contract, or documented behavior that is ambiguous,
+  internally inconsistent, or conflicts with implementation constraints. In
+  those cases, summarize the conflict and ask the human to choose the intended
+  contract before coding.
 
 ## Never
 

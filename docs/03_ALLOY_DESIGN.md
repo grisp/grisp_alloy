@@ -245,7 +245,7 @@ alloy build sdk PRODUCT_NUGGET [OPTIONS]
 | `--allow-dirty` | Allow nugget sources that are VCS checkouts (local or cloned) to have uncommitted changes. By default, the orchestrator fails if a repository has a dirty working tree. Use for local development when you have uncommitted edits. Can also be enabled by setting `ALLOY_ALLOW_DIRTY=true`; the command-line flag takes precedence. See [Nugget staging](#54-nugget-staging-flow) (VCS URL / working tree cleanliness). |
 | `--include-sources` | Include redistributable source code in SDK legal-info. |
 | `--clean` / `-c` | Remove the entire build directory before building, redoing everything from scratch (Buildroot, smelterl generation, hooks). |
-| `--clean-package PKG` / `-c PKG` | Remove a specific Buildroot package and rebuild it. Use when a single package needs rebuilding without cleaning the whole tree. **Expert option:** Buildroot does not track inter-package dependencies, so incorrect use may produce inconsistent results. |
+| `--clean-package PKG` | Remove a specific Buildroot package and rebuild it. Use when a single package needs rebuilding without cleaning the whole tree. This option is intentionally long-only so `-c` remains reserved for `--clean`. **Expert option:** Buildroot does not track inter-package dependencies, so incorrect use may produce inconsistent results. |
 
 **Nugget path specification:**
 

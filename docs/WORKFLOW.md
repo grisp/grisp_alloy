@@ -164,6 +164,13 @@ For every task, execute these steps in order.
    - Deep-read relevant design sections for the selected task.
    - Inspect exact modules/files/functions to be changed.
    - Identify ambiguities, risks, and impact surfaces.
+   - Analyze the requirement and interface contracts thoroughly enough to catch
+     ambiguities or internal conflicts before implementation starts.
+   - If design docs, workflow rules, parser contracts, tests, or the human
+     request conflict, stop and escalate to the human with a concise summary of
+     the issue and the available contract choices.
+   - Do not implement a silent compatibility workaround just to keep moving
+     when the intended contract is unclear.
 
 4. Create initial task context file.
    - Location:
@@ -220,6 +227,10 @@ For every task, execute these steps in order.
      - document issue/proposal in context file,
      - discuss with human manager,
      - when approved, update design docs in same commit as code.
+   - The same rule applies to requirement-level incoherence that does not yet
+     require a broad design change (for example an ambiguous CLI short option):
+     document the conflict, ask the human to choose the intended contract, and
+     only then implement the approved behavior.
 
 11. Finalize context file.
    - Record only durable information:

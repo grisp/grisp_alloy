@@ -8,6 +8,23 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Replaced the transitional `scripts/commands/build-sdk.sh` wrapper with a
+  canonical `alloy build sdk` command implementation that validates
+  repository-mode usage, parses Task 5.1 options with the shared
+  `scripts/argparse.sh` contract, initializes `_build/sdk/<product>/`
+  workspace roots (`plan/`, `targets/`, `staging/`, `motherlode/`), and
+  exports the shared `ALLOY_SDK_*` / `ALLOY_MOTHERLODE` paths for later Phase
+  5 orchestration tasks; when run directly, it infers SDK mode only to reject
+  the command rather than fabricating SDK-mode build paths for a repo-only
+  operation.
+- Tightened the `alloy build sdk` option contract so `-c` means only
+  `--clean`; package-specific cleanup is now `--clean-package PKG` long-only,
+  matching the clarified design and avoiding context-dependent short-option
+  parsing.
+- Updated `AGENTS.md` and `docs/WORKFLOW.md` to require agents to stop and ask
+  for human clarification whenever requirements or documented contracts are
+  ambiguous or internally inconsistent, instead of inventing compatibility
+  workarounds.
 - Updated the repository `smelterl` submodule to include the latest
   plan/generate pipeline work through `smelterl: finalize review fixes for
   generate outputs`, bringing in packaged-escript `priv/` embedding,
@@ -28,6 +45,10 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused shell coverage for `scripts/commands/build-sdk.sh`, including
+  canonical help output, repository-mode validation, workspace creation,
+  `--clean-package` handling, rejection of ambiguous `-c VALUE` usage, and
+  `ALLOY_ALLOW_DIRTY` validation.
 - Added explicit Smelterl submodule bootstrap guidance in `README.md`, an
   opt-in `--init-deps` initialization path for repository-mode `alloy build
   sdk`, and a GitLab CI validation job that syncs/initializes the submodule

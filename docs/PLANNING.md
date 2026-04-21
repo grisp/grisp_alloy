@@ -177,7 +177,7 @@ Cross-repository development note:
 
 ## Phase 5: `alloy build sdk` (Multi-Target Orchestration)
 
-- [ ] **Task 5.1: build-sdk command parser and directory layout**
+- [x] **Task 5.1: build-sdk command parser and directory layout**
   - Scope: Build directory structure (`plan/`, `targets/`, `staging/`, `motherlode/`).
   - Tests: Command tests for directory creation and option validation.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build sdk ...` UX (not legacy script filename forms).
@@ -189,6 +189,7 @@ Cross-repository development note:
   - Scope: Stage all nugget inputs into build motherlode.
   - Tests: Integration tests with mixed source types.
   - Refinement note (from Task 1.7): Resolve `--allow-dirty` and `ALLOY_ALLOW_DIRTY` in the command layer, then pass an explicit `true|false` dirty-policy argument into `vcs_clone_or_validate` for staged VCS sources.
+  - Refinement note (from Task 5.1): Reuse the workspace roots now exported by `scripts/commands/build-sdk.sh` (`ALLOY_MOTHERLODE`, `ALLOY_SDK_BUILD_DIR`) instead of recomputing product-local motherlode paths in later staging steps.
   - Done when: Staging is reproducible and conflict-safe.
 
 - [x] **Task 5.3: Smelterl binary management**
@@ -210,6 +211,7 @@ Cross-repository development note:
     depends on replacing the transitional legacy wrapper in
     `scripts/commands/build-sdk.sh` with the documented Smelterl-backed
     orchestration flow.
+  - Refinement note (from Task 5.1): Consume the pre-created `ALLOY_SDK_PLAN_DIR` and `ALLOY_SDK_STAGING_DIR` exports from the command-layer workspace setup so later plan/generate steps share one path source of truth.
   - Done when: One plan pass feeds all target generation passes.
 
 - [ ] **Task 5.5: Target loop and per-target generate invocation**
@@ -258,6 +260,7 @@ Cross-repository development note:
   - Scope: Parse options, resolve SDK mode/repository mode behavior.
   - Tests: Command tests for `--sdk` and mode combinations.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build project ...` UX (not legacy script filename forms).
+  - Refinement note (from Task 5.1): Keep short options one-to-one with behavior; if a proposed CLI contract would overload a short flag based on argument shape or parser context, stop and resolve the contract ambiguity with the human first.
   - Refinement note (from Task 1.1a): Use shared `scripts/argparse.sh` parser contract for command options to keep option semantics and `<VAR>_OPT` behavior consistent.
   - Refinement note (from Task 1.7): Normalize `--allow-dirty` and `ALLOY_ALLOW_DIRTY` here so downstream VCS/project-source helpers receive an explicit dirty-policy boolean instead of reading ambient environment state.
   - Refinement note (from Task 1.8): Before sourcing SDK context or calling build plugins, invoke `ensure_sdk_relocated` on the selected SDK root so first-use relocation and read-only failure messaging stay centralized in `sdk_utils.sh`.
