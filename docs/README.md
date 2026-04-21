@@ -1,8 +1,18 @@
 # grisp_alloy docs
 
-Per-target design references. These are *design* docs: they explain the
-intent and the runtime flow, not the day-to-day build commands. For build
-commands see the repo-level [`README.md`](../README.md).
+Per-target design references and cross-cutting architecture notes.
+These are *design* docs: they explain the intent and the runtime
+flow, not the day-to-day build commands. For build commands see the
+repo-level [`README.md`](../README.md).
+
+## Cross-cutting references
+
+- [`build-architecture.md`](./build-architecture.md): what the four
+  `build-*.sh` scripts actually produce, what lives in
+  `/opt/grisp_alloy_sdk/`, why Erlang is built at SDK time, and how
+  the Vagrant wrapper fits in on non-Linux hosts.
+- [`porting-notes.md`](./porting-notes.md): short field notebook of
+  traps encountered during target bring-up.
 
 ## Index
 
@@ -32,9 +42,12 @@ the other two targets when we get to them.
 
 ## Adding a new target
 
-Before starting, skim [`porting-notes.md`](./porting-notes.md): a
-short list of traps we actually hit during the `system_rpi0w`
-bring-up (silent Buildroot package ignores, empty `/lib/modules/`,
-console-path alignment, etc.). Sample size is one port, so it's a
-"read before you start" field notebook, not a canonical guide; expect
-it to grow into a proper porting checklist as we add more targets.
+Before starting, skim [`build-architecture.md`](./build-architecture.md)
+to understand which artefact each build stage produces and what's in
+the SDK, then [`porting-notes.md`](./porting-notes.md) for a short
+list of traps we actually hit during the `system_rpi0w` bring-up
+(silent Buildroot package ignores, empty `/lib/modules/`, console-path
+alignment, etc.). The porting notebook's sample size is one port, so
+it's a "read before you start" field notebook, not a canonical guide;
+expect it to grow into a proper porting checklist as we add more
+targets.

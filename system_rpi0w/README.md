@@ -106,6 +106,27 @@ sticky.
 No ethernet gadget (`g_ether` / composite CDC-ECM) is configured; USB
 provides serial only.
 
+## Peripherals brought up before the BEAM
+
+[`rootfs_overlay/sbin/peripherals-init.sh`](./rootfs_overlay/sbin/peripherals-init.sh)
+runs as an erlinit `--pre-run-exec`. Failures are logged but never
+fatal: the BEAM must always come up, so a missing Wi-Fi / BT module
+should degrade the system, not brick it.
+
+| Step                           | Status by prompt time                                  |
+| ------------------------------ | ------------------------------------------------------ |
+| `modprobe brcmfmac`            | `wlan0` up, SDIO enumerated, firmware `7.45.98 (TOB)` loaded |
+| `modprobe hci_uart` (defensive, may already be loaded by serdev) | `hci_uart` + `btbcm` present |
+| Mount pstore on `/sys/fs/pstore` | previous boot's kernel log exposed as `dmesg-ramoops-*` |
+| `btattach -B /dev/ttyAMA1 -P bcm -S 3000000 &` | `hci0` up, `BCM43430A1` patchram applied |
+
+`wpa_supplicant` association and `bluetoothctl` pairing are **not**
+started by `peripherals-init.sh`: they are the application's
+responsibility (or a future GRiSP OTP runtime hook). What the init
+script guarantees is that by the time the BEAM starts, the kernel
+drivers are loaded, the controllers are initialised, and the
+corresponding `/dev/` and `/sys/class/` entries exist.
+
 ## Credits and prior art
 
 This target would not exist in its current form without
@@ -165,14 +186,104 @@ in Nerves' own [`REUSE.toml`](https://github.com/nerves-project/nerves_system_rp
 Choosing CC0 for those files was a deliberately generous act on the
 Nerves project's part, and we're glad to acknowledge it.
 
-No Nerves code is carried verbatim in `grisp_alloy`. Our `fwup.conf`,
-`post-build.sh`, `config.txt`, `cmdline-*.txt`, `autoboot-*.txt`,
-`linux/linux.fragment`, and `defconfig` are freshly written against
-the upstream tools (`fwup`, Buildroot, the RPi kernel), informed by
-Nerves' solutions to the non-obvious traps.
+Our `fwup.conf`, `post-build.sh`, `config.txt`, `cmdline-*.txt`,
+`autoboot-*.txt`, and Buildroot `defconfig` are freshly written
+against the upstream tools (`fwup`, Buildroot, the RPi kernel),
+informed by Nerves' solutions to the non-obvious traps. Our kernel
+config [`linux/linux-6.12.defconfig`](./linux/linux-6.12.defconfig)
+is seeded from
+[`nerves_system_rpi0/linux-6.12.defconfig`](https://github.com/nerves-project/nerves_system_rpi0/blob/main/linux-6.12.defconfig)
+and adjusted for GRiSP-specific bits: CDC-ACM USB gadget on `ttyGS0`
+(replacing Nerves' USB Ethernet), Bluetooth stack over UART for the
+BCM43438 miniuart path, and squashfs XZ/ZLIB decompressors for our
+A/B rootfs layout. We start from Nerves because they have already
+done years of bring-up on this SoC; the GRiSP-specific edits are a
+small delta on top, not a re-curation of the whole kernel.
 
 For the broader picture of "what we learned porting this target",
 see [`../docs/porting-notes.md`](../docs/porting-notes.md).
+
+### Why not just use Nerves?
+
+Reasonable question. `grisp_alloy` is inspired by Nerves and shares
+the same primitives (Buildroot, upstream RPi kernel, `fwup`,
+`erlinit`, `libubootenv`), but it is **not a fork**. Five reasons:
+
+1. **Multi-target shared code.** `nerves_system_rpi0` is a
+   self-contained single-target repo. `grisp_alloy` carries three
+   sibling targets (`system_grisp2`, `system_kontron-albl-imx8mm`,
+   `system_rpi0w`) that share `system_common/`, `scripts/`,
+   `Vagrantfile`, the build scripts, and the A/B `fwup` task
+   vocabulary (`complete` / `upgrade.*` / `validate.*` /
+   `rollback.*` / `status.*`). Copying Nerves verbatim would break
+   that sharing; we'd fork forever or drift.
+
+2. **Pure-shell build, no Mix.** Nerves is Elixir-driven: `mix
+   nerves.new_system`, `nerves_system_br` from hex.pm, shoehorn and
+   nerves_runtime as hard deps. `grisp_alloy` is Bash + Buildroot
+   + Vagrant, deliberately. Someone with just those three should be
+   able to build a firmware image.
+
+3. **Upstream proximity.** We use vanilla Buildroot 2025.05 and
+   upstream RPi kernel tarball directly, no `BR2_GLOBAL_PATCH_DIR`
+   and no custom Buildroot packages. Staying upstream-shaped means
+   we can track Buildroot releases without fork maintenance.
+
+4. **Industrial / sensor Erlang, not IoT hobbyist.** GRiSP users
+   attach I2C / SPI / GPIO peripherals. We enable `libgpiod`,
+   `i2c-tools`, `spidev` etc.; we don't ship camera, DRM/FB or
+   audio stacks by default.
+
+5. **Separated boot-mechanism vs update-mechanism layering.**
+   Nerves' `fwup.conf` fuses the boot mechanism and the update
+   pipeline. `grisp_alloy` separates them: on rpi0w we copy Nerves'
+   boot mechanism (VideoCore -> `autoboot.txt` -> kernel) directly,
+   but the update pipeline on top is the same `fwup` task
+   vocabulary used on `system_grisp2` (Barebox-managed) and
+   `system_kontron-albl-imx8mm` (U-Boot + AHAB). On rpi0w the glue
+   between those two layers is `fat_write autoboot.txt` inside
+   `validate.*` and `rollback.*`: there is no bootloader to read
+   `valid_system` from an env block at every boot, so the live
+   `autoboot.txt` plays that role.
+
+None of these prevent us from taking maximum advantage of Nerves'
+proven kernel configuration. Hence the verbatim inherit + thin
+GRiSP-specific additions, documented above.
+
+### What's ours, not Nerves'
+
+Concretely, on top of the Nerves-derived patterns, the following
+are written and maintained by the Peer Stritzinger GmbH team:
+
+- **The A/B update task vocabulary** (`complete`, `upgrade.a` /
+  `upgrade.b`, `validate.a` / `validate.b`, `rollback.a` /
+  `rollback.b`, `status.a` / `status.b`) and the `uboot-env` KV
+  schema it runs on, shared verbatim with `system_grisp2` and
+  `system_kontron-albl-imx8mm`. See
+  [`fwup.conf`](./fwup.conf) and
+  [`fwup_include/fwup-common.conf`](./fwup_include/fwup-common.conf).
+- **The `grisp_alloy` toolchain**. Nerves downloads a prebuilt
+  `nerves_toolchain_armv6_nerves_linux_gnueabihf` from their GitHub
+  releases. We build our own `armv6-unknown-linux-gnueabihf`
+  toolchain via [crosstool-NG](https://crosstool-ng.github.io/) in
+  [`build-toolchain.sh`](../build-toolchain.sh); see
+  [`toolchain/configs/rpi0w_linux_*_defconfig`](../toolchain/configs/).
+- **GRiSP OTP runtime integration**. Our Erlang/OTP is built from
+  Buildroot with the runtime hooks the grisp_runtime / grisp NIF
+  stack expects. Nerves layers their own `nerves_runtime` +
+  `shoehorn` on top of vanilla OTP instead; different integration
+  surface.
+- **USB-OTG CDC-ACM console on `ttyGS0`** as the primary BEAM
+  prompt, with hardware UART on `ttyAMA0` as the optional
+  debug-only fallback. Nerves exposes their rpi0 over a USB
+  ethernet gadget (`g_ether` / CDC-ECM, `CONFIG_USB_ETH=y`), which
+  is a different UX choice: serial-over-USB lets you drive the
+  BEAM with just `picocom`, no host network config.
+
+Everything else (the kernel `.defconfig` in `linux/`, the specific
+`fwup.conf` idioms for tryboot + autoboot.txt, the Broadcom Wi-Fi
+firmware package choice, the `miniuart-bt` overlay to keep PL011
+free) is from Nerves and we pull their patterns forward.
 
 ### Also standing on the shoulders of
 

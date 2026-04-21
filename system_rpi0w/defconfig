@@ -40,12 +40,14 @@ BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://github.com/raspberrypi/linux/archive/refs/tags/stable_20250916.tar.gz"
 
-# Base config: upstream RPi `bcmrpi_defconfig` (ARMv6 family: Pi 1 / Zero / Zero W).
-# Already enables BCM2835 MMC, BRCMFMAC, USB_DWC2, SQUASHFS+XZ, EXT4, F2FS.
-# The fragment below adds ramoops, forces squashfs builtin, etc.
-BR2_LINUX_KERNEL_USE_DEFCONFIG=y
-BR2_LINUX_KERNEL_DEFCONFIG="bcmrpi"
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="${GRISP_TARGET_SYSTEM_DIR}/linux/linux.fragment"
+# Full custom kernel defconfig, following the same convention as
+# system_grisp2 and system_kontron-albl-imx8mm. See
+# system_rpi0w/linux/linux-6.12.defconfig for the config itself and
+# docs/porting-notes.md for why we moved away from the bcmrpi_defconfig +
+# fragment approach (short version: merge_config.sh can't override
+# Kconfig `choice` groups like MODULE_COMPRESS_*).
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="${GRISP_TARGET_SYSTEM_DIR}/linux/linux-6.12.defconfig"
 
 BR2_LINUX_KERNEL_XZ=y
 BR2_LINUX_KERNEL_DTS_SUPPORT=y

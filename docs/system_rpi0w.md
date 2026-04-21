@@ -343,7 +343,7 @@ flowchart LR
         S[build-sdk.sh rpi0w]
         BR[Buildroot 2025.05]
         DCF[system_rpi0w/defconfig<br/>+ system_common/defconfig]
-        KFR[linux/linux.fragment<br/>on bcmrpi_defconfig]
+        KFR[linux/linux-6.12.defconfig<br/>full custom kernel config]
         SDKBIN["/opt/grisp_alloy_sdk/&lt;host&gt;/rpi0w/&lt;ver&gt;/images/<br/>zImage + DTBs + rpi-firmware/* + rootfs.squashfs"]
         TCBIN --> S
         S --> BR
@@ -374,7 +374,7 @@ Script responsibilities:
 | Script                 | Input                                                                         | Output                                               | rpi0w-specific notes                                                                                                                                       |
 | ---------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `build-toolchain.sh`   | `toolchain/configs/rpi0w_linux_{x86_64,aarch64}_defconfig`                    | `grisp_toolchain_armv6_*` tar.xz in `artefacts/`     | On non-Linux hosts, self-hoists into Vagrant; no darwin defconfig.                                                                                         |
-| `build-sdk.sh`         | `system_rpi0w/defconfig` + `system_common/defconfig` + `linux/linux.fragment` | Kernel + DTBs + `rpi-firmware/*` + `rootfs.squashfs` | Sources `crucible.sh` after SDK install for `BOOTSCHEME`, `SQUASHFS_PRIORITIES`, etc.                                                                      |
+| `build-sdk.sh`         | `system_rpi0w/defconfig` + `system_common/defconfig` + `linux/linux-6.12.defconfig` | Kernel + DTBs + `rpi-firmware/*` + `rootfs.squashfs` | Sources `crucible.sh` after SDK install for `BOOTSCHEME`, `SQUASHFS_PRIORITIES`, etc.                                                                |
 | `build-project.sh`     | Sample or user project                                                        | `.tgz` with release bundle                           | `PROJECT_TARGET_NAME=rpi0w`.                                                                                                                               |
 | `build-firmware.sh -i` | `.tgz` + `fwup.conf` + staged boot files                                      | `.fw` + `.img`                                       | `post-build.sh` stages `fwup_include/` + `config.txt` + `cmdline-{a,b}.txt` + `autoboot-{a,b}.txt` into `$BINARIES_DIR` so `fwup.conf` host-paths resolve. |
 | `build-firmware.sh -u` | Same                                                                          | `.tar` update package                                | Needs `BOOTSCHEME=RPI` plugin; not wired up yet.                                                                                                           |
@@ -401,9 +401,9 @@ system_rpi0w/
 │   ├── fwup-common.conf             partition offsets/counts + uboot-env block
 │   └── provisioning.conf            empty include stub
 ├── linux/
-│   └── linux.fragment               kernel config overlay on bcmrpi_defconfig
-│                                    (squashfs/ext4 builtin; brcmfmac + cfg80211/mac80211 builtin;
-│                                     BT_HCIUART + BT_HCIUART_BCM builtin; PSTORE_RAM)
+│   └── linux-6.12.defconfig         full custom kernel defconfig (Kontron idiom; seeded from Nerves' rpi0)
+│                                    (no MODULE_COMPRESS; brcmfmac + BT stack + hci_uart_bcm as =m;
+│                                     USB gadget chain =y; SQUASHFS_XZ/ZLIB; PSTORE_RAM; SERIAL_DEV_BUS)
 └── rootfs_overlay/
     ├── etc/
     │   ├── erlinit.config           -c ttyGS0, --pre-run-exec rngd + peripherals-init.sh,
@@ -428,8 +428,8 @@ toolchain/configs/
 | Firmware image (`.fw` / `.img`) with full alloy task set     | Built + flashed; `hello_grisp` boots to BEAM prompt on `ttyGS0`                                                                                                 |
 | USB-OTG CDC-ACM serial console (`ttyGS0`)                    | Working                                                                                                                                                         |
 | Ramoops / pstore                                             | Overlay staged, `CONFIG_PSTORE_RAM=y`, pstore mounted by `peripherals-init.sh`; warm-reboot capture not yet end-to-end validated on hardware                    |
-| Wi-Fi (BCM43430)                                             | Firmware package + `brcmfmac` builtin + `wpa_supplicant` + `iw` shipped; association not yet validated on hardware                                              |
-| Bluetooth (BCM43438)                                         | Firmware `.hcd` + `BT_HCIUART_BCM` builtin + `bluez5_utils` + `btattach` bring-up shipped; HCI association not yet validated on hardware                        |
+| Wi-Fi (BCM43430)                                             | `brcmfmac` module loaded at boot via `peripherals-init.sh`, firmware blobs present, `wlan0` up with correct MAC; association with an AP not yet validated       |
+| Bluetooth (BCM43438)                                         | `hci_uart` + `btbcm` + `bluetooth` modules loaded at boot, patchram `BCM43430A1.hcd` applied, `hci0` up; pairing / LE scan not yet validated                    |
 | A/B update lifecycle (upgrade / validate / rollback)         | `fwup` task set implemented; tryboot + validate + rollback paths not yet exercised end-to-end on hardware                                                       |
 | Update package (`BOOTSCHEME=RPI` plugin + `ops.fw` + `.tar`) | Not started                                                                                                                                                     |
 
