@@ -106,6 +106,29 @@ sticky.
 No ethernet gadget (`g_ether` / composite CDC-ECM) is configured; USB
 provides serial only.
 
+## What's enabled and what's pending
+
+See [`../docs/system_rpi0w.md` §8 Status](../docs/system_rpi0w.md#8-status)
+for the full peripheral-by-peripheral breakdown (build + boot, on-board
+peripherals, GPIO header, camera / display, networking). Short version:
+
+- **Working, tested on hardware**: USB-OTG CDC-ACM console, PL011 UART,
+  MicroSD / SDHCI, Wi-Fi (`wlan0` up), Bluetooth (`hci0` up), pstore /
+  ramoops, ACT LED heartbeat.
+- **Kernel ready, userspace gaps**: GPIO chardev (`libgpiod` not shipped),
+  I2C (`i2c-tools` not shipped), SPI, 1-wire, PWM, I2S audio, watchdog,
+  WireGuard, hardware RNG (no `rngd` wired up).
+- **Opt-in**: CSI camera stack (sensor drivers compiled, userspace
+  `libcamera` / `v4l-utils` not shipped by default), DSI touchscreen
+  panel overlay (kernel ready, overlay not enabled in `config.txt`).
+- **Not in scope**: USB Ethernet gadget (we deliberately chose CDC-ACM
+  serial on the OTG port), USB host mode, HDMI console.
+
+The user-visible A/B update lifecycle (`upgrade.*`, `validate.*`,
+`rollback.*`) is wired into `fwup.conf` but has not yet been exercised
+end-to-end on real hardware; no GRiSP-Alloy update-package emitter
+(`BOOTSCHEME=RPI`) exists yet either.
+
 ## Peripherals brought up before the BEAM
 
 [`rootfs_overlay/sbin/peripherals-init.sh`](./rootfs_overlay/sbin/peripherals-init.sh)

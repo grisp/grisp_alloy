@@ -420,18 +420,75 @@ toolchain/configs/
 
 ## 8. Status
 
+Legend for the tables below:
+
+- **Working**: driver is compiled, loads at boot, and has been exercised
+  end-to-end on real hardware during bring-up.
+- **Kernel ready**: driver is compiled and should load, but we haven't
+  run the peripheral through a real test on the board. Safe default
+  assumption: it would work, but don't treat it as contract.
+- **Opt-in**: kernel support present, userspace packages or config
+  changes required to actually use it; left off by default because
+  it's not in GRiSP's usual deployment profile.
+- **Not in scope**: intentionally not configured for this target;
+  noted so readers don't wonder why it's missing.
+
+### 8.1 Build + boot
+
 | Area                                                         | State                                                                                                                                                           |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Scaffolding + toolchain config                               | Files shipped                                                                                                                                                   |
 | ARMv6 crosstool-NG toolchain                                 | Built + cached                                                                                                                                                  |
 | Minimal SDK (Linux kernel + rootfs.squashfs)                 | Built                                                                                                                                                           |
 | Firmware image (`.fw` / `.img`) with full alloy task set     | Built + flashed; `hello_grisp` boots to BEAM prompt on `ttyGS0`                                                                                                 |
-| USB-OTG CDC-ACM serial console (`ttyGS0`)                    | Working                                                                                                                                                         |
-| Ramoops / pstore                                             | Overlay staged, `CONFIG_PSTORE_RAM=y`, pstore mounted by `peripherals-init.sh`; warm-reboot capture not yet end-to-end validated on hardware                    |
-| Wi-Fi (BCM43430)                                             | `brcmfmac` module loaded at boot via `peripherals-init.sh`, firmware blobs present, `wlan0` up with correct MAC; association with an AP not yet validated       |
-| Bluetooth (BCM43438)                                         | `hci_uart` + `btbcm` + `bluetooth` modules loaded at boot, patchram `BCM43430A1.hcd` applied, `hci0` up; pairing / LE scan not yet validated                    |
-| A/B update lifecycle (upgrade / validate / rollback)         | `fwup` task set implemented; tryboot + validate + rollback paths not yet exercised end-to-end on hardware                                                       |
+| A/B update lifecycle (upgrade / validate / rollback)         | Kernel ready: `fwup` task set implemented; tryboot + validate + rollback paths not yet exercised end-to-end on hardware                                         |
 | Update package (`BOOTSCHEME=RPI` plugin + `ops.fw` + `.tar`) | Not started                                                                                                                                                     |
+
+### 8.2 On-board peripherals
+
+| Peripheral               | State          | Notes                                                                                                                                                           |
+| ------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| USB-OTG CDC-ACM console  | Working        | `g_serial` built-in, `ttyGS0` is the BEAM prompt via `erlinit -c ttyGS0`. `/dev/tty.usbmodem*` on macOS host.                                                   |
+| PL011 UART (`ttyAMA0`)   | Working        | Also on `cmdline-*.txt console=`, so kernel messages reach it even when the BEAM drives `ttyGS0`. PL011 kept free of BT via `dtoverlay=miniuart-bt`.            |
+| MicroSD / SDHCI          | Working        | Boots from it on every flash; no further validation needed.                                                                                                     |
+| Wi-Fi (BCM43430, SDIO)   | Working        | `brcmfmac` + deps modprobed by `peripherals-init.sh`, `wlan0` up with Broadcom MAC, firmware `7.45.98 (TOB)` loaded. AP association not yet validated; `wpa_supplicant` and `iw` are in the rootfs but no config plumbing. |
+| Bluetooth (BCM43438)     | Working        | `hci_uart` + `btbcm` + `bluetooth` loaded, `BCM43430A1.hcd` patchram applied via miniuart serdev, `hci0` up. Pairing / LE scan not yet validated; `bluez5_utils` present. |
+| Ramoops / pstore         | Working        | `CONFIG_PSTORE_RAM=y`, overlay staged, mounted on `/sys/fs/pstore` by `peripherals-init.sh`. Warm-reboot capture not yet stress-tested across a forced panic.   |
+| Hardware RNG             | Kernel ready   | `CONFIG_HW_RANDOM=y`, `/dev/hwrng` present. No `rngd` or equivalent seeding configured.                                                                         |
+| Thermal sensor           | Kernel ready   | `CONFIG_BCM2835_THERMAL=y`; `/sys/class/thermal/thermal_zone0/temp` reads.                                                                                      |
+| Watchdog                 | Kernel ready   | `CONFIG_BCM2835_WDT=y`, `CONFIG_WATCHDOG_NOWAYOUT=y`; no userspace petting configured.                                                                          |
+| ACT LED                  | Working        | `dtparam=act_led_trigger=heartbeat` in `config.txt`.                                                                                                            |
+
+### 8.3 GPIO header (40-pin)
+
+| Feature                   | State          | Notes                                                                                                                                                           |
+| ------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GPIO (chardev, `/dev/gpiochip*`) | Kernel ready   | `gpio-bcm-virt` + `raspberrypi-gpiomem` drivers compiled. `libgpiod` userspace **not** shipped yet.                                                      |
+| I2C on GPIO2/3            | Kernel ready   | `dtparam=i2c_arm=on`, `i2c-bcm2835` + `i2c-dev`; `/dev/i2c-1` at boot. `i2c-tools` userspace not shipped.                                                       |
+| SPI on GPIO7-11           | Kernel ready   | `dtparam=spi=on`, `spi-bcm2835` + `spidev`; `/dev/spidev0.*` at boot. No userspace test tool shipped.                                                           |
+| 1-wire on GPIO            | Kernel ready   | `w1-gpio`, `w1-therm` (DS18B20) as modules.                                                                                                                     |
+| PWM                       | Kernel ready   | `pwm-bcm2835` as module.                                                                                                                                        |
+| I2S audio                 | Kernel ready   | `snd-bcm2835-i2s` + HifiBerry / GoogleVoiceHat cards as modules; no ALSA userspace shipped.                                                                     |
+
+### 8.4 Camera and display
+
+| Feature                   | State     | Notes                                                                                                                                                           |
+| ------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CSI camera (IMX219, OV5647, IMX477, IMX708, IMX296) | Opt-in    | All sensor drivers compiled as modules, `camera_auto_detect=1` in `config.txt`, `UNICAM_LEGACY` + `pisp-be` bridge modules present. Userspace (libcamera / rpicam-apps / v4l-utils / media-ctl) **not** shipped; add `BR2_PACKAGE_LIBCAMERA=y` + `BR2_PACKAGE_V4L_UTILS=y` + `BR2_PACKAGE_MEDIA_CTL=y` to `system_rpi0w/defconfig` if you need it. |
+| DSI touchscreen panel     | Opt-in    | `DRM_PANEL_RASPBERRYPI_TOUCHSCREEN` + `TOUCHSCREEN_RASPBERRYPI_FW` compiled; DT overlay is not enabled in `config.txt`.                                         |
+| DRM / VideoCore IV        | Kernel ready | `DRM_VC4` as module, `FB_BCM2708` built-in. No framebuffer console wired up (headless by design).                                                            |
+| Mini-HDMI out             | Kernel ready | Would light up with a monitor attached, but no TTY / console is routed to the framebuffer.                                                                      |
+| BCM2835 audio (HDMI / analog) | Kernel ready | `SND_BCM2835` compiled; no ALSA userspace, no default audio routing.                                                                                        |
+
+### 8.5 Networking
+
+| Feature                   | State          | Notes                                                                                                                                                           |
+| ------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wi-Fi STA (`wlan0`)       | Kernel ready   | Driver + firmware working (see 8.2). `wpa_supplicant` is in the rootfs; no automated config story yet.                                                          |
+| WireGuard                 | Kernel ready   | `CONFIG_WIREGUARD=m`. `wireguard-tools` userspace **not** shipped.                                                                                              |
+| TUN/TAP                   | Kernel ready   | `CONFIG_TUN=m`.                                                                                                                                                 |
+| USB Ethernet gadget       | Not in scope   | We chose CDC-ACM serial on the OTG port instead. Adding `g_ether` + dual-function `libcomposite` config is a future option if needed.                           |
+| USB host mode             | Not in scope   | The Zero W has a single OTG port which we're using as peripheral. Wired host-mode would require an OTG Y-cable and additional HCI drivers.                     |
 
 ## 9. References
 
