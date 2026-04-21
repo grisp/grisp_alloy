@@ -25,18 +25,24 @@ Backlog policy:
 - Prefer one task per commit whenever feasible.
 - Every task commit should include tests.
 - If design changes, update design docs in the same commit.
+- If feedback reveals a durable workflow/process improvement, record it in the
+  owning repository workflow/agent/planning docs instead of relying on
+  conversational memory.
 
 Cross-repository development note:
 - Daily development starts from the `grisp_alloy` repository root, even when
   the implementation task is owned by the `smelterl/` submodule.
-- Work that touches both repositories must be represented as linked
-  repo-local tasks, not one implicit cross-repo task with no owner.
+- Work that makes substantive changes in both repositories must be represented
+  as linked repo-local tasks, not one implicit cross-repo task with no owner.
 - Keep only one task marked `[IN_PROGRESS]` at a time across the active
   planning files; complete the currently edited repository task first, then
   move the linked follow-up task to `[IN_PROGRESS]`.
-- When `smelterl/` changes are required, commit in `smelterl/` first. Then
-  complete the linked `grisp_alloy` task that records the new submodule commit
-  and any Alloy-side code/documentation updates.
+- Smelterl-only implementation work does not need an immediate `grisp_alloy`
+  task when the only later Alloy-side change is a batched submodule-pointer
+  sync.
+- When development returns to `grisp_alloy`, one later sync task/commit may
+  batch multiple completed Smelterl commits if the Alloy-side change is only
+  the submodule pointer plus any related planning/changelog updates.
 
 ## Phase 1: CLI and Shared Utilities
 

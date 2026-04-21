@@ -8,6 +8,19 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated the repository `smelterl` submodule to include the latest
+  plan/generate pipeline work through `smelterl: finalize review fixes for
+  generate outputs`, bringing in packaged-escript `priv/` embedding,
+  Alloy-specific legal export support, Buildroot path/manifest legal-path
+  fixes, and expanded Smelterl generate/plan validation coverage.
+- Refined the Alloy-side multi-repository workflow documentation so
+  Smelterl-owned work can defer a pure `grisp_alloy` submodule-pointer sync
+  until later batched synchronization, while still requiring linked
+  repo-local tasks for substantive cross-repository changes.
+- Refined `AGENTS.md`, `docs/WORKFLOW.md`, and `docs/PLANNING.md` to require
+  durable process improvements discovered in review or implementation to be
+  codified in repository docs instead of being left only in conversation or
+  task-local notes.
 - Switched the repository `smelterl` dependency to an HTTPS Git submodule
   bootstrap flow and updated `alloy build sdk` to fail fast with explicit
   checkout/init guidance instead of assuming a local embedded Smelterl tree.

@@ -47,6 +47,13 @@ Goals:
   - after each completed task, refine future planning items with newly
     discovered constraints/notes so critical implementation details are not
     forgotten.
+- Process self-refinement:
+  - when human feedback, reviewer feedback, or agent experience reveals a
+    durable process improvement, ambiguity, or recurring failure mode, codify
+    it in the owning repository documentation instead of leaving it only in
+    chat or task-local memory,
+  - update `AGENTS.md`, `docs/WORKFLOW.md`, and/or planning notes in the
+    owning repository according to the scope of the improvement.
 - Repository-local ownership:
   - in a multi-repository checkout, work is tracked per repository, even when
     development starts from one superproject root.
@@ -62,8 +69,14 @@ Ownership rules:
   shared workflow, and Alloy-owned design/docs.
 - `smelterl/` planning/workflow/history/changelog cover Smelterl
   implementation, tests, and Smelterl-owned planning/history.
-- A user request that touches both repositories must be represented as linked
-  repo-local tasks, not as one unowned cross-repo change.
+- A user request that makes substantive changes in both repositories must be
+  represented as linked repo-local tasks, not as one unowned cross-repo
+  change.
+- A Smelterl-only implementation task does not require an immediate
+  `grisp_alloy` planning task when the only eventual Alloy-side change is a
+  later submodule-pointer sync.
+- Pure submodule-pointer sync work in `grisp_alloy` may batch multiple already
+  completed Smelterl commits into one later Alloy task/commit.
 
 Execution rules for linked tasks:
 - Keep only one task marked `[IN_PROGRESS]` at a time across the active
@@ -71,9 +84,12 @@ Execution rules for linked tasks:
 - Start with the repository that owns the current implementation change.
 - If `smelterl/` changes are required, complete and commit the Smelterl task
   first.
-- After the Smelterl commit exists, move the linked `grisp_alloy` follow-up
-  task to `[IN_PROGRESS]`, update the submodule pointer plus any Alloy-side
-  code/docs/tests, and commit in `grisp_alloy`.
+- Create or move a `grisp_alloy` follow-up task to `[IN_PROGRESS]` only when
+  the superproject is actually being changed:
+  - immediately, when Alloy-side code/docs/tests also change as part of the
+    same overall feature/fix,
+  - later, when development returns to `grisp_alloy` and a batched submodule
+    sync commit is being prepared.
 - A cross-repository feature/fix is not fully complete until every touched
   repository task is done and `grisp_alloy` records the final Smelterl
   submodule commit.
@@ -97,6 +113,8 @@ Standalone Smelterl note:
   submodule-pointer update, shared-doc update, or orchestration change must
   call out that downstream follow-up explicitly in planning/history/completion
   reporting instead of silently treating the Smelterl commit as the whole job.
+- That downstream follow-up does not need an immediate `grisp_alloy` planning
+  task if the superproject will be synchronized later in one batched commit.
 
 ## Task Status Convention
 
@@ -136,9 +154,11 @@ For every task, execute these steps in order.
 
 2. Select task and mark it `[IN_PROGRESS]` in the current planning file.
    - If the task is Smelterl-owned, use `smelterl/docs/PLANNING.md` instead.
-   - If the request spans both repositories, split it into linked repo-local
-     tasks and mark only the currently edited repository task
-     `[IN_PROGRESS]`.
+   - If the request makes substantive changes in both repositories, split it
+     into linked repo-local tasks and mark only the currently edited
+     repository task `[IN_PROGRESS]`.
+   - Do not create a `grisp_alloy` task yet when the only expected Alloy-side
+     work is a future submodule-pointer sync that will be batched later.
 
 3. Perform focused investigation.
    - Deep-read relevant design sections for the selected task.
@@ -206,11 +226,29 @@ For every task, execute these steps in order.
      - objective/outcome,
      - key decisions and rationale,
      - unexpected issues/divergences and resolution,
-     - concise validation evidence and residual risks.
+     - residual risks or intentionally deferred follow-up.
+   - Keep the file future-facing:
+     - write for a later reviewer/agent who was not present during the task,
+     - prefer problem/constraint/decision context over process narration,
+     - include a note only if it will still matter after the commit already
+       exists and the local working session is gone.
+   - Treat the standard workflow as implicit:
+     - do not restate mandatory process steps just because they happened,
+     - record process details only when the task deviated from the workflow,
+       when a step failed/was blocked, or when a validation result explained a
+       design or implementation decision.
+     - successful execution of the normal required validation commands is not,
+       by itself, durable history-file content.
    - Write sections from the final-state perspective of the commit.
      Do not describe within-task intermediate versions unless an unexpected
      issue materially affected the final design, tests, or risks.
    - Avoid chronological transcripts and low-signal planning leftovers.
+   - Exclude local or ephemeral workflow state from the history file, for
+     example:
+     - reminders that a human still needs to create a signed commit,
+     - notes that a commit message file was prepared or changes were staged,
+     - statements that only describe the current checkout state rather than the
+       durable engineering context of the task.
 
 12. Finalize records and commit preparation.
    - Update the current changelog using Keep a Changelog:
@@ -224,7 +262,10 @@ For every task, execute these steps in order.
      unless that process change is itself part of the task outcome.
    - Commit-message content MUST NOT include acceptance criteria or validation
      logs (for example: `tests: ...`, gate names, PASS/FAIL statements).
-     Validation evidence belongs in task context and completion reporting.
+     Validation evidence belongs in completion reporting and in task context
+     only when it adds durable information beyond the expected workflow
+     (for example a task-specific gap, failure, deviation, or result that
+     explains a design/debugging decision).
    - If the repository or user workflow requires signed commits, the agent MUST
      stop after preparing the current commit-message file, the staged changes,
      and the completion report, then ask the human manager to run the signed
@@ -234,8 +275,9 @@ For every task, execute these steps in order.
    - In cross-repository work, apply this per repository:
      - prepare and complete the Smelterl repository commit first when
        `smelterl/` changed,
-     - then prepare and complete the `grisp_alloy` commit that records the new
-       submodule pointer and any Alloy-side changes.
+     - prepare and complete the `grisp_alloy` commit only when the superproject
+       is actually being changed; that commit may batch multiple completed
+       Smelterl commits when it only records a submodule-pointer sync.
    - MUST commit using the current commit-message file.
    - Example resolution:
      `COMMIT_MSG_FILE="$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`
@@ -253,6 +295,9 @@ For every task, execute these steps in order.
 13. Refine future planning items.
    - Review the current planning file and update relevant future tasks with
      implementation knowledge discovered in the completed task.
+   - If the task or its review surfaced a durable workflow/process correction,
+     update the owning repository workflow/agent/planning docs in the same
+     overall task or record a linked follow-up task explicitly.
    - Scope is flexible: update any future task that benefits from the
      refinement, not only immediately next tasks.
    - Allowed without extra approval:
@@ -276,8 +321,7 @@ For every task, execute these steps in order.
    - For cross-repository work, also include:
      - which repository task(s) were completed,
      - whether the Smelterl commit already exists,
-     - whether the `grisp_alloy` submodule-pointer follow-up commit is still
-       pending.
+     - whether a later `grisp_alloy` sync commit is still pending.
 
 ## Definition of Done (Per Task)
 
@@ -300,6 +344,12 @@ For linked cross-repository work, the overall user request is DONE only when:
 - each touched repository task meets the definition of done in its own repo,
 - the Smelterl commit exists before the `grisp_alloy` submodule-pointer commit,
 - the `grisp_alloy` repository records the final `smelterl/` submodule commit.
+
+For Smelterl-only development that intentionally defers superproject sync:
+- the Smelterl task may be DONE in `smelterl/` without an immediate
+  `grisp_alloy` task,
+- the completion report must call out that a later batched `grisp_alloy`
+  synchronization commit is still pending.
 
 ## Commit Quality Policy
 
@@ -335,6 +385,8 @@ Before finalizing a task:
   - refine relevant future tasks in the current planning file based on
     discovered implementation constraints (or explicitly record `None` in task
     context),
+  - codify durable workflow/process improvements in the owning repository docs
+    instead of leaving them only in conversational feedback,
 - commit preparation:
   - the current commit-message file exists, is non-empty, and reflects the
     current task,
@@ -343,7 +395,8 @@ Before finalizing a task:
 - context history quality:
   - task id is present and matches the current planning file,
   - filename is prefixed with UTC timestamp for deterministic ordering,
-  - context includes decisions/rationale/test evidence,
+  - context includes decisions/rationale and any task-specific validation or
+    exception context that materially helps later review,
   - context and changelog describe final commit state (not implementation
     churn within the same task),
   - context excludes low-value noise (full terminal transcripts, duplicated diffs).
@@ -355,7 +408,8 @@ Include (high signal):
 - before/after behavior and scope boundaries,
 - key decisions with rationale and tradeoffs,
 - design deltas with exact section references,
-- baseline and final validation evidence,
+- task-specific validation findings, gaps, or risk-relevant focused coverage
+  when they materially explain confidence or remaining uncertainty,
 - residual risks and follow-up items.
 
 Exclude (noise):
@@ -367,6 +421,14 @@ Exclude (noise):
   git dir instead).
 - within-task rewrites described as change-chains (`A -> B -> C`) when only the
   final result matters.
+- confirmations that standard required process steps occurred normally
+  (for example: baseline ran, full suite ran, changelog updated) when those
+  facts add no task-specific information.
+- local workflow reminders or session-state notes that expire immediately
+  after completion (for example: "signed commit still needs to be run",
+  "changes are staged", "submodule bump still pending" when that fact is only
+  relevant to the current release bookkeeping rather than the task's technical
+  context).
 
 Rule of thumb:
 - if a detail does not help future review, regression investigation, or safe
@@ -397,12 +459,21 @@ Every context file using this format must contain at least:
    - implementation choices and rationale.
 7. `## Unexpected Issues And Resolution`
    - only divergences, failures, or ambiguities that affected implementation.
-8. `## Validation Evidence`
-   - concise baseline/final command evidence and outcomes.
+8. `## Validation Notes` (optional)
+   - include only deviations from the standard validation process, task-specific
+     focused coverage that explains the main risk, or meaningful verification
+     gaps/limitations.
+   - do not use this section to list the routine successful validation commands
+     already required by the workflow.
+   - omit this section entirely when validation followed the normal workflow
+     and produced no task-specific insight worth carrying forward.
 9. `## Design Changes`
    - `None` or approved changes + rationale + decision link/summary.
 10. `## Residual Risks / Follow-ups`
-    - what remains uncertain or intentionally deferred.
+    - only durable technical uncertainty, intentionally deferred engineering
+      work, or future design/implementation follow-up.
+    - do not use this section for local process reminders, commit/signing
+      status, staging status, or temporary superproject bookkeeping.
 11. `## Changed Artifacts`
     - concise list of touched files/areas by purpose.
 12. `## Completion Summary`

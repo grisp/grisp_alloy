@@ -22,12 +22,18 @@ Use this read order before implementation:
      corresponding Smelterl task.
 5. Read `scripts/tests/README.md` before touching shell tests or validation gates.
 6. Mark exactly one repo-local task as `[IN_PROGRESS]` before code edits.
-   - For cross-repository work, split it into linked repo-local tasks and keep
-     only the currently edited repository task `[IN_PROGRESS]`.
+   - For work that makes substantive changes in multiple repositories, split it
+     into linked repo-local tasks and keep only the currently edited
+     repository task `[IN_PROGRESS]`.
+   - Do not create a `grisp_alloy` task yet when the only later Alloy-side
+     work is a batched submodule-pointer sync.
    - If the requested work is not represented in the owning repository
      planning file, add it there first.
 
 Treat the design docs and workflow doc as authoritative. If implementation and docs disagree, do not guess; identify the gap and resolve it deliberately.
+When durable human or agent feedback improves the development process, codify
+that improvement in the owning repository `AGENTS.md`, `docs/WORKFLOW.md`,
+and/or planning notes instead of leaving it only in conversation.
 
 ## Project Role
 
@@ -54,7 +60,9 @@ Primary goal: preserve deterministic, reproducible, secure SDK, project, and fir
   repository.
 - Development still starts from the `grisp_alloy` root checkout. A Smelterl
   task may require a later `grisp_alloy` follow-up task/commit so the updated
-  submodule commit, shared docs, or orchestration changes are recorded here.
+  submodule commit, shared docs, or orchestration changes are recorded here,
+  but a pure submodule-pointer sync may be batched until development returns to
+  `grisp_alloy`.
 - When implementing backlog tasks, align behavior and user-facing semantics
   with the design docs, but validate against the current repository state and
   existing tests before changing behavior.
@@ -120,9 +128,12 @@ Follow `docs/WORKFLOW.md` exactly:
 
 1. Select the owning repository task from the relevant planning file and mark
    only that task `[IN_PROGRESS]`.
-   - If the work spans `smelterl/` and `grisp_alloy`, use linked repo-local
-     tasks and move the follow-up task to `[IN_PROGRESS]` only after the
-     current repository task is complete.
+   - If the work makes substantive changes in `smelterl/` and `grisp_alloy`,
+     use linked repo-local tasks and move the follow-up task to
+     `[IN_PROGRESS]` only after the current repository task is complete.
+   - If the only later Alloy-side change is a batched submodule-pointer sync,
+     keep the active task in `smelterl/` only and record the deferred sync in
+     completion reporting/history instead of creating an immediate Alloy task.
 2. Create the history file in the current repository:
    `history/<YYYYMMDDTHHMMSSZ>__task-<task-id>__<short-description>.md`.
 3. Run baseline tests before coding. If baseline fails, stop and report it before making changes.
@@ -133,9 +144,9 @@ Follow `docs/WORKFLOW.md` exactly:
 8. Write the current repository commit message file at
    `$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG` and commit with
    `git commit -F "$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`.
-   - If `smelterl/` changed, commit there first. Then complete the linked
-     `grisp_alloy` follow-up task that records the new submodule commit and
-     any Alloy-side updates.
+   - If `smelterl/` changed, commit there first. Prepare a `grisp_alloy`
+     follow-up task only when the superproject is actually being changed; a
+     pure submodule-pointer sync may be deferred and batched.
 9. Mark the current repository task done in its planning file.
 10. Refine future planning items with any durable implementation knowledge discovered during the task.
 
