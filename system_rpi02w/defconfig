@@ -1,0 +1,120 @@
+# Target-specific Buildroot overrides for Raspberry Pi Zero 2 W.
+# Appended to system_common/defconfig by build-sdk.sh. Paths use the
+# ${GRISP_*_DIR} placeholders expanded during `make menuconfig` merge.
+
+BR2_ROOTFS_OVERLAY="${GRISP_COMMON_SYSTEM_DIR}/board/grisp-common/rootfs_overlay ${GRISP_TARGET_SYSTEM_DIR}/rootfs_overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="${GRISP_COMMON_SYSTEM_DIR}/board/grisp-common/post-build.sh ${GRISP_TARGET_SYSTEM_DIR}/post-build.sh"
+
+# --- Architecture: ARMv8 (Cortex-A53), 64-bit userspace --------------------
+# (Pi Zero 2 W v1.0 — BCM2710A1.)
+
+BR2_aarch64=y
+BR2_cortex_a53=y
+BR2_TAR_OPTIONS="--no-same-owner"
+
+# --- External toolchain produced by build-toolchain.sh rpi02w --------------
+
+BR2_TOOLCHAIN_EXTERNAL=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
+BR2_TOOLCHAIN_EXTERNAL_DOWNLOAD=y
+BR2_TOOLCHAIN_EXTERNAL_URL="file://${GRISP_TOP_DIR}/artefacts/grisp_toolchain_aarch64_unknown_linux_gnu-0.1.linux-${GRISP_BUILD_HOST_ARCH}.tar.xz"
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="aarch64-unknown-linux-gnu"
+BR2_TOOLCHAIN_EXTERNAL_GCC_13=y
+BR2_TOOLCHAIN_EXTERNAL_HEADERS_6_1=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
+BR2_TOOLCHAIN_EXTERNAL_CXX=y
+# The crosstool-NG toolchain build enables CT_CC_LANG_FORTRAN and
+# CT_CC_GCC_LIBGOMP (see toolchain/configs/rpi02w_linux_*_defconfig). Buildroot
+# inspects the external toolchain and errors out if any supported language
+# advertised by the toolchain is not opted into here -- matches grisp2/kontron.
+BR2_TOOLCHAIN_EXTERNAL_FORTRAN=y
+BR2_TOOLCHAIN_EXTERNAL_OPENMP=y
+# glibc >= 2.32 dropped Sun RPC (tirpc lives in libtirpc now), and
+# Buildroot defaults BR2_TOOLCHAIN_EXTERNAL_INET_RPC=y. The toolchain
+# probe fails unless we explicitly opt out -- matches system_kontron.
+BR2_TOOLCHAIN_EXTERNAL_INET_RPC=n
+
+# --- Linux kernel: RPi downstream tag stable_20250916 (6.12) ---------------
+
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://github.com/raspberrypi/linux/archive/refs/tags/stable_20250916.tar.gz"
+
+# Full custom kernel defconfig, following the same convention as
+# system_grisp2 and system_kontron-albl-imx8mm. See
+# system_rpi02w/linux/linux-6.12.defconfig for the config itself and
+# docs/porting-notes.md for why we moved away from the bcmrpi_defconfig +
+# fragment approach (short version: merge_config.sh can't override
+# Kconfig `choice` groups like MODULE_COMPRESS_*).
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="${GRISP_TARGET_SYSTEM_DIR}/linux/linux-6.12.defconfig"
+
+BR2_LINUX_KERNEL_IMAGE=y
+BR2_LINUX_KERNEL_XZ=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2710-rpi-zero-2-w"
+# Keep BR2_LINUX_KERNEL_INSTALL_TARGET=n from system_common/defconfig:12.
+# fwup reads zImage and DTBs from $BINARIES_DIR directly.
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+
+# No bootloader (no BR2_TARGET_BAREBOX*, no BR2_TARGET_UBOOT*).
+# VideoCore GPU firmware loads the kernel directly via config.txt.
+
+# --- RPi firmware (GPU blobs + DT overlays) --------------------------------
+
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_CUSTOM_VERSION=y
+BR2_PACKAGE_RPI_FIRMWARE_CUSTOM_VERSION_VALUE="1.20250915"
+BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI_X=y
+
+# --- Wi-Fi (BCM43430) + wpa_supplicant -------------------------------------
+# brcmfmac_sdio-firmware-rpi is the LibreELEC-sourced package that ships the
+# Broadcom firmware + the Pi-specific NVRAM txt files under /lib/firmware/brcm
+# (e.g. brcmfmac43430-sdio.bin, brcmfmac43430-sdio.clm_blob, and
+# brcmfmac43430-sdio.raspberrypi,model-zero-w.txt). BR2_PACKAGE_..._WIFI also
+# installs the per-board NVRAM for Pi Zero 2 W. _BT pulls in the BlueZ-format
+# .hcd needed to load the onboard BCM43438 BT controller over UART.
+# Package choice follows nerves_system_rpi0's nerves_defconfig.
+
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_WIFI=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_BT=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_AP_SUPPORT=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
+BR2_PACKAGE_WPA_SUPPLICANT_CTRL_IFACE=y
+# wpa_cli ships by default with wpa_supplicant in Buildroot, but keep this
+# explicit so a later Kconfig change upstream doesn't quietly drop it.
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+# `iw` provides `iw dev` / `iw scan` for bring-up diagnostics (separate
+# tool from the unrelated `iwd` daemon, which we do NOT ship).
+BR2_PACKAGE_IW=y
+
+# --- Bluetooth (BCM43438 over mini-UART) -----------------------------------
+# miniuart-bt overlay (already in config.txt) routes the BT controller to
+# ttyAMA1 at 3 Mbps. btattach (modern) / hciattach (deprecated) then attach a
+# BCM HCI node. bluez5_utils provides the userspace stack + bluetoothctl.
+
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
+BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y
+
+# --- Userspace filesystem tooling ------------------------------------------
+
+BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_DTC=y
+
+# --- Device management + console -------------------------------------------
+
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_TARGET_GENERIC_GETTY_PORT="ttyAMA0"
+
+# --- Debugging aids (mirror system_grisp2:66-68; optional for factory) -----
+
+BR2_PACKAGE_OPENSSH=y
+BR2_TOOLCHAIN_EXTERNAL_GDB_SERVER_COPY=y
+BR2_PACKAGE_STRACE=y

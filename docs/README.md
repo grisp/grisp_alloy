@@ -13,6 +13,8 @@ repo-level [`README.md`](../README.md).
   the Vagrant wrapper fits in on non-Linux hosts.
 - [`porting-notes.md`](./porting-notes.md): short field notebook of
   traps encountered during target bring-up.
+- [`porting-notes-rpi02w.md`](./porting-notes-rpi02w.md): delta notes
+  for porting from `system_rpi0w` to `system_rpi02w`.
 
 ## Index
 
@@ -21,6 +23,7 @@ repo-level [`README.md`](../README.md).
 | `system_grisp2` | Supported | (no design doc yet) |
 | `system_kontron-albl-imx8mm` | Supported | (no design doc yet) |
 | `system_rpi0w` | In development; first-boot working, peripheral bring-up staged, A/B lifecycle not yet exercised on hardware | [`system_rpi0w.md`](./system_rpi0w.md) |
+| `system_rpi02w` | In development; initial target scaffold for Cortex-A53/ARMv8, hardware validation pending | [`system_rpi02w.md`](./system_rpi02w.md) |
 
 ## What a target design doc should cover
 
