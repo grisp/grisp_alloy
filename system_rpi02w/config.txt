@@ -1,0 +1,60 @@
+# Raspberry Pi Zero 2 W firmware config.
+#
+# Read by the VideoCore GPU firmware (start.elf) from the active BOOT-{A,B}
+# partition. Tells the GPU how to load the Linux kernel.
+#
+# Keep this file identical on BOOT-A and BOOT-B unless a slot-specific quirk
+# demands otherwise: fwup's complete / upgrade.* tasks write the same
+# config.txt to both partitions.
+#
+# Several values and the miniuart-bt routing trick follow
+# nerves_system_rpi0/rpi-firmware/config.txt; individual lines are marked
+# "matches nerves_system_rpi0" where the specific choice is non-obvious.
+
+# Keep the same kernel filename convention as Nerves on 64-bit Pi targets.
+kernel=kernel8.img
+arm_64bit=1
+start_file=start.elf
+fixup_file=fixup.dat
+
+disable_splash=1
+
+# Reserve 192 MiB of the 512 MiB SoC for the GPU/framebuffer; leaves ~320
+# MiB for Linux + userland. Tunable; matches nerves_system_rpi0.
+gpu_mem=192
+
+# On-board peripherals exposed to Linux.
+dtparam=i2c_arm=on
+dtparam=spi=on
+dtparam=audio=on
+
+# Enable camera auto-detection for CSI. Safe to leave on even when no camera
+# is connected; the kernel just skips it.
+camera_auto_detect=1
+display_auto_detect=1
+
+# USB OTG / gadget mode for the CDC-ACM serial console on ttyGS0, exposed
+# over the middle micro-USB port. On the host, `picocom -b 115200
+# /dev/tty.usbmodem*` (macOS) or `/dev/ttyACM0` (Linux) lands on the BEAM.
+dtoverlay=dwc2
+
+# Route Bluetooth to the mini-UART and keep PL011 (ttyAMA0) free for the
+# Linux console. Without this, console characters race BT traffic on the
+# same UART.
+enable_uart=1
+dtoverlay=miniuart-bt
+# The VPU clock must be fixed when the mini-UART shares the PLL with BT.
+core_freq=250
+
+# Heartbeat on the green ACT LED so the board shows signs of life without
+# a UART attached.
+dtparam=act_led_activelow=on
+dtparam=act_led_trigger=heartbeat
+
+# Ramoops: reserve a small RAM region for pstore so kernel oopses survive
+# a warm reboot. The upstream RPi kernel already ships overlays/ramoops.dtbo
+# (arch/arm/boot/dts/overlays/ramoops.dtbo); fwup.conf stages it onto
+# BOOT-A/B alongside dwc2 and miniuart-bt. peripherals-init.sh (run by
+# erlinit as --pre-run-exec) mounts pstore at /sys/fs/pstore so
+# `ls /sys/fs/pstore` shows the previous boot's dmesg.
+dtoverlay=ramoops

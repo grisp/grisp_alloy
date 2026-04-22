@@ -35,6 +35,8 @@ Supported targets in this repository:
 
 - `grisp2`
 - `kontron-albl-imx8mm`
+- `rpi0w`
+- `rpi02w`
 
 ## Getting Started
 

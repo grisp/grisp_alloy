@@ -282,6 +282,7 @@ Vagrant.configure('2') do |config|
     config.vm.provision 'file', source: "system_grisp2", destination: "/home/vagrant/system_grisp2"
     config.vm.provision 'file', source: "system_kontron-albl-imx8mm", destination: "/home/vagrant/system_kontron-albl-imx8mm"
     config.vm.provision 'file', source: "system_rpi0w", destination: "/home/vagrant/system_rpi0w"
+    config.vm.provision 'file', source: "system_rpi02w", destination: "/home/vagrant/system_rpi02w"
 
     config.vm.provider :vmware_desktop do |v, override|
         # On MacOS, NFS sometimes freezes, use vmware GHFS instead.
