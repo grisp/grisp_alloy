@@ -24,14 +24,14 @@ from the existing `system_rpi0w` target.
 
 ## Firmware Layout / fwup
 
-- `system_rpi02w/fwup_include/fwup-common.conf` uses Nerves-compatible
-  partition geometry for Pi Zero 2 W:
-  - BOOT-A offset/count: `63 / 38630`
-  - BOOT-B offset/count: `38693 / 38630`
-  - AUTOBOOT offset/count: `77323 / 32749`
-  - ROOTFS-A offset/count: `110080 / 272666`
-  - ROOTFS-B offset/count: `382746 / 272666`
-  - APP offset/count: `655412 / 1048576 (expand)`
+- `system_rpi02w/fwup_include/fwup-common.conf` intentionally mirrors
+  `system_rpi0w` partition geometry to preserve the same A/B update style:
+  - AUTOBOOT offset/count: `2048 / 32768`
+  - BOOT-A offset/count: `34816 / 65536`
+  - BOOT-B offset/count: `100352 / 65536`
+  - ROOTFS-A offset/count: `167936 / 286720`
+  - ROOTFS-B offset/count: `456704 / 286720`
+  - APP offset/count: `745472 / 1048576 (expand)`
 - `fwup.conf` keeps GRiSP A/B state semantics (`upgrade.*`, `validate.*`,
   `rollback.*`, `status.*`) while using Pi `tryboot` behavior via
   `autoboot.txt`.

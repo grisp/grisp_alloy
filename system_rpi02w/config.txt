@@ -43,11 +43,6 @@ dtoverlay=dwc2
 # same UART.
 enable_uart=1
 dtoverlay=miniuart-bt
-# Print second-stage GPU/firmware boot diagnostics to UART (ttyAMA0) so
-# failures before Linux are visible on a 3.3V serial adapter.
-uart_2ndstage=1
-# Enable firmware/device-tree debug traces during boot.
-dtdebug=1
 # The VPU clock must be fixed when the mini-UART shares the PLL with BT.
 core_freq=250
 
