@@ -25,6 +25,11 @@ Options:
   -c, --clean             Remove the existing SDK build directory before setup.
       --clean-package PKG Queue a package-clean request for later Buildroot stages.
   -h, --help              Show this help.
+
+Global options accepted anywhere:
+  -d, -dd, -ddd            Increase debug verbosity.
+      --debug[=N]          Set debug verbosity explicitly.
+      --trace              Enable bash execution tracing.
 EOF
 }
 
@@ -122,6 +127,7 @@ build_sdk_allocate_stage_name() {
     local candidate="${base_name}"
     local suffix=2
     while build_sdk_stage_name_taken "${candidate}"; do
+        log_debug "Stage name '${candidate}' is already used; trying suffix ${suffix}."
         candidate="${base_name}_${suffix}"
         suffix=$((suffix + 1))
     done
@@ -135,6 +141,7 @@ build_sdk_rsync_nugget_repo() {
     local target_dir="$2"
 
     require_command rsync
+    log_debug "Syncing nugget repository ${source_dir} -> ${target_dir}"
     rm -rf "${target_dir}"
     mkdir -p "${target_dir}"
     rsync -a --checksum --delete --exclude '/.git/' \
@@ -147,6 +154,7 @@ build_sdk_write_local_repo_info() {
 
     local provenance
     if provenance="$(vcs_get_provenance "${source_dir}" 2>/dev/null)"; then
+        log_debug "Writing staged repository provenance for ${source_dir}."
         printf '%s\n' "${provenance}" > "${target_dir}/.alloy_repo_info"
     fi
 }
@@ -176,6 +184,8 @@ build_sdk_stage_local_source() {
     stage_name="${BUILD_SDK_ALLOCATED_STAGE_NAME}"
     local target_dir="${ALLOY_MOTHERLODE}/${stage_name}"
 
+    log_info "Staging local nugget repository ${source_dir} as '${stage_name}'."
+    log_debug "Stage target for ${stage_name}: ${target_dir}"
     build_sdk_rsync_nugget_repo "${source_dir}" "${target_dir}"
     build_sdk_write_local_repo_info "${source_dir}" "${target_dir}"
     BUILD_SDK_STAGED_REPOS+=("${stage_name}")
@@ -225,7 +235,10 @@ build_sdk_stage_vcs_source() {
     stage_name="${BUILD_SDK_ALLOCATED_STAGE_NAME}"
     target_dir="${ALLOY_MOTHERLODE}/${stage_name}"
 
+    log_info "Staging VCS nugget repository as '${stage_name}' (ref '${BUILD_SDK_VCS_REF}')."
+    log_debug "Stage target for ${stage_name}: ${target_dir}"
     if [[ -e "${target_dir}" ]] && ! git -C "${target_dir}" rev-parse --git-dir >/dev/null 2>&1; then
+        log_debug "Removing non-VCS staging target before clone: ${target_dir}"
         rm -rf "${target_dir}"
     fi
     vcs_clone_or_validate git "${BUILD_SDK_VCS_URL}" "${BUILD_SDK_VCS_REF}" \
@@ -257,8 +270,11 @@ build_sdk_stage_nuggets() {
         fail "Builtin nugget repository is missing: ${builtin_source}"
     fi
 
+    log_info "Staging nugget repositories into ${ALLOY_MOTHERLODE}."
     mkdir -p "${ALLOY_MOTHERLODE}"
     BUILD_SDK_STAGE_NAMES+=("builtin")
+    log_info "Staging builtin nugget repository as 'builtin'."
+    log_debug "Stage target for builtin: ${ALLOY_MOTHERLODE}/builtin"
     build_sdk_rsync_nugget_repo "${builtin_source}" "${ALLOY_MOTHERLODE}/builtin"
     BUILD_SDK_STAGED_REPOS+=("builtin")
 
@@ -269,6 +285,7 @@ build_sdk_stage_nuggets() {
     for source_spec in "${ARG_NUGGET_PATHS[@]}"; do
         build_sdk_stage_extra_source "${source_spec}"
     done
+    log_info "Nugget staging complete: ${#BUILD_SDK_STAGED_REPOS[@]} repositories staged."
 }
 
 build_sdk_print_summary() {
@@ -355,5 +372,6 @@ export ALLOY_SDK_STAGING_DIR="${build_dir}/staging"
 export ALLOY_MOTHERLODE="${build_dir}/motherlode"
 export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 
+log_debug "SDK build workspace root: ${build_dir}"
 build_sdk_stage_nuggets
 build_sdk_print_summary "${build_dir}"

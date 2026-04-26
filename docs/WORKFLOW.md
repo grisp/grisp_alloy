@@ -192,6 +192,11 @@ For every task, execute these steps in order.
    - Keep scope constrained to the selected task.
    - Favor small, explicit, readable changes.
    - Avoid unrelated refactors unless necessary for correctness.
+   - For orchestrator commands and wrappers, add or update debug logging for
+     new behavior in the same change. Use `log_info` for high-level progress
+     that helps users understand what `-d` changed, and `log_debug` for
+     developer-facing details such as resolved paths, selected targets,
+     delegated commands, and staging decisions.
    - For Smelterl Erlang code, treat `smelterl.erl` as the canonical home for
      cross-module shared types. Before adding a new shared `-type`, check
      whether the shape already exists there; prefer remote type references

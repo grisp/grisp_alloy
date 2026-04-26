@@ -8,6 +8,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Made `alloy build sdk --help` surface the relevant global debug/trace flags
+  and added `-d`/`-dd` staging observability for SDK workspace and motherlode
+  setup.
+- Updated the workflow implementation rules to require debug logging alongside
+  new orchestrator command/wrapper behavior.
 - Updated `alloy build sdk` to stage nugget repositories into the product
   motherlode before later plan/generate phases, preserving the command-layer
   `ALLOY_MOTHERLODE` path as the single source of truth.

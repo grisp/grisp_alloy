@@ -201,6 +201,16 @@ Cross-repository development note:
   - Refinement note (from Task 5.1): Reuse the workspace roots now exported by `scripts/commands/build-sdk.sh` (`ALLOY_MOTHERLODE`, `ALLOY_SDK_BUILD_DIR`) instead of recomputing product-local motherlode paths in later staging steps.
   - Done when: Staging is reproducible and conflict-safe.
 
+- [x] **Task 5.2a: build-sdk help and debug observability**
+  - Scope: Make command-level `alloy build sdk --help` surface relevant global
+    debugging options and add useful debug/info logging for SDK workspace and
+    nugget staging steps.
+  - Tests: Focused command tests for help text and `ALLOY_DEBUG` level output.
+  - Workflow update requirement: Codify that command implementations should add
+    debug logging for new orchestration behavior, not only functional tests.
+  - Done when: `alloy build sdk -h` makes debug usage discoverable and `-d` /
+    `-dd` expose meaningful staging progress/details.
+
 - [ ] **Task 5.3: Smelterl binary management**
   - Scope: Resolve/build/provision smelterl executable.
   - Tests: Command tests for resolution and fallback behavior.

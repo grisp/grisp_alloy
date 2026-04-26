@@ -71,6 +71,9 @@ test_build_sdk_command_help_shows_canonical_usage() {
 
     assert_equals "0" "${status}"
     assert_matches "Usage: alloy build sdk PRODUCT_NUGGET \\[OPTIONS\\]" "${output}"
+    assert_matches "Global options accepted anywhere" "${output}"
+    assert_matches "-d, -dd, -ddd" "${output}"
+    assert_matches "--debug\\[=N\\]" "${output}"
     assert_matches "--clean-package PKG" "${output}"
     assert_status_code 1 "printf '%s\n' '${output}' | grep -F -- '-c PKG'"
 }
@@ -170,6 +173,45 @@ test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/remote_nuggets/remote-marker.txt' ]]"
     assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/motherlode/remote_nuggets/.git' ]]"
     assert_matches "Staged nugget repositories: 4" "${output}"
+}
+
+test_build_sdk_command_debug_level_one_reports_staging_progress() {
+    local temp_dir build_root local_source remote_repo output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-debug-one")"
+    build_root="${temp_dir}/build"
+    local_source="${temp_dir}/local_nuggets"
+    build_sdk_test_write_registry "${local_source}" local_feature
+    build_sdk_test_make_remote_nugget_repo "${temp_dir}" remote_nuggets remote_repo
+
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
+        "${BUILD_SDK_COMMAND}" demo_product \
+        -n "${local_source}" \
+        -n "git+file://${remote_repo}#main" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "INFO: Staging nugget repositories into" "${output}"
+    assert_matches "INFO: Staging builtin nugget repository as 'builtin'" "${output}"
+    assert_matches "INFO: Staging local nugget repository .* as 'local_nuggets'" "${output}"
+    assert_matches "INFO: Staging VCS nugget repository as 'remote_nuggets' \\(ref 'main'\\)" "${output}"
+    assert_matches "INFO: Nugget staging complete: 3 repositories staged" "${output}"
+}
+
+test_build_sdk_command_debug_level_two_reports_staging_targets() {
+    local temp_dir build_root local_source output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-debug-two")"
+    build_root="${temp_dir}/build"
+    local_source="${temp_dir}/local_nuggets"
+    build_sdk_test_write_registry "${local_source}" local_feature
+
+    output="$(ALLOY_DEBUG=2 ALLOY_BUILD_DIR="${build_root}" \
+        "${BUILD_SDK_COMMAND}" demo_product -n "${local_source}" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "DEBUG: SDK build workspace root: ${build_root}/sdk/demo_product" "${output}"
+    assert_matches "DEBUG: Stage target for builtin: ${build_root}/sdk/demo_product/motherlode/builtin" "${output}"
+    assert_matches "DEBUG: Stage target for local_nuggets: ${build_root}/sdk/demo_product/motherlode/local_nuggets" "${output}"
 }
 
 test_build_sdk_command_rejects_missing_local_nugget_source() {
