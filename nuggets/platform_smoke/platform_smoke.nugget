@@ -1,0 +1,17 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, platform_smoke},
+    {category, platform},
+    {name, <<"Smoke Platform">>},
+    {description, <<"Bootstrap smoke-test platform nugget that targets the current Linux host architecture.">>},
+    {version, <<"0.1.0">>},
+    {exports, [
+        {target_arch, {exec, <<"scripts/exports.sh">>}},
+        {target_arch_triplet, {exec, <<"scripts/exports.sh">>}},
+        {buildroot_arch_symbol, {exec, <<"scripts/exports.sh">>}},
+        {buildroot_cpu_fragment, {exec, <<"scripts/exports.sh">>}}
+    ]},
+    {buildroot, [
+        {defconfig_fragment, <<"buildroot.defconfig.fragment">>}
+    ]}
+]}.

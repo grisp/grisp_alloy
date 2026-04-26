@@ -1,0 +1,9 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, bootflow_smoke},
+    {category, bootflow},
+    {name, <<"Smoke Bootflow">>},
+    {description, <<"Bootstrap minimal bootflow nugget used to keep the smoke-test planner chain complete.">>},
+    {version, <<"0.1.0">>},
+    {firmware_variant, [plain]}
+]}.

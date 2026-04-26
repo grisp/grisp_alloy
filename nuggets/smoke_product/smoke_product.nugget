@@ -1,0 +1,12 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, smoke_product},
+    {category, feature},
+    {name, <<"Smoke Product">>},
+    {description, <<"Bootstrap top-level smoke-test product used to exercise builtin nugget staging and Smelterl planning.">>},
+    {version, <<"0.1.0">>},
+    {depends_on, [
+        {required, nugget, builder_buildroot},
+        {required, nugget, system_smoke}
+    ]}
+]}.

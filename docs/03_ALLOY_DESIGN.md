@@ -895,7 +895,7 @@ Buildroot is the underlying build system that compiles packages, kernels, bootlo
    - `O=` pointing to the workspace (build output directory).
    - `BR2_EXTERNAL=` pointing to the generated br2_external tree.
    - `ALLOY_*` variables passed as make parameters (exported to hook scripts).
-   Buildroot generates its output layout in the workspace directory, including a **Makefile** that forwards to the Buildroot source. Developers can therefore use the workspace for **manual Buildroot invocations** (e.g. `cd _build/sdk/PRODUCT/workspace && make menuconfig`, `make linux-menuconfig`, `make V=1`) to debug Buildroot behaviour, adjust configuration, or inspect the build without going through the full alloy SDK build.
+   Alloy also writes a target-local `make_alloy` helper in the workspace. The helper sets the same target context (`O=`, `BR2_EXTERNAL`, `ALLOY_MOTHERLODE`, cache/build/staging paths, debug flags) and forwards all arguments to Buildroot, so developers can run commands such as `./make_alloy menuconfig`, `./make_alloy linux-menuconfig`, or `./make_alloy V=1` without reconstructing the Alloy environment by hand. Buildroot may generate its own forwarding `Makefile` in the workspace after configuration, but plain `make` is not the canonical debugging interface because Alloy hooks and generated Kconfig sources require the Alloy context variables.
 4. **Buildroot calls hook scripts** - During the build, Buildroot invokes `post-build.sh`, `post-image.sh`, and `post-fakeroot.sh` (symlinks to `script_hook.sh`). The wrapper sources `alloy_context.sh` and dispatches to nugget-specific hooks.
 5. **alloy runs `make legal-info`** - After the main build, Buildroot generates license information and package manifests.
 
@@ -1888,7 +1888,7 @@ The host-side artefact path depends on mode:
 9. **Build each target with Buildroot** - For each target, run `make <target_defconfig>` then `make` with target-local `O=` and `BR2_EXTERNAL=`.
    - Pass runtime `ALLOY_*` values to `make` so `script_hook.sh` and SDK-time hooks receive them (for example `ALLOY_ROOT_DIR`, `ALLOY_SDK_STAGING_DIR`, `ALLOY_BUILD_DIR`, `ALLOY_MOTHERLODE`, debug/trace flags).
    - Append `V=1` only when debug verbosity requires full Buildroot command tracing.
-   - Each target workspace (`O=` directory) remains usable for manual Buildroot debugging (`make menuconfig`, `make V=1`).
+   - Write an executable `make_alloy` helper into each target workspace that delegates arbitrary Buildroot make targets with the same environment and `O=` / `BR2_EXTERNAL=` values used by Alloy. This keeps each target workspace usable for manual Buildroot debugging (`./make_alloy menuconfig`, `./make_alloy V=1`) without requiring developers to reconstruct the orchestration environment.
 10. **Run `make legal-info` per target** - Capture target-local legal-info trees.
     - For each target workspace, run legal-info with the same target-local Buildroot `O=` and `BR2_EXTERNAL=` context.
     - Result per target: `targets/<TARGET_ID>/workspace/legal-info/`.

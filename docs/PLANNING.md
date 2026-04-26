@@ -185,10 +185,19 @@ Cross-repository development note:
   - Refinement note (from Task 1.5 review): Required-command compatibility checks must be execution-context aware: validate only host prerequisites before VM delegation, and validate VM-only prerequisites inside the VM path (do not require host-only tools inside VM or VM-only tools on host).
   - Done when: Layout matches current design and command help/usage is canonicalized.
 
+- [x] **Task 5.1b: Builtin nugget repository bootstrap**
+  - Scope: Create the initial `nuggets/` builtin repository with a real, Smelterl-plannable sample product chain so Alloy can stage and plan against actual builtin nugget metadata instead of a missing or empty repository.
+  - Scope: Add a bootstrap-oriented sample chain centered on `builder_buildroot`, `toolchain_integrated`, and an `x86_64` sample platform/system/product so early `build sdk` and Smelterl plan/generate work can be exercised without depending on Crosstool-NG or GRiSP-specific embedded targets yet.
+  - Tests: Focused repository tests for the builtin `.nuggets` registry and sample nugget metadata/dependency chain.
+  - Refinement note: Keep the bootstrap chain explicitly sample-oriented; it should unblock Alloy/Smelterl workflow validation without pretending the final embedded builtin nugget set is already implemented.
+  - Refinement note: Prefer `toolchain_integrated` plus an `x86_64` sample target for early validation so Task 5 orchestration can be exercised with a cheaper Buildroot configuration before the real cross-toolchain nuggets land.
+  - Done when: The repository has a valid builtin nugget tree under `nuggets/` and one sample product chain that Smelterl can resolve and later Alloy tasks can stage/plan against.
+
 - [ ] **Task 5.2: Nugget staging (builtin/local/VCS)**
   - Scope: Stage all nugget inputs into build motherlode.
   - Tests: Integration tests with mixed source types.
   - Refinement note (from Task 1.7): Resolve `--allow-dirty` and `ALLOY_ALLOW_DIRTY` in the command layer, then pass an explicit `true|false` dirty-policy argument into `vcs_clone_or_validate` for staged VCS sources.
+  - Refinement note (from Task 5.1b): Stage the real builtin `nuggets/` repository first into `motherlode/builtin/`; do not special-case an empty or synthetic registry now that the repository carries bootstrap builtin nugget metadata.
   - Refinement note (from Task 5.1): Reuse the workspace roots now exported by `scripts/commands/build-sdk.sh` (`ALLOY_MOTHERLODE`, `ALLOY_SDK_BUILD_DIR`) instead of recomputing product-local motherlode paths in later staging steps.
   - Done when: Staging is reproducible and conflict-safe.
 
@@ -232,6 +241,7 @@ Cross-repository development note:
 - [ ] **Task 5.8: Per-target Buildroot build execution**
   - Scope: `make <defconfig>` + `make` with target-local `O=` and `BR2_EXTERNAL=`.
   - Tests: Integration test for target workspace outputs.
+  - Refinement note (from Task 5.1b): Generate an executable `make_alloy` helper in each target workspace that forwards arbitrary Buildroot make targets with the same `ALLOY_*`, `O=`, and `BR2_EXTERNAL=` context used by the orchestrator, so manual Buildroot debugging does not require reconstructing the environment by hand.
   - Done when: Each target build is isolated and successful.
 
 - [ ] **Task 5.9: Per-target legal-info execution**

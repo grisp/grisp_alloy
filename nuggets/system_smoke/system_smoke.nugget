@@ -1,0 +1,17 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, system_smoke},
+    {category, system},
+    {name, <<"Smoke System">>},
+    {description, <<"Bootstrap minimal system nugget paired with the smoke platform for early Alloy and Smelterl validation.">>},
+    {version, <<"0.1.0">>},
+    {depends_on, [
+        {required, nugget, builder_buildroot},
+        {required, nugget, toolchain_smoke},
+        {required, nugget, platform_smoke},
+        {required, nugget, bootflow_smoke}
+    ]},
+    {buildroot, [
+        {defconfig_fragment, <<"buildroot.defconfig.fragment">>}
+    ]}
+]}.

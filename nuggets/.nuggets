@@ -1,0 +1,11 @@
+%% coding: utf-8
+{nugget_registry, <<"1.0">>, [
+    {nuggets, [
+        <<"builder_buildroot/builder_buildroot.nugget">>,
+        <<"toolchain_smoke/toolchain_smoke.nugget">>,
+        <<"platform_smoke/platform_smoke.nugget">>,
+        <<"system_smoke/system_smoke.nugget">>,
+        <<"bootflow_smoke/bootflow_smoke.nugget">>,
+        <<"smoke_product/smoke_product.nugget">>
+    ]}
+]}.

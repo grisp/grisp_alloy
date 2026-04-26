@@ -1,0 +1,21 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, builder_buildroot},
+    {category, builder},
+    {name, <<"Buildroot Builder">>},
+    {description, <<"Bootstrap Buildroot backend nugget for early Alloy and Smelterl validation.">>},
+    {version, <<"0.1.0">>},
+    {config, [
+        {buildroot_version, <<"2025.05">>},
+        {buildroot_url, {computed, <<"https://buildroot.org/downloads/buildroot-[[ALLOY_CONFIG_BUILDROOT_VERSION]].tar.gz">>}}
+    ]},
+    {exports, [
+        {buildroot_path, {computed, <<"[[ALLOY_BUILD_DIR]]/buildroot">>}}
+    ]},
+    {buildroot, [
+        {defconfig_fragment, <<"buildroot.defconfig.fragment">>}
+    ]},
+    {hooks, [
+        {pre_build, <<"scripts/pre-build.sh">>, all}
+    ]}
+]}.

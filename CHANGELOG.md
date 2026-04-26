@@ -45,6 +45,19 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added a real builtin `nuggets/` repository with a bootstrap sample product
+  chain for early Alloy/Smelterl Phase 5 validation:
+  `builder_buildroot`, `toolchain_smoke`, `platform_smoke`,
+  `system_smoke`, `bootflow_smoke`, and `smoke_product`.
+- Added lightweight bootstrap Buildroot integration for the smoke nuggets,
+  including a `builder_buildroot` pre-build hook that downloads/extracts
+  Buildroot and wires cache directories, host-architecture exports for
+  `platform_smoke`, and defconfig fragments for the builder, toolchain,
+  platform, and system smoke chain.
+- Added focused repository coverage in `scripts/tests/test_builtin_nuggets.sh`
+  for the builtin `.nuggets` registry, the sample product dependency chain,
+  builder pre-build hook, and bootstrap platform/toolchain/bootflow metadata
+  contract.
 - Added focused shell coverage for `scripts/commands/build-sdk.sh`, including
   canonical help output, repository-mode validation, workspace creation,
   `--clean-package` handling, rejection of ambiguous `-c VALUE` usage, and

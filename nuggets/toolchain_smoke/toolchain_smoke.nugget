@@ -1,0 +1,11 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, toolchain_smoke},
+    {category, toolchain},
+    {name, <<"Smoke Buildroot Toolchain">>},
+    {description, <<"Smoke-test toolchain nugget using Buildroot's internal toolchain for the current host architecture.">>},
+    {version, <<"0.1.0">>},
+    {buildroot, [
+        {defconfig_fragment, <<"buildroot.defconfig.fragment">>}
+    ]}
+]}.
