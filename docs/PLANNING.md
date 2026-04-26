@@ -193,7 +193,7 @@ Cross-repository development note:
   - Refinement note: Prefer `toolchain_integrated` plus an `x86_64` sample target for early validation so Task 5 orchestration can be exercised with a cheaper Buildroot configuration before the real cross-toolchain nuggets land.
   - Done when: The repository has a valid builtin nugget tree under `nuggets/` and one sample product chain that Smelterl can resolve and later Alloy tasks can stage/plan against.
 
-- [ ] **Task 5.2: Nugget staging (builtin/local/VCS)**
+- [x] **Task 5.2: Nugget staging (builtin/local/VCS)**
   - Scope: Stage all nugget inputs into build motherlode.
   - Tests: Integration tests with mixed source types.
   - Refinement note (from Task 1.7): Resolve `--allow-dirty` and `ALLOY_ALLOW_DIRTY` in the command layer, then pass an explicit `true|false` dirty-policy argument into `vcs_clone_or_validate` for staged VCS sources.
@@ -201,7 +201,7 @@ Cross-repository development note:
   - Refinement note (from Task 5.1): Reuse the workspace roots now exported by `scripts/commands/build-sdk.sh` (`ALLOY_MOTHERLODE`, `ALLOY_SDK_BUILD_DIR`) instead of recomputing product-local motherlode paths in later staging steps.
   - Done when: Staging is reproducible and conflict-safe.
 
-- [x] **Task 5.3: Smelterl binary management**
+- [ ] **Task 5.3: Smelterl binary management**
   - Scope: Resolve/build/provision smelterl executable.
   - Tests: Command tests for resolution and fallback behavior.
   - Refinement note (migration follow-up): Treat the repository `smelterl/`
@@ -210,6 +210,10 @@ Cross-repository development note:
     initialization (`--init-deps`), document fresh-clone bootstrap in
     `README.md`, and make validation/CI setup initialize the submodule
     explicitly instead of mutating the checkout implicitly.
+  - Partial status note (2026-04-26): The checkout/submodule prerequisite work
+    from the migration follow-up is implemented, but Alloy does not yet
+    resolve, build, cache, or export a Smelterl executable for SDK
+    orchestration.
   - Done when: SDK build always has a valid smelterl binary.
 
 - [ ] **Task 5.4: Plan invocation and plan artefact handling**

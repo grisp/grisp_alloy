@@ -8,6 +8,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to stage nugget repositories into the product
+  motherlode before later plan/generate phases, preserving the command-layer
+  `ALLOY_MOTHERLODE` path as the single source of truth.
 - Replaced the transitional `scripts/commands/build-sdk.sh` wrapper with a
   canonical `alloy build sdk` command implementation that validates
   repository-mode usage, parses Task 5.1 options with the shared
@@ -45,6 +48,9 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added Task 5.2 shell coverage for mixed builtin, local, and VCS nugget
+  staging, basename-conflict suffixing, missing local sources, and explicit
+  dirty-check policy propagation.
 - Added a real builtin `nuggets/` repository with a bootstrap sample product
   chain for early Alloy/Smelterl Phase 5 validation:
   `builder_buildroot`, `toolchain_smoke`, `platform_smoke`,

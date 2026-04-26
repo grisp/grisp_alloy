@@ -7,6 +7,8 @@ export ALLOY_ROOT_DIR="${ALLOY_ROOT_DIR:-${ROOT_DIR}}"
 
 # shellcheck source=scripts/utils/common.sh
 source "${ROOT_DIR}/scripts/utils/common.sh"
+# shellcheck source=scripts/utils/vcs_utils.sh
+source "${ROOT_DIR}/scripts/utils/vcs_utils.sh"
 # shellcheck source=scripts/argparse.sh
 source "${ROOT_DIR}/scripts/argparse.sh"
 
@@ -102,6 +104,173 @@ build_sdk_split_env_nugget_paths() {
     done
 }
 
+build_sdk_stage_name_taken() {
+    local candidate="$1"
+    local stage_name
+    for stage_name in "${BUILD_SDK_STAGE_NAMES[@]}"; do
+        [[ "${stage_name}" == "${candidate}" ]] && return 0
+    done
+    return 1
+}
+
+build_sdk_allocate_stage_name() {
+    local base_name="$1"
+    if [[ -z "${base_name}" ]] || [[ "${base_name}" == "." ]] || [[ "${base_name}" == "/" ]]; then
+        fail "Unable to derive a staging name for nugget source"
+    fi
+
+    local candidate="${base_name}"
+    local suffix=2
+    while build_sdk_stage_name_taken "${candidate}"; do
+        candidate="${base_name}_${suffix}"
+        suffix=$((suffix + 1))
+    done
+
+    BUILD_SDK_STAGE_NAMES+=("${candidate}")
+    BUILD_SDK_ALLOCATED_STAGE_NAME="${candidate}"
+}
+
+build_sdk_rsync_nugget_repo() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    require_command rsync
+    rm -rf "${target_dir}"
+    mkdir -p "${target_dir}"
+    rsync -a --checksum --delete --exclude '/.git/' \
+        "${source_dir%/}/" "${target_dir%/}/"
+}
+
+build_sdk_write_local_repo_info() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    local provenance
+    if provenance="$(vcs_get_provenance "${source_dir}" 2>/dev/null)"; then
+        printf '%s\n' "${provenance}" > "${target_dir}/.alloy_repo_info"
+    fi
+}
+
+build_sdk_validate_local_source() {
+    local source_dir="$1"
+
+    if [[ ! -d "${source_dir}" ]]; then
+        fail "Local nugget source does not exist or is not a directory: ${source_dir}"
+    fi
+
+    if git -C "${source_dir}" rev-parse --show-toplevel >/dev/null 2>&1 &&
+        [[ -n "$(git -C "${source_dir}" status --porcelain --untracked-files=normal 2>/dev/null)" ]] &&
+        [[ "${BUILD_SDK_ALLOW_DIRTY}" != "true" ]]; then
+        fail "Local nugget source is dirty: ${source_dir}"
+    fi
+}
+
+build_sdk_stage_local_source() {
+    local source_dir="$1"
+    local base_name="$2"
+
+    build_sdk_validate_local_source "${source_dir}"
+
+    local stage_name
+    build_sdk_allocate_stage_name "${base_name}"
+    stage_name="${BUILD_SDK_ALLOCATED_STAGE_NAME}"
+    local target_dir="${ALLOY_MOTHERLODE}/${stage_name}"
+
+    build_sdk_rsync_nugget_repo "${source_dir}" "${target_dir}"
+    build_sdk_write_local_repo_info "${source_dir}" "${target_dir}"
+    BUILD_SDK_STAGED_REPOS+=("${stage_name}")
+}
+
+build_sdk_parse_vcs_source() {
+    local source_spec="$1"
+
+    BUILD_SDK_VCS_URL=""
+    BUILD_SDK_VCS_REF=""
+
+    if [[ "${source_spec}" != git+*#* ]]; then
+        fail "Unsupported VCS nugget source '${source_spec}'. Expected git+URL#ref."
+    fi
+
+    local without_prefix="${source_spec#git+}"
+    BUILD_SDK_VCS_URL="${without_prefix%%#*}"
+    BUILD_SDK_VCS_REF="${without_prefix#*#}"
+
+    if [[ -z "${BUILD_SDK_VCS_URL}" ]] || [[ -z "${BUILD_SDK_VCS_REF}" ]] ||
+        [[ "${BUILD_SDK_VCS_URL}" == "${without_prefix}" ]]; then
+        fail "VCS nugget source must include both URL and ref: ${source_spec}"
+    fi
+}
+
+build_sdk_vcs_repo_name() {
+    local url="$1"
+    local trimmed="${url%/}"
+    local name
+    name="$(basename "${trimmed}")"
+    name="${name%.git}"
+
+    if [[ -z "${name}" ]] || [[ "${name}" == "." ]] || [[ "${name}" == "/" ]]; then
+        fail "Unable to derive repository name from VCS URL: ${url}"
+    fi
+
+    printf '%s\n' "${name}"
+}
+
+build_sdk_stage_vcs_source() {
+    local source_spec="$1"
+    build_sdk_parse_vcs_source "${source_spec}"
+
+    local repo_name stage_name target_dir
+    repo_name="$(build_sdk_vcs_repo_name "${BUILD_SDK_VCS_URL}")"
+    build_sdk_allocate_stage_name "${repo_name}"
+    stage_name="${BUILD_SDK_ALLOCATED_STAGE_NAME}"
+    target_dir="${ALLOY_MOTHERLODE}/${stage_name}"
+
+    if [[ -e "${target_dir}" ]] && ! git -C "${target_dir}" rev-parse --git-dir >/dev/null 2>&1; then
+        rm -rf "${target_dir}"
+    fi
+    vcs_clone_or_validate git "${BUILD_SDK_VCS_URL}" "${BUILD_SDK_VCS_REF}" \
+        "${target_dir}" "${BUILD_SDK_ALLOW_DIRTY}" ||
+        fail "Failed to stage VCS nugget source: ${source_spec}"
+    BUILD_SDK_STAGED_REPOS+=("${stage_name}")
+}
+
+build_sdk_stage_extra_source() {
+    local source_spec="$1"
+
+    if [[ "${source_spec}" == git+* ]]; then
+        build_sdk_stage_vcs_source "${source_spec}"
+        return 0
+    fi
+
+    local source_dir
+    source_dir="$(cd "${source_spec}" 2>/dev/null && pwd -P)" ||
+        fail "Local nugget source does not exist or is not a directory: ${source_spec}"
+    build_sdk_stage_local_source "${source_dir}" "$(basename "${source_dir}")"
+}
+
+build_sdk_stage_nuggets() {
+    BUILD_SDK_STAGE_NAMES=()
+    BUILD_SDK_STAGED_REPOS=()
+
+    local builtin_source="${ROOT_DIR}/nuggets"
+    if [[ ! -d "${builtin_source}" ]]; then
+        fail "Builtin nugget repository is missing: ${builtin_source}"
+    fi
+
+    mkdir -p "${ALLOY_MOTHERLODE}"
+    BUILD_SDK_STAGE_NAMES+=("builtin")
+    build_sdk_rsync_nugget_repo "${builtin_source}" "${ALLOY_MOTHERLODE}/builtin"
+    BUILD_SDK_STAGED_REPOS+=("builtin")
+
+    local source_spec
+    for source_spec in "${BUILD_SDK_ENV_NUGGET_PATHS[@]}"; do
+        build_sdk_stage_extra_source "${source_spec}"
+    done
+    for source_spec in "${ARG_NUGGET_PATHS[@]}"; do
+        build_sdk_stage_extra_source "${source_spec}"
+    done
+}
+
 build_sdk_print_summary() {
     local build_dir="$1"
 
@@ -111,6 +280,7 @@ build_sdk_print_summary() {
     print_note "Targets directory: ${ALLOY_SDK_TARGETS_DIR}"
     print_note "Staging directory: ${ALLOY_SDK_STAGING_DIR}"
     print_note "Motherlode directory: ${ALLOY_MOTHERLODE}"
+    print_note "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
 
     if [[ ${#ARG_NUGGET_PATHS[@]} -gt 0 ]]; then
         print_note "Additional command-line nugget sources: ${#ARG_NUGGET_PATHS[@]}"
@@ -185,4 +355,5 @@ export ALLOY_SDK_STAGING_DIR="${build_dir}/staging"
 export ALLOY_MOTHERLODE="${build_dir}/motherlode"
 export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 
+build_sdk_stage_nuggets
 build_sdk_print_summary "${build_dir}"
