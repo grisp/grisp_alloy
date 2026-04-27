@@ -288,10 +288,94 @@ build_sdk_stage_nuggets() {
     log_info "Nugget staging complete: ${#BUILD_SDK_STAGED_REPOS[@]} repositories staged."
 }
 
+build_sdk_read_smelterl_version() {
+    local app_src="${ROOT_DIR}/smelterl/src/smelterl.app.src"
+
+    if [[ ! -f "${ROOT_DIR}/smelterl/rebar.config" ]] || [[ ! -f "${app_src}" ]]; then
+        fail "smelterl checkout is missing or incomplete at ${ROOT_DIR}/smelterl"
+    fi
+
+    BUILD_SDK_SMELTERL_VERSION="$(sed -n 's/^[[:space:]]*{vsn,[[:space:]]*"\([^"]\+\)".*/\1/p' "${app_src}" | head -n 1)"
+    if [[ -z "${BUILD_SDK_SMELTERL_VERSION}" ]]; then
+        fail "Unable to read smelterl version from ${app_src}"
+    fi
+}
+
+build_sdk_build_smelterl() {
+    local mode="$1"
+    local source_binary="${ROOT_DIR}/smelterl/_build/default/bin/smelterl"
+
+    require_command rebar3 || fail "rebar3 is required to build smelterl"
+
+    if [[ "${mode}" == "dev" ]]; then
+        log_info "Rebuilding smelterl ${BUILD_SDK_SMELTERL_VERSION} in development mode."
+        (
+            cd "${ROOT_DIR}/smelterl"
+            rebar3 clean
+            rebar3 escriptize
+        ) || fail "Failed to rebuild smelterl"
+    else
+        log_info "Building smelterl ${BUILD_SDK_SMELTERL_VERSION}."
+        (
+            cd "${ROOT_DIR}/smelterl"
+            rebar3 escriptize
+        ) || fail "Failed to build smelterl"
+    fi
+
+    if [[ ! -f "${source_binary}" ]]; then
+        fail "Smelterl build did not produce expected executable: ${source_binary}"
+    fi
+
+    mkdir -p "$(dirname "${ALLOY_SMELTERL}")"
+    cp "${source_binary}" "${ALLOY_SMELTERL}"
+    chmod +x "${ALLOY_SMELTERL}"
+}
+
+build_sdk_update_smelterl_link() {
+    local tools_dir target_name link_path
+    tools_dir="$(dirname "${ALLOY_SMELTERL}")"
+    target_name="$(basename "${ALLOY_SMELTERL}")"
+    link_path="${tools_dir}/smelterl"
+
+    mkdir -p "${tools_dir}"
+    if [[ -e "${link_path}" || -L "${link_path}" ]]; then
+        if [[ -d "${link_path}" && ! -L "${link_path}" ]]; then
+            fail "Cannot replace Smelterl current link because it is a directory: ${link_path}"
+        fi
+        rm -f "${link_path}"
+    fi
+    ln -s "${target_name}" "${link_path}"
+
+    ALLOY_SMELTERL_LINK="${link_path}"
+    export ALLOY_SMELTERL_LINK
+    log_debug "Smelterl current link: ${ALLOY_SMELTERL_LINK} -> ${target_name}"
+}
+
+build_sdk_ensure_smelterl() {
+    build_sdk_read_smelterl_version
+
+    ALLOY_SMELTERL="${ALLOY_ARTEFACT_DIR}/tools/smelterl-${BUILD_SDK_SMELTERL_VERSION}"
+    export ALLOY_SMELTERL
+
+    if [[ "${ALLOY_DEV_MODE:-false}" == "true" ]]; then
+        build_sdk_build_smelterl dev
+    elif [[ -x "${ALLOY_SMELTERL}" ]]; then
+        log_info "Using cached smelterl executable ${ALLOY_SMELTERL}."
+    else
+        build_sdk_build_smelterl normal
+    fi
+
+    [[ -x "${ALLOY_SMELTERL}" ]] ||
+        fail "Smelterl executable is not available or executable: ${ALLOY_SMELTERL}"
+    build_sdk_update_smelterl_link
+    log_debug "Smelterl executable path: ${ALLOY_SMELTERL}"
+}
+
 build_sdk_print_summary() {
     local build_dir="$1"
 
     print_result "Initialized SDK build workspace for ${ARG_PRODUCT_NUGGET}."
+    print_note "Smelterl executable: ${ALLOY_SMELTERL}"
     print_note "Build directory: ${build_dir}"
     print_note "Plan directory: ${ALLOY_SDK_PLAN_DIR}"
     print_note "Targets directory: ${ALLOY_SDK_TARGETS_DIR}"
@@ -374,4 +458,5 @@ export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 
 log_debug "SDK build workspace root: ${build_dir}"
 build_sdk_stage_nuggets
+build_sdk_ensure_smelterl
 build_sdk_print_summary "${build_dir}"

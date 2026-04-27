@@ -8,6 +8,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to resolve the checked-out Smelterl version,
+  reuse `artefacts/tools/smelterl-<VERSION>` when available, build it with
+  `rebar3 escriptize` when missing, and force a clean rebuild in development
+  mode while maintaining `artefacts/tools/smelterl` as a relative symlink to
+  the current versioned executable.
 - Made `alloy build sdk --help` surface the relevant global debug/trace flags
   and added `-d`/`-dd` staging observability for SDK workspace and motherlode
   setup.
@@ -53,6 +58,9 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused `alloy build sdk` coverage for cached Smelterl reuse, missing
+  artefact build fallback, development-mode rebuild behavior, and current
+  Smelterl symlink updates.
 - Added Task 5.2 shell coverage for mixed builtin, local, and VCS nugget
   staging, basename-conflict suffixing, missing local sources, and explicit
   dirty-check policy propagation.

@@ -211,7 +211,7 @@ Cross-repository development note:
   - Done when: `alloy build sdk -h` makes debug usage discoverable and `-d` /
     `-dd` expose meaningful staging progress/details.
 
-- [ ] **Task 5.3: Smelterl binary management**
+- [x] **Task 5.3: Smelterl binary management**
   - Scope: Resolve/build/provision smelterl executable.
   - Tests: Command tests for resolution and fallback behavior.
   - Refinement note (migration follow-up): Treat the repository `smelterl/`
@@ -234,6 +234,9 @@ Cross-repository development note:
     depends on replacing the transitional legacy wrapper in
     `scripts/commands/build-sdk.sh` with the documented Smelterl-backed
     orchestration flow.
+  - Refinement note (from Task 5.3): Consume the `ALLOY_SMELTERL` path exported
+    by `scripts/commands/build-sdk.sh` instead of resolving or rebuilding the
+    Smelterl executable again in the plan invocation step.
   - Refinement note (from Task 5.1): Consume the pre-created `ALLOY_SDK_PLAN_DIR` and `ALLOY_SDK_STAGING_DIR` exports from the command-layer workspace setup so later plan/generate steps share one path source of truth.
   - Done when: One plan pass feeds all target generation passes.
 

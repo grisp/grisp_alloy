@@ -17,6 +17,14 @@ build_sdk_test_make_fixture() {
     cp "$(harness_repo_root)/scripts/utils/vcs_utils.sh" "${root_dir}/scripts/utils/vcs_utils.sh"
     cp "$(harness_repo_root)/scripts/argparse.sh" "${root_dir}/scripts/argparse.sh"
     chmod +x "${root_dir}/scripts/commands/build-sdk.sh"
+    build_sdk_test_write_registry "${root_dir}/nuggets" builtin_feature
+    mkdir -p "${root_dir}/smelterl/src"
+    : > "${root_dir}/smelterl/rebar.config"
+    cat > "${root_dir}/smelterl/src/smelterl.app.src" <<'EOF'
+{application, smelterl, [
+    {vsn, "9.8.7"}
+]}.
+EOF
     printf '%s\n' "${root_dir}"
 }
 
@@ -60,6 +68,44 @@ build_sdk_test_make_remote_nugget_repo() {
     build_sdk_test_git "${git_home}" -C "${work_dir}" commit -m "initial" >/dev/null 2>&1
     build_sdk_test_git "${git_home}" -C "${work_dir}" push -u origin main >/dev/null 2>&1
     build_sdk_test_git "${git_home}" -C "${remote_ref}" symbolic-ref HEAD refs/heads/main
+}
+
+build_sdk_test_repo_smelterl_version() {
+    sed -n 's/^[[:space:]]*{vsn,[[:space:]]*"\([^"]\+\)".*/\1/p' \
+        "$(harness_repo_root)/smelterl/src/smelterl.app.src" | head -n 1
+}
+
+build_sdk_test_prepare_cached_smelterl() {
+    local artefact_dir="$1"
+    local version="${2:-$(build_sdk_test_repo_smelterl_version)}"
+    local smelterl_path="${artefact_dir}/tools/smelterl-${version}"
+
+    mkdir -p "${artefact_dir}/tools"
+    printf '#!/usr/bin/env bash\nprintf "cached smelterl %s\\n"\n' "${version}" > "${smelterl_path}"
+    chmod +x "${smelterl_path}"
+}
+
+build_sdk_test_write_fake_rebar3() {
+    local bin_dir="$1"
+    mkdir -p "${bin_dir}"
+    cat > "${bin_dir}/rebar3" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FAKE_REBAR3_LOG:?}"
+case "${1:-}" in
+    clean)
+        rm -rf _build/default/bin/smelterl
+        ;;
+    escriptize)
+        mkdir -p _build/default/bin
+        printf '%s\n' "${FAKE_REBAR3_OUTPUT:-built smelterl}" > _build/default/bin/smelterl
+        chmod +x _build/default/bin/smelterl
+        ;;
+    *)
+        exit 9
+        ;;
+esac
+SCRIPT
+    chmod +x "${bin_dir}/rebar3"
 }
 
 test_build_sdk_command_help_shows_canonical_usage() {
@@ -115,15 +161,18 @@ test_build_sdk_command_direct_invocation_infers_sdk_mode_from_manifest_and_rejec
 }
 
 test_build_sdk_command_creates_expected_layout_and_reports_sources() {
-    local temp_dir build_root env_source cli_source output status
+    local temp_dir build_root artefact_dir env_source cli_source output status
     temp_dir="$(harness_make_temp_dir "build-sdk-layout")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     env_source="${temp_dir}/env_one"
     cli_source="${temp_dir}/local_one"
     build_sdk_test_write_registry "${env_source}" env_one_feature
     build_sdk_test_write_registry "${cli_source}" local_one_feature
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         ALLOY_NUGGET_PATH="${env_source}" \
         "${BUILD_SDK_COMMAND}" demo_product \
         -n "${cli_source}" \
@@ -139,7 +188,9 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/builtin/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/env_one/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/local_one/.nuggets' ]]"
+    assert_status_code 0 "[[ \"\$(readlink '${artefact_dir}/tools/smelterl')\" == smelterl-* ]]"
     assert_matches "Initialized SDK build workspace for demo_product" "${output}"
+    assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-" "${output}"
     assert_matches "Additional command-line nugget sources: 1" "${output}"
     assert_matches "Additional environment nugget sources: 1" "${output}"
     assert_matches "Staged nugget repositories: 3" "${output}"
@@ -148,9 +199,11 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
 }
 
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
-    local temp_dir build_root env_source cli_source remote_repo output status
+    local temp_dir build_root artefact_dir env_source cli_source remote_repo output status
     temp_dir="$(harness_make_temp_dir "build-sdk-stage")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     env_source="${temp_dir}/env/shared"
     cli_source="${temp_dir}/cli/shared"
     build_sdk_test_write_registry "${env_source}" env_feature
@@ -160,6 +213,7 @@ test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
     build_sdk_test_make_remote_nugget_repo "${temp_dir}" remote_nuggets remote_repo
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         ALLOY_NUGGET_PATH="${env_source}" \
         "${BUILD_SDK_COMMAND}" demo_product \
         -n "${cli_source}" \
@@ -176,14 +230,17 @@ test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
 }
 
 test_build_sdk_command_debug_level_one_reports_staging_progress() {
-    local temp_dir build_root local_source remote_repo output status
+    local temp_dir build_root artefact_dir local_source remote_repo output status
     temp_dir="$(harness_make_temp_dir "build-sdk-debug-one")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     local_source="${temp_dir}/local_nuggets"
     build_sdk_test_write_registry "${local_source}" local_feature
     build_sdk_test_make_remote_nugget_repo "${temp_dir}" remote_nuggets remote_repo
 
     output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product \
         -n "${local_source}" \
         -n "git+file://${remote_repo}#main" 2>&1)"
@@ -195,16 +252,20 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
     assert_matches "INFO: Staging local nugget repository .* as 'local_nuggets'" "${output}"
     assert_matches "INFO: Staging VCS nugget repository as 'remote_nuggets' \\(ref 'main'\\)" "${output}"
     assert_matches "INFO: Nugget staging complete: 3 repositories staged" "${output}"
+    assert_matches "INFO: Using cached smelterl executable ${artefact_dir}/tools/smelterl-" "${output}"
 }
 
 test_build_sdk_command_debug_level_two_reports_staging_targets() {
-    local temp_dir build_root local_source output status
+    local temp_dir build_root artefact_dir local_source output status
     temp_dir="$(harness_make_temp_dir "build-sdk-debug-two")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     local_source="${temp_dir}/local_nuggets"
     build_sdk_test_write_registry "${local_source}" local_feature
 
     output="$(ALLOY_DEBUG=2 ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product -n "${local_source}" 2>&1)"
     status=$?
 
@@ -212,6 +273,7 @@ test_build_sdk_command_debug_level_two_reports_staging_targets() {
     assert_matches "DEBUG: SDK build workspace root: ${build_root}/sdk/demo_product" "${output}"
     assert_matches "DEBUG: Stage target for builtin: ${build_root}/sdk/demo_product/motherlode/builtin" "${output}"
     assert_matches "DEBUG: Stage target for local_nuggets: ${build_root}/sdk/demo_product/motherlode/local_nuggets" "${output}"
+    assert_matches "DEBUG: Smelterl executable path: ${artefact_dir}/tools/smelterl-" "${output}"
 }
 
 test_build_sdk_command_rejects_missing_local_nugget_source() {
@@ -252,23 +314,28 @@ test_build_sdk_command_rejects_dirty_local_vcs_source_by_default() {
 }
 
 test_build_sdk_command_allows_dirty_existing_vcs_stage_only_when_requested() {
-    local temp_dir build_root remote_repo staged_repo output status
+    local temp_dir build_root artefact_dir remote_repo staged_repo output status
     temp_dir="$(harness_make_temp_dir "build-sdk-dirty-vcs")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     build_sdk_test_make_remote_nugget_repo "${temp_dir}" remote_nuggets remote_repo
 
     ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product -n "git+file://${remote_repo}#main" >/dev/null
     staged_repo="${build_root}/sdk/demo_product/motherlode/remote_nuggets"
     printf 'dirty\n' >> "${staged_repo}/remote-marker.txt"
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product -n "git+file://${remote_repo}#main" 2>&1)"
     status=$?
     assert_equals "2" "${status}"
     assert_matches "Git checkout is dirty" "${output}"
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product --allow-dirty \
         -n "git+file://${remote_repo}#main" 2>&1)"
     status=$?
@@ -277,14 +344,17 @@ test_build_sdk_command_allows_dirty_existing_vcs_stage_only_when_requested() {
 }
 
 test_build_sdk_command_clean_removes_existing_workspace() {
-    local temp_dir build_root workspace output status
+    local temp_dir build_root artefact_dir workspace output status
     temp_dir="$(harness_make_temp_dir "build-sdk-clean")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     workspace="${build_root}/sdk/demo_product"
     mkdir -p "${workspace}"
     printf 'stale\n' > "${workspace}/stale.txt"
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product -c 2>&1)"
     status=$?
 
@@ -312,16 +382,93 @@ test_build_sdk_command_short_c_with_value_is_rejected_as_extra_positional() {
 }
 
 test_build_sdk_command_long_clean_package_is_supported() {
-    local temp_dir build_root output status
+    local temp_dir build_root artefact_dir output status
     temp_dir="$(harness_make_temp_dir "build-sdk-clean-package-long")"
     build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product --clean-package busybox 2>&1)"
     status=$?
 
     assert_equals "0" "${status}"
     assert_matches "Queued clean-package requests: busybox" "${output}"
+}
+
+test_build_sdk_command_uses_cached_smelterl_without_rebar3() {
+    local temp_dir root_dir command_path build_root artefact_dir fake_bin output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-smelterl-cached")"
+    root_dir="$(build_sdk_test_make_fixture "${temp_dir}")"
+    command_path="${root_dir}/scripts/commands/build-sdk.sh"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    fake_bin="${temp_dir}/bin"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}" "9.8.7"
+    mkdir -p "${fake_bin}"
+    printf '#!/usr/bin/env bash\nexit 88\n' > "${fake_bin}/rebar3"
+    chmod +x "${fake_bin}/rebar3"
+
+    output="$(PATH="${fake_bin}:${PATH}" ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${command_path}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ \"\$(readlink '${artefact_dir}/tools/smelterl')\" == 'smelterl-9.8.7' ]]"
+    assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-9.8.7" "${output}"
+}
+
+test_build_sdk_command_builds_missing_smelterl_artifact() {
+    local temp_dir root_dir command_path build_root artefact_dir fake_bin rebar_log output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-smelterl-build")"
+    root_dir="$(build_sdk_test_make_fixture "${temp_dir}")"
+    command_path="${root_dir}/scripts/commands/build-sdk.sh"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    fake_bin="${temp_dir}/bin"
+    rebar_log="${temp_dir}/rebar.log"
+    build_sdk_test_write_fake_rebar3 "${fake_bin}"
+
+    output="$(PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
+        FAKE_REBAR3_OUTPUT="built smelterl" \
+        ALLOY_BUILD_DIR="${build_root}" ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${command_path}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ -x '${artefact_dir}/tools/smelterl-9.8.7' ]]"
+    assert_status_code 0 "[[ \"\$(readlink '${artefact_dir}/tools/smelterl')\" == 'smelterl-9.8.7' ]]"
+    assert_status_code 0 "grep -Fxq 'escriptize' '${rebar_log}'"
+    assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-9.8.7" "${output}"
+    assert_status_code 0 "grep -Fxq 'built smelterl' '${artefact_dir}/tools/smelterl-9.8.7'"
+}
+
+test_build_sdk_command_dev_mode_rebuilds_smelterl_artifact() {
+    local temp_dir root_dir command_path build_root artefact_dir fake_bin rebar_log output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-smelterl-dev")"
+    root_dir="$(build_sdk_test_make_fixture "${temp_dir}")"
+    command_path="${root_dir}/scripts/commands/build-sdk.sh"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    fake_bin="${temp_dir}/bin"
+    rebar_log="${temp_dir}/rebar.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}" "9.8.7"
+    build_sdk_test_write_fake_rebar3 "${fake_bin}"
+
+    output="$(PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
+        FAKE_REBAR3_OUTPUT="rebuilt smelterl" \
+        ALLOY_DEV_MODE=true ALLOY_BUILD_DIR="${build_root}" ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${command_path}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "grep -Fxq 'clean' '${rebar_log}'"
+    assert_status_code 0 "grep -Fxq 'escriptize' '${rebar_log}'"
+    assert_status_code 0 "[[ \"\$(readlink '${artefact_dir}/tools/smelterl')\" == 'smelterl-9.8.7' ]]"
+    assert_status_code 0 "grep -Fxq 'rebuilt smelterl' '${artefact_dir}/tools/smelterl-9.8.7'"
+    assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-9.8.7" "${output}"
 }
 
 test_build_sdk_command_rejects_invalid_allow_dirty_env_value() {
