@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to run the first Smelterl orchestration pass,
+  writing `plan/build_plan.term` and `plan/build_plan.env` after nugget
+  staging and Smelterl binary resolution, while preserving literal plan-time
+  path placeholders for later generate/build phases.
 - Updated `alloy build sdk` to resolve the checked-out Smelterl version,
   reuse `artefacts/tools/smelterl-<VERSION>` when available, build it with
   `rebar3 escriptize` when missing, and force a clean rebuild in development
@@ -58,6 +62,9 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused `alloy build sdk` coverage for `smelterl plan` invocation,
+  plan artefact creation, output path handling, and placeholder extra-config
+  propagation.
 - Added focused `alloy build sdk` coverage for cached Smelterl reuse, missing
   artefact build fallback, development-mode rebuild behavior, and current
   Smelterl symlink updates.

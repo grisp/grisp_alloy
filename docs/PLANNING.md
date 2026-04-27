@@ -226,7 +226,7 @@ Cross-repository development note:
     orchestration.
   - Done when: SDK build always has a valid smelterl binary.
 
-- [ ] **Task 5.4: Plan invocation and plan artefact handling**
+- [x] **Task 5.4: Plan invocation and plan artefact handling**
   - Scope: Invoke `smelterl plan` and store `build_plan.term` (+ optional env).
   - Tests: Integration test validating produced plan artifacts.
   - Refinement note (from Task 5.3): Submodule/bootstrap validation is now in
@@ -243,6 +243,11 @@ Cross-repository development note:
 - [ ] **Task 5.5: Target loop and per-target generate invocation**
   - Scope: Build order auxiliaries first, main last; per-target file outputs.
   - Tests: Integration test for target order and generated paths.
+  - Refinement note (from Task 5.4): Consume the already-exported
+    `ALLOY_SDK_PLAN_FILE` and `ALLOY_SDK_PLAN_ENV_FILE` paths from
+    `scripts/commands/build-sdk.sh`; `build_plan.env` is available as the
+    shell convenience source for target IDs, but `build_plan.term` remains the
+    authoritative plan input for every `smelterl generate` invocation.
   - Done when: All targets are generated from one shared plan.
 
 - [ ] **Task 5.6: Hook wrapper symlinks and target context symlink**

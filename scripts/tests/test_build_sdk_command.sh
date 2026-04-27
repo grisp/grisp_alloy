@@ -81,8 +81,78 @@ build_sdk_test_prepare_cached_smelterl() {
     local smelterl_path="${artefact_dir}/tools/smelterl-${version}"
 
     mkdir -p "${artefact_dir}/tools"
-    printf '#!/usr/bin/env bash\nprintf "cached smelterl %s\\n"\n' "${version}" > "${smelterl_path}"
+    build_sdk_test_write_fake_smelterl "${smelterl_path}" "cached smelterl ${version}"
     chmod +x "${smelterl_path}"
+}
+
+build_sdk_test_write_fake_smelterl() {
+    local smelterl_path="$1"
+    local marker="$2"
+
+    cat > "${smelterl_path}" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${FAKE_SMELTERL_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${FAKE_SMELTERL_LOG}"
+fi
+
+if [[ "${1:-}" != "plan" ]]; then
+    printf 'fake smelterl only supports plan\n' >&2
+    exit 9
+fi
+shift
+
+product=""
+motherlode=""
+output_plan=""
+output_plan_env=""
+extra_config_count=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --product)
+            product="${2:?}"
+            shift 2
+            ;;
+        --motherlode)
+            motherlode="${2:?}"
+            shift 2
+            ;;
+        --output-plan)
+            output_plan="${2:?}"
+            shift 2
+            ;;
+        --output-plan-env)
+            output_plan_env="${2:?}"
+            shift 2
+            ;;
+        --extra-config)
+            extra_config_count=$((extra_config_count + 1))
+            shift 2
+            ;;
+        *)
+            printf 'unexpected fake smelterl arg: %s\n' "$1" >&2
+            exit 10
+            ;;
+    esac
+done
+
+[[ -n "${product}" ]] || exit 11
+[[ -d "${motherlode}" ]] || exit 12
+[[ -n "${output_plan}" ]] || exit 13
+[[ -n "${output_plan_env}" ]] || exit 14
+[[ "${extra_config_count}" -eq 8 ]] || exit 15
+
+mkdir -p "$(dirname "${output_plan}")" "$(dirname "${output_plan_env}")"
+printf '{fake_build_plan, [{product, <<"%s">>}]}.\n' "${product}" > "${output_plan}"
+{
+    printf 'ALLOY_PLAN_PRODUCT=%q\n' "${product}"
+    printf 'ALLOY_PLAN_TARGETS=(main)\n'
+} > "${output_plan_env}"
+exit 0
+SCRIPT
+    printf '%s\n' "${marker}" >> "${smelterl_path}"
 }
 
 build_sdk_test_write_fake_rebar3() {
@@ -97,7 +167,70 @@ case "${1:-}" in
         ;;
     escriptize)
         mkdir -p _build/default/bin
-        printf '%s\n' "${FAKE_REBAR3_OUTPUT:-built smelterl}" > _build/default/bin/smelterl
+        cat > _build/default/bin/smelterl <<'FAKE_SMELTERL'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${FAKE_SMELTERL_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${FAKE_SMELTERL_LOG}"
+fi
+
+if [[ "${1:-}" != "plan" ]]; then
+    printf 'fake smelterl only supports plan\n' >&2
+    exit 9
+fi
+shift
+
+product=""
+motherlode=""
+output_plan=""
+output_plan_env=""
+extra_config_count=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --product)
+            product="${2:?}"
+            shift 2
+            ;;
+        --motherlode)
+            motherlode="${2:?}"
+            shift 2
+            ;;
+        --output-plan)
+            output_plan="${2:?}"
+            shift 2
+            ;;
+        --output-plan-env)
+            output_plan_env="${2:?}"
+            shift 2
+            ;;
+        --extra-config)
+            extra_config_count=$((extra_config_count + 1))
+            shift 2
+            ;;
+        *)
+            printf 'unexpected fake smelterl arg: %s\n' "$1" >&2
+            exit 10
+            ;;
+    esac
+done
+
+[[ -n "${product}" ]] || exit 11
+[[ -d "${motherlode}" ]] || exit 12
+[[ -n "${output_plan}" ]] || exit 13
+[[ -n "${output_plan_env}" ]] || exit 14
+[[ "${extra_config_count}" -eq 8 ]] || exit 15
+
+mkdir -p "$(dirname "${output_plan}")" "$(dirname "${output_plan_env}")"
+printf '{fake_build_plan, [{product, <<"%s">>}]}.\n' "${product}" > "${output_plan}"
+{
+    printf 'ALLOY_PLAN_PRODUCT=%q\n' "${product}"
+    printf 'ALLOY_PLAN_TARGETS=(main)\n'
+} > "${output_plan_env}"
+exit 0
+FAKE_SMELTERL
+        printf '%s\n' "${FAKE_REBAR3_OUTPUT:-built smelterl}" >> _build/default/bin/smelterl
         chmod +x _build/default/bin/smelterl
         ;;
     *)
@@ -152,7 +285,8 @@ test_build_sdk_command_direct_invocation_infers_sdk_mode_from_manifest_and_rejec
     command_path="${root_dir}/scripts/commands/build-sdk.sh"
     : > "${root_dir}/ALLOY_SDK_MANIFEST"
 
-    output="$(env -u ALLOY_MODE -u ALLOY_BUILD_DIR -u ALLOY_ARTEFACT_DIR -u ALLOY_CACHE_DIR \
+    output="$(env -u ALLOY_MODE -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        -u ALLOY_BUILD_DIR -u ALLOY_ARTEFACT_DIR -u ALLOY_CACHE_DIR \
         "${command_path}" demo 2>&1)"
     status=$?
 
@@ -185,6 +319,8 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/targets' ]]"
     assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/staging' ]]"
     assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/motherlode' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.term' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.env' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/builtin/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/env_one/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/local_one/.nuggets' ]]"
@@ -193,9 +329,38 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-" "${output}"
     assert_matches "Additional command-line nugget sources: 1" "${output}"
     assert_matches "Additional environment nugget sources: 1" "${output}"
+    assert_matches "Plan file: ${build_root}/sdk/demo_product/plan/build_plan.term" "${output}"
+    assert_matches "Plan environment file: ${build_root}/sdk/demo_product/plan/build_plan.env" "${output}"
     assert_matches "Staged nugget repositories: 3" "${output}"
     assert_matches "Dirty VCS checkouts are allowed" "${output}"
     assert_matches "Legal-info source export was requested" "${output}"
+}
+
+test_build_sdk_command_invokes_smelterl_plan_with_expected_artifacts() {
+    local temp_dir build_root artefact_dir smelterl_log output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-plan")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    smelterl_log="${temp_dir}/smelterl.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(FAKE_SMELTERL_LOG="${smelterl_log}" \
+        ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.term' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.env' ]]"
+    assert_status_code 0 "grep -Fq -- 'plan --product demo_product' '${smelterl_log}'"
+    assert_status_code 0 "grep -Fq -- '--motherlode ${build_root}/sdk/demo_product/motherlode' '${smelterl_log}'"
+    assert_status_code 0 "grep -Fq -- '--output-plan ${build_root}/sdk/demo_product/plan/build_plan.term' '${smelterl_log}'"
+    assert_status_code 0 "grep -Fq -- '--output-plan-env ${build_root}/sdk/demo_product/plan/build_plan.env' '${smelterl_log}'"
+    assert_status_code 0 "grep -Fq -- 'ALLOY_SDK_DIR=\${ALLOY_SDK_DIR}' '${smelterl_log}'"
+    assert_status_code 0 "grep -Fq -- 'ALLOY_FIRMWARE_WORK_DIR=\${ALLOY_FIRMWARE_WORK_DIR}' '${smelterl_log}'"
+    assert_status_code 1 "grep -Fq -- 'ALLOY_MOTHERLODE=' '${smelterl_log}'"
+    assert_matches "Initialized SDK build workspace for demo_product" "${output}"
 }
 
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
@@ -410,7 +575,8 @@ test_build_sdk_command_uses_cached_smelterl_without_rebar3() {
     printf '#!/usr/bin/env bash\nexit 88\n' > "${fake_bin}/rebar3"
     chmod +x "${fake_bin}/rebar3"
 
-    output="$(PATH="${fake_bin}:${PATH}" ALLOY_BUILD_DIR="${build_root}" \
+    output="$(env -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        PATH="${fake_bin}:${PATH}" ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${command_path}" demo_product 2>&1)"
     status=$?
@@ -431,7 +597,8 @@ test_build_sdk_command_builds_missing_smelterl_artifact() {
     rebar_log="${temp_dir}/rebar.log"
     build_sdk_test_write_fake_rebar3 "${fake_bin}"
 
-    output="$(PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
+    output="$(env -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
         FAKE_REBAR3_OUTPUT="built smelterl" \
         ALLOY_BUILD_DIR="${build_root}" ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${command_path}" demo_product 2>&1)"
@@ -457,7 +624,8 @@ test_build_sdk_command_dev_mode_rebuilds_smelterl_artifact() {
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}" "9.8.7"
     build_sdk_test_write_fake_rebar3 "${fake_bin}"
 
-    output="$(PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
+    output="$(env -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
         FAKE_REBAR3_OUTPUT="rebuilt smelterl" \
         ALLOY_DEV_MODE=true ALLOY_BUILD_DIR="${build_root}" ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${command_path}" demo_product 2>&1)"

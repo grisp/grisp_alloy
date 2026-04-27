@@ -371,6 +371,41 @@ build_sdk_ensure_smelterl() {
     log_debug "Smelterl executable path: ${ALLOY_SMELTERL}"
 }
 
+build_sdk_run_plan() {
+    ALLOY_SDK_PLAN_FILE="${ALLOY_SDK_PLAN_DIR}/build_plan.term"
+    ALLOY_SDK_PLAN_ENV_FILE="${ALLOY_SDK_PLAN_DIR}/build_plan.env"
+    export ALLOY_SDK_PLAN_FILE ALLOY_SDK_PLAN_ENV_FILE
+
+    local -a plan_args=(
+        plan
+        --product "${ARG_PRODUCT_NUGGET}"
+        --motherlode "${ALLOY_MOTHERLODE}"
+        --extra-config 'ALLOY_ROOT_DIR=${ALLOY_ROOT_DIR}'
+        --extra-config 'ALLOY_ARTEFACT_DIR=${ALLOY_ARTEFACT_DIR}'
+        --extra-config 'ALLOY_CACHE_DIR=${ALLOY_CACHE_DIR}'
+        --extra-config 'ALLOY_BUILD_DIR=${ALLOY_BUILD_DIR}'
+        --extra-config 'ALLOY_SDK_DIR=${ALLOY_SDK_DIR}'
+        --extra-config 'ALLOY_FIRMWARE_WORK_DIR=${ALLOY_FIRMWARE_WORK_DIR}'
+        --extra-config 'ALLOY_DEBUG=${ALLOY_DEBUG}'
+        --extra-config 'ALLOY_TRACE=${ALLOY_TRACE}'
+        --output-plan "${ALLOY_SDK_PLAN_FILE}"
+        --output-plan-env "${ALLOY_SDK_PLAN_ENV_FILE}"
+    )
+
+    log_info "Running smelterl plan for ${ARG_PRODUCT_NUGGET}."
+    log_debug "Plan term output: ${ALLOY_SDK_PLAN_FILE}"
+    log_debug "Plan environment output: ${ALLOY_SDK_PLAN_ENV_FILE}"
+    if ! "${ALLOY_SMELTERL}" "${plan_args[@]}"; then
+        fail "Smelterl plan failed for product: ${ARG_PRODUCT_NUGGET}"
+    fi
+
+    [[ -s "${ALLOY_SDK_PLAN_FILE}" ]] ||
+        fail "Smelterl plan did not produce expected artefact: ${ALLOY_SDK_PLAN_FILE}"
+    [[ -s "${ALLOY_SDK_PLAN_ENV_FILE}" ]] ||
+        fail "Smelterl plan did not produce expected artefact: ${ALLOY_SDK_PLAN_ENV_FILE}"
+    log_info "Smelterl plan complete."
+}
+
 build_sdk_print_summary() {
     local build_dir="$1"
 
@@ -378,6 +413,8 @@ build_sdk_print_summary() {
     print_note "Smelterl executable: ${ALLOY_SMELTERL}"
     print_note "Build directory: ${build_dir}"
     print_note "Plan directory: ${ALLOY_SDK_PLAN_DIR}"
+    print_note "Plan file: ${ALLOY_SDK_PLAN_FILE}"
+    print_note "Plan environment file: ${ALLOY_SDK_PLAN_ENV_FILE}"
     print_note "Targets directory: ${ALLOY_SDK_TARGETS_DIR}"
     print_note "Staging directory: ${ALLOY_SDK_STAGING_DIR}"
     print_note "Motherlode directory: ${ALLOY_MOTHERLODE}"
@@ -399,7 +436,7 @@ build_sdk_print_summary() {
         print_note "Queued clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
     fi
 
-    print_hint "Plan/generate/build orchestration follows in later Phase 5 tasks."
+    print_hint "Target generation and build orchestration follows in later Phase 5 tasks."
 }
 
 build_sdk_infer_mode
@@ -459,4 +496,5 @@ export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 log_debug "SDK build workspace root: ${build_dir}"
 build_sdk_stage_nuggets
 build_sdk_ensure_smelterl
+build_sdk_run_plan
 build_sdk_print_summary "${build_dir}"
