@@ -150,7 +150,15 @@ Follow `docs/WORKFLOW.md` exactly:
 4. Add or update tests for every behavior change.
 5. Run focused tests during iteration and full relevant suites before finalizing.
 6. Update design docs in the same commit when approved behavior or schema changes.
-7. Update the current repository `CHANGELOG.md`.
+7. Update the current repository `CHANGELOG.md` only when the task changes
+   behavior, interfaces, outputs, supported workflow, or other
+   user-facing/developer-facing repository contracts in a way that is useful to
+   record for changelog readers.
+   - Do not add changelog entries for planning updates, history files,
+     task-status bookkeeping, or agent-only process notes.
+   - History files should likewise avoid local session-state/process notes such
+     as staged-state reminders, blocked signing prompts, or one-off
+     commit-amend friction unless they changed the durable engineering outcome.
 8. Write the current repository commit message file at
    `$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG` and commit with
    `git commit -F "$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`.

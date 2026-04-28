@@ -445,3 +445,9 @@ Cross-repository development note:
   - Tests: Command-entry regression tests and baseline/full workflow gates.
   - Refinement note (from Task 9.4): Consolidate the repeated command bootstrap currently duplicated across `build-sdk.sh`, `build-project.sh`, `build-firmware.sh`, `serve-artefacts.sh`, and `grispio.sh` instead of preserving per-command root-resolution snippets.
   - Done when: Command/bootstrap path resolution is centralized and any remaining compatibility wrappers have an explicit, minimal policy surface.
+
+- [ ] **[IN_PROGRESS] Task 9.7: Changelog scope policy clarification**
+  - Scope: Clarify in agent/workflow guidance what kinds of changes belong in `CHANGELOG.md` and which internal planning/history/process updates should stay out of it.
+  - Scope: Remove changelog entries that were added only for repository-internal planning/workflow bookkeeping when they are not useful to users or developers consuming the repo.
+  - Tests: Baseline/full workflow gates as applicable for docs-only changes.
+  - Done when: The repository docs make changelog scope explicit and the current task history/planning/process-only changes are no longer recorded as changelog entries.

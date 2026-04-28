@@ -8,11 +8,6 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
-- Updated `AGENTS.md`, `docs/WORKFLOW.md`, and `docs/PLANNING.md` so deferred
-  cleanup or compatibility debt discovered during investigation must be added
-  back to planning explicitly, and scheduled follow-up cleanup for the current
-  `ALLOY_ROOT` / `ALLOY_ROOT_DIR` root-contract drift plus duplicated command
-  bootstrap logic.
 - Updated `alloy build sdk` to run the first Smelterl orchestration pass,
   writing `plan/build_plan.term` and `plan/build_plan.env` after nugget
   staging and Smelterl binary resolution, while preserving literal plan-time

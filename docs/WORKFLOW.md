@@ -29,7 +29,12 @@ Goals:
   - one logical task per commit whenever possible.
 - Changelog discipline:
   - keep traceability notes in the task context file during development and
-    update `CHANGELOG.md` before finalizing the commit.
+    update `CHANGELOG.md` before finalizing the commit only when the task
+    changes behavior, interfaces, outputs, supported workflow, or other
+    user-facing/developer-facing repository contracts in a way that is useful
+    to changelog readers.
+  - do not add changelog entries for planning maintenance, history files,
+    task-status bookkeeping, or agent-only workflow/process notes.
   - record the final commit outcome, not intermediate drafts/rewrites that
     happened during task implementation.
 - Context signal over volume:
@@ -265,13 +270,19 @@ For every task, execute these steps in order.
    - Exclude local or ephemeral workflow state from the history file, for
      example:
      - reminders that a human still needs to create a signed commit,
+     - notes about transient `gpg` / `pinentry` / blocked-amend friction that
+       did not change the engineering result,
      - notes that a commit message file was prepared or changes were staged,
      - statements that only describe the current checkout state rather than the
        durable engineering context of the task.
 
 12. Finalize records and commit preparation.
-   - Update the current changelog using Keep a Changelog:
+   - When the task is changelog-relevant, update the current changelog using
+     Keep a Changelog:
      - https://keepachangelog.com/en/1.1.0/
+   - Skip the changelog when the task only changes planning/history/internal
+     process bookkeeping and does not materially affect repository consumers or
+     contributors.
    - MUST create a fresh current commit-message file for the current task with
      a clear commit message (scope + final outcomes). Do not duplicate
      commit-message text in the history context file.
@@ -356,7 +367,7 @@ A task is DONE only if all are true:
 - for touched Erlang code, Common Test passes and Dialyzer reports zero
   warnings,
 - design docs updated when behavior/spec changed,
-- current changelog updated,
+- current changelog updated when the task is changelog-relevant,
 - current commit-message file prepared,
 - when signed commits are required, the user has been asked to perform the
   signed commit after reviewing the prepared staged changes and commit message,
@@ -403,7 +414,7 @@ Before finalizing a task:
   - never add suppressions just to silence warnings or make gates pass quickly,
 - docs:
   - update design docs for approved design changes,
-  - update the current changelog,
+  - update the current changelog when the task is changelog-relevant,
 - planning:
   - refine relevant future tasks in the current planning file based on
     discovered implementation constraints (or explicitly record `None` in task
@@ -420,8 +431,8 @@ Before finalizing a task:
   - filename is prefixed with UTC timestamp for deterministic ordering,
   - context includes decisions/rationale and any task-specific validation or
     exception context that materially helps later review,
-  - context and changelog describe final commit state (not implementation
-    churn within the same task),
+  - context and, when present, changelog describe final commit state (not
+    implementation churn within the same task),
   - context excludes low-value noise (full terminal transcripts, duplicated diffs).
 
 ## Context History Signal/Noise Rules
@@ -496,7 +507,8 @@ Every context file using this format must contain at least:
     - only durable technical uncertainty, intentionally deferred engineering
       work, or future design/implementation follow-up.
     - do not use this section for local process reminders, commit/signing
-      status, staging status, or temporary superproject bookkeeping.
+      status, staging status, transient local signing friction, or temporary
+      superproject bookkeeping.
 11. `## Changed Artifacts`
     - concise list of touched files/areas by purpose.
 12. `## Completion Summary`
