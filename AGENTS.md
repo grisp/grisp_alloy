@@ -40,6 +40,10 @@ workarounds unless the human explicitly chooses that path.
 When durable human or agent feedback improves the development process, codify
 that improvement in the owning repository `AGENTS.md`, `docs/WORKFLOW.md`,
 and/or planning notes instead of leaving it only in conversation.
+When investigation uncovers cleanup or compatibility debt that is out of scope
+for the current task, add or refine a planning item for that follow-up before
+closing the task so the debt is not stranded only in chat, history, or local
+memory.
 
 ## Project Role
 

@@ -415,6 +415,7 @@ Cross-repository development note:
 - [ ] **Task 9.2: Cross-reference and terminology audit**
   - Scope: Verify anchors, terms, and plan/generate semantics across all design docs.
   - Tests: Link-check and terminology grep checks in CI.
+  - Refinement note (from Task 9.4): Include environment/bootstrap contract drift in the audit, especially `ALLOY_ROOT` vs `ALLOY_ROOT_DIR` semantics and any stale `common.sh` / `hook_common.sh` sourcing-path descriptions.
   - Done when:
     - No stale references to pre-plan/generate CLI (`smelterl generate --product/--motherlode`).
     - No stale references to `sdk_outputs` being nested inside `capabilities`.
@@ -424,3 +425,23 @@ Cross-repository development note:
   - Tests: Golden CLI-output tests for `--help` and representative error cases across major commands.
   - Refinement note (from Task 1.2): Include mode-gating error outputs in coverage (for example disallowed `build sdk` in SDK mode and `prepare sdk` in repository mode).
   - Done when: Help/error output is command-consistent and free from legacy script-name UX leakage.
+
+- [x] **Task 9.4: Root/bootstrap cleanup audit and backlog refinement**
+  - Scope: Investigate duplicated root/bootstrap contracts across docs and shell entrypoints, with `ALLOY_ROOT` / `ALLOY_ROOT_DIR` as the primary case, and record the required cleanup work in planning/workflow docs.
+  - Scope: Classify adjacent findings as either already-covered backlog items, refinements to existing tasks, or clearly missing cleanup tasks.
+  - Tests: Baseline/full workflow gates as applicable for docs/planning-only changes.
+  - Done when: The cleanup backlog is explicit, the intended future direction is documented, and the workflow says discovered cleanup debt must be recorded in planning instead of left only in chat/history.
+
+- [ ] **Task 9.5: Root-variable contract consolidation**
+  - Scope: Collapse the overlapping public contract between `ALLOY_ROOT` and `ALLOY_ROOT_DIR` into one canonical runtime/install-root variable, keeping any compatibility alias temporary and narrowly scoped.
+  - Scope: Update entrypoint/bootstrap code, command wrappers, Buildroot make handoff, tests, and design docs so root-path resolution has one authoritative contract in both repository and SDK mode.
+  - Tests: Shell command/hook regression coverage for repository-mode and SDK-mode root resolution, plus baseline/full workflow gates.
+  - Refinement note (from Task 9.4): Keep `ALLOY_ROOT_DIR` as the public runtime/install-root contract for hooks and generated contexts; treat `ALLOY_ROOT` as bootstrap-only or a temporary compatibility alias during migration because the current implementation gives both names the same effective value.
+  - Done when: The public contract no longer exposes two overlapping root variables with the same effective value and the remaining bootstrap path is intentionally documented.
+
+- [ ] **Task 9.6: Transitional wrapper/bootstrap dedup cleanup**
+  - Scope: Remove or isolate duplicated root/bootstrap preambles and other transitional command-entry compatibility layers once canonical `alloy ...` command paths fully own the flow.
+  - Scope: Cover remaining duplicated `ROOT_DIR` setup in command scripts and any leftover repository-root wrapper compatibility policy so future command work stops copying bootstrap logic.
+  - Tests: Command-entry regression tests and baseline/full workflow gates.
+  - Refinement note (from Task 9.4): Consolidate the repeated command bootstrap currently duplicated across `build-sdk.sh`, `build-project.sh`, `build-firmware.sh`, `serve-artefacts.sh`, and `grispio.sh` instead of preserving per-command root-resolution snippets.
+  - Done when: Command/bootstrap path resolution is centralized and any remaining compatibility wrappers have an explicit, minimal policy surface.

@@ -47,6 +47,9 @@ Goals:
   - after each completed task, refine future planning items with newly
     discovered constraints/notes so critical implementation details are not
     forgotten.
+  - when investigation reveals cleanup, compatibility debt, or doc/code drift
+    that is intentionally left for later, capture it in planning as a
+    refinement note or new task before closing the current task.
 - Process self-refinement:
   - when human feedback, reviewer feedback, or agent experience reveals a
     durable process improvement, ambiguity, or recurring failure mode, codify
@@ -311,6 +314,10 @@ For every task, execute these steps in order.
 13. Refine future planning items.
    - Review the current planning file and update relevant future tasks with
      implementation knowledge discovered in the completed task.
+   - If the task uncovered deferred cleanup, compatibility debt, or
+     documentation drift that is not fixed immediately, add it to planning
+     explicitly as a refinement note or a new task; do not leave it only in
+     chat, history, or changelog prose.
    - If the task or its review surfaced a durable workflow/process correction,
      update the owning repository workflow/agent/planning docs in the same
      overall task or record a linked follow-up task explicitly.
