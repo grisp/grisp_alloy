@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to source `build_plan.env` after `smelterl plan`
+  and run one shared-plan `smelterl generate` loop for every target,
+  generating auxiliary targets first and the main target last under
+  `targets/<TARGET_ID>/`.
 - Updated `alloy build sdk` to run the first Smelterl orchestration pass,
   writing `plan/build_plan.term` and `plan/build_plan.env` after nugget
   staging and Smelterl binary resolution, while preserving literal plan-time
@@ -62,6 +66,9 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused `alloy build sdk` coverage for per-target `smelterl generate`
+  ordering plus generated target-local `br2_external/`, defconfig, context,
+  and workspace paths.
 - Added focused `alloy build sdk` coverage for `smelterl plan` invocation,
   plan artefact creation, output path handling, and placeholder extra-config
   propagation.

@@ -97,59 +97,179 @@ if [[ -n "${FAKE_SMELTERL_LOG:-}" ]]; then
     printf '%s\n' "$*" >> "${FAKE_SMELTERL_LOG}"
 fi
 
-if [[ "${1:-}" != "plan" ]]; then
-    printf 'fake smelterl only supports plan\n' >&2
-    exit 9
-fi
+write_shell_array() {
+    local name="$1"
+    shift
+    local value
+    printf '%s=(' "${name}"
+    for value in "$@"; do
+        printf '%q ' "${value}"
+    done
+    printf ')\n'
+}
+
+write_assoc_array_entry() {
+    local key="$1"
+    local value="$2"
+    printf "  [%q]=%q\n" "${key}" "${value}"
+}
+
+command_name="${1:-}"
+[[ -n "${command_name}" ]] || exit 9
 shift
 
-product=""
-motherlode=""
-output_plan=""
-output_plan_env=""
-extra_config_count=0
+case "${command_name}" in
+    plan)
+        product=""
+        motherlode=""
+        output_plan=""
+        output_plan_env=""
+        extra_config_count=0
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --product)
-            product="${2:?}"
-            shift 2
-            ;;
-        --motherlode)
-            motherlode="${2:?}"
-            shift 2
-            ;;
-        --output-plan)
-            output_plan="${2:?}"
-            shift 2
-            ;;
-        --output-plan-env)
-            output_plan_env="${2:?}"
-            shift 2
-            ;;
-        --extra-config)
-            extra_config_count=$((extra_config_count + 1))
-            shift 2
-            ;;
-        *)
-            printf 'unexpected fake smelterl arg: %s\n' "$1" >&2
-            exit 10
-            ;;
-    esac
-done
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --product)
+                    product="${2:?}"
+                    shift 2
+                    ;;
+                --motherlode)
+                    motherlode="${2:?}"
+                    shift 2
+                    ;;
+                --output-plan)
+                    output_plan="${2:?}"
+                    shift 2
+                    ;;
+                --output-plan-env)
+                    output_plan_env="${2:?}"
+                    shift 2
+                    ;;
+                --extra-config)
+                    extra_config_count=$((extra_config_count + 1))
+                    shift 2
+                    ;;
+                *)
+                    printf 'unexpected fake smelterl plan arg: %s\n' "$1" >&2
+                    exit 10
+                    ;;
+            esac
+        done
 
-[[ -n "${product}" ]] || exit 11
-[[ -d "${motherlode}" ]] || exit 12
-[[ -n "${output_plan}" ]] || exit 13
-[[ -n "${output_plan_env}" ]] || exit 14
-[[ "${extra_config_count}" -eq 8 ]] || exit 15
+        [[ -n "${product}" ]] || exit 11
+        [[ -d "${motherlode}" ]] || exit 12
+        [[ -n "${output_plan}" ]] || exit 13
+        [[ -n "${output_plan_env}" ]] || exit 14
+        [[ "${extra_config_count}" -eq 8 ]] || exit 15
 
-mkdir -p "$(dirname "${output_plan}")" "$(dirname "${output_plan_env}")"
-printf '{fake_build_plan, [{product, <<"%s">>}]}.\n' "${product}" > "${output_plan}"
-{
-    printf 'ALLOY_PLAN_PRODUCT=%q\n' "${product}"
-    printf 'ALLOY_PLAN_TARGETS=(main)\n'
-} > "${output_plan_env}"
+        aux_ids_raw="${FAKE_SMELTERL_AUXILIARY_IDS:-}"
+        aux_ids=()
+        if [[ -n "${aux_ids_raw}" ]]; then
+            read -r -a aux_ids <<< "${aux_ids_raw}"
+        fi
+        target_ids=("${aux_ids[@]}" main)
+
+        mkdir -p "$(dirname "${output_plan}")" "$(dirname "${output_plan_env}")"
+        printf '{fake_build_plan, [{product, <<"%s">>}]}.\n' "${product}" > "${output_plan}"
+        {
+            printf 'ALLOY_PLAN_PRODUCT=%q\n' "${product}"
+            printf 'ALLOY_PLAN_MAIN_TARGET=%q\n' 'main'
+            write_shell_array "ALLOY_PLAN_AUXILIARY_IDS" "${aux_ids[@]}"
+            write_shell_array "ALLOY_PLAN_TARGET_IDS" "${target_ids[@]}"
+            printf 'declare -A ALLOY_PLAN_TARGET_KIND=(\n'
+            target_id=""
+            for target_id in "${aux_ids[@]}"; do
+                write_assoc_array_entry "${target_id}" "auxiliary"
+            done
+            write_assoc_array_entry "main" "main"
+            printf ')\n'
+            printf 'declare -A ALLOY_PLAN_TARGET_ROOT=(\n'
+            for target_id in "${aux_ids[@]}"; do
+                write_assoc_array_entry "${target_id}" "${target_id}_root"
+            done
+            write_assoc_array_entry "main" "${product}"
+            printf ')\n'
+            printf 'declare -A ALLOY_PLAN_EXTRA_CONFIG=(\n'
+            write_assoc_array_entry "ALLOY_BUILD_DIR" '${ALLOY_BUILD_DIR}'
+            printf ')\n'
+        } > "${output_plan_env}"
+        ;;
+    generate)
+        plan_path=""
+        auxiliary_target=""
+        output_external_desc=""
+        output_config_in=""
+        output_external_mk=""
+        output_defconfig=""
+        output_context=""
+
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --plan)
+                    plan_path="${2:?}"
+                    shift 2
+                    ;;
+                --auxiliary)
+                    auxiliary_target="${2:?}"
+                    shift 2
+                    ;;
+                --output-external-desc)
+                    output_external_desc="${2:?}"
+                    shift 2
+                    ;;
+                --output-config-in)
+                    output_config_in="${2:?}"
+                    shift 2
+                    ;;
+                --output-external-mk)
+                    output_external_mk="${2:?}"
+                    shift 2
+                    ;;
+                --output-defconfig)
+                    output_defconfig="${2:?}"
+                    shift 2
+                    ;;
+                --output-context)
+                    output_context="${2:?}"
+                    shift 2
+                    ;;
+                *)
+                    printf 'unexpected fake smelterl generate arg: %s\n' "$1" >&2
+                    exit 16
+                    ;;
+            esac
+        done
+
+        [[ -n "${plan_path}" ]] || exit 17
+        [[ -f "${plan_path}" ]] || exit 18
+        [[ -n "${output_external_desc}" ]] || exit 19
+        [[ -n "${output_config_in}" ]] || exit 20
+        [[ -n "${output_external_mk}" ]] || exit 21
+        [[ -n "${output_defconfig}" ]] || exit 22
+        [[ -n "${output_context}" ]] || exit 23
+
+        target_id="main"
+        if [[ -n "${auxiliary_target}" ]]; then
+            target_id="${auxiliary_target}"
+        fi
+
+        mkdir -p \
+            "$(dirname "${output_external_desc}")" \
+            "$(dirname "${output_config_in}")" \
+            "$(dirname "${output_external_mk}")" \
+            "$(dirname "${output_defconfig}")" \
+            "$(dirname "${output_context}")"
+        printf 'name: %s\n' "${target_id}" > "${output_external_desc}"
+        printf '# Config for %s\n' "${target_id}" > "${output_config_in}"
+        printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
+        printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
+        printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+        ;;
+    *)
+        printf 'fake smelterl does not support command: %s\n' "${command_name}" >&2
+        exit 24
+        ;;
+esac
+
 exit 0
 SCRIPT
     printf '%s\n' "${marker}" >> "${smelterl_path}"
@@ -175,59 +295,179 @@ if [[ -n "${FAKE_SMELTERL_LOG:-}" ]]; then
     printf '%s\n' "$*" >> "${FAKE_SMELTERL_LOG}"
 fi
 
-if [[ "${1:-}" != "plan" ]]; then
-    printf 'fake smelterl only supports plan\n' >&2
-    exit 9
-fi
+write_shell_array() {
+    local name="$1"
+    shift
+    local value
+    printf '%s=(' "${name}"
+    for value in "$@"; do
+        printf '%q ' "${value}"
+    done
+    printf ')\n'
+}
+
+write_assoc_array_entry() {
+    local key="$1"
+    local value="$2"
+    printf "  [%q]=%q\n" "${key}" "${value}"
+}
+
+command_name="${1:-}"
+[[ -n "${command_name}" ]] || exit 9
 shift
 
-product=""
-motherlode=""
-output_plan=""
-output_plan_env=""
-extra_config_count=0
+case "${command_name}" in
+    plan)
+        product=""
+        motherlode=""
+        output_plan=""
+        output_plan_env=""
+        extra_config_count=0
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --product)
-            product="${2:?}"
-            shift 2
-            ;;
-        --motherlode)
-            motherlode="${2:?}"
-            shift 2
-            ;;
-        --output-plan)
-            output_plan="${2:?}"
-            shift 2
-            ;;
-        --output-plan-env)
-            output_plan_env="${2:?}"
-            shift 2
-            ;;
-        --extra-config)
-            extra_config_count=$((extra_config_count + 1))
-            shift 2
-            ;;
-        *)
-            printf 'unexpected fake smelterl arg: %s\n' "$1" >&2
-            exit 10
-            ;;
-    esac
-done
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --product)
+                    product="${2:?}"
+                    shift 2
+                    ;;
+                --motherlode)
+                    motherlode="${2:?}"
+                    shift 2
+                    ;;
+                --output-plan)
+                    output_plan="${2:?}"
+                    shift 2
+                    ;;
+                --output-plan-env)
+                    output_plan_env="${2:?}"
+                    shift 2
+                    ;;
+                --extra-config)
+                    extra_config_count=$((extra_config_count + 1))
+                    shift 2
+                    ;;
+                *)
+                    printf 'unexpected fake smelterl plan arg: %s\n' "$1" >&2
+                    exit 10
+                    ;;
+            esac
+        done
 
-[[ -n "${product}" ]] || exit 11
-[[ -d "${motherlode}" ]] || exit 12
-[[ -n "${output_plan}" ]] || exit 13
-[[ -n "${output_plan_env}" ]] || exit 14
-[[ "${extra_config_count}" -eq 8 ]] || exit 15
+        [[ -n "${product}" ]] || exit 11
+        [[ -d "${motherlode}" ]] || exit 12
+        [[ -n "${output_plan}" ]] || exit 13
+        [[ -n "${output_plan_env}" ]] || exit 14
+        [[ "${extra_config_count}" -eq 8 ]] || exit 15
 
-mkdir -p "$(dirname "${output_plan}")" "$(dirname "${output_plan_env}")"
-printf '{fake_build_plan, [{product, <<"%s">>}]}.\n' "${product}" > "${output_plan}"
-{
-    printf 'ALLOY_PLAN_PRODUCT=%q\n' "${product}"
-    printf 'ALLOY_PLAN_TARGETS=(main)\n'
-} > "${output_plan_env}"
+        aux_ids_raw="${FAKE_SMELTERL_AUXILIARY_IDS:-}"
+        aux_ids=()
+        if [[ -n "${aux_ids_raw}" ]]; then
+            read -r -a aux_ids <<< "${aux_ids_raw}"
+        fi
+        target_ids=("${aux_ids[@]}" main)
+
+        mkdir -p "$(dirname "${output_plan}")" "$(dirname "${output_plan_env}")"
+        printf '{fake_build_plan, [{product, <<"%s">>}]}.\n' "${product}" > "${output_plan}"
+        {
+            printf 'ALLOY_PLAN_PRODUCT=%q\n' "${product}"
+            printf 'ALLOY_PLAN_MAIN_TARGET=%q\n' 'main'
+            write_shell_array "ALLOY_PLAN_AUXILIARY_IDS" "${aux_ids[@]}"
+            write_shell_array "ALLOY_PLAN_TARGET_IDS" "${target_ids[@]}"
+            printf 'declare -A ALLOY_PLAN_TARGET_KIND=(\n'
+            target_id=""
+            for target_id in "${aux_ids[@]}"; do
+                write_assoc_array_entry "${target_id}" "auxiliary"
+            done
+            write_assoc_array_entry "main" "main"
+            printf ')\n'
+            printf 'declare -A ALLOY_PLAN_TARGET_ROOT=(\n'
+            for target_id in "${aux_ids[@]}"; do
+                write_assoc_array_entry "${target_id}" "${target_id}_root"
+            done
+            write_assoc_array_entry "main" "${product}"
+            printf ')\n'
+            printf 'declare -A ALLOY_PLAN_EXTRA_CONFIG=(\n'
+            write_assoc_array_entry "ALLOY_BUILD_DIR" '${ALLOY_BUILD_DIR}'
+            printf ')\n'
+        } > "${output_plan_env}"
+        ;;
+    generate)
+        plan_path=""
+        auxiliary_target=""
+        output_external_desc=""
+        output_config_in=""
+        output_external_mk=""
+        output_defconfig=""
+        output_context=""
+
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --plan)
+                    plan_path="${2:?}"
+                    shift 2
+                    ;;
+                --auxiliary)
+                    auxiliary_target="${2:?}"
+                    shift 2
+                    ;;
+                --output-external-desc)
+                    output_external_desc="${2:?}"
+                    shift 2
+                    ;;
+                --output-config-in)
+                    output_config_in="${2:?}"
+                    shift 2
+                    ;;
+                --output-external-mk)
+                    output_external_mk="${2:?}"
+                    shift 2
+                    ;;
+                --output-defconfig)
+                    output_defconfig="${2:?}"
+                    shift 2
+                    ;;
+                --output-context)
+                    output_context="${2:?}"
+                    shift 2
+                    ;;
+                *)
+                    printf 'unexpected fake smelterl generate arg: %s\n' "$1" >&2
+                    exit 16
+                    ;;
+            esac
+        done
+
+        [[ -n "${plan_path}" ]] || exit 17
+        [[ -f "${plan_path}" ]] || exit 18
+        [[ -n "${output_external_desc}" ]] || exit 19
+        [[ -n "${output_config_in}" ]] || exit 20
+        [[ -n "${output_external_mk}" ]] || exit 21
+        [[ -n "${output_defconfig}" ]] || exit 22
+        [[ -n "${output_context}" ]] || exit 23
+
+        target_id="main"
+        if [[ -n "${auxiliary_target}" ]]; then
+            target_id="${auxiliary_target}"
+        fi
+
+        mkdir -p \
+            "$(dirname "${output_external_desc}")" \
+            "$(dirname "${output_config_in}")" \
+            "$(dirname "${output_external_mk}")" \
+            "$(dirname "${output_defconfig}")" \
+            "$(dirname "${output_context}")"
+        printf 'name: %s\n' "${target_id}" > "${output_external_desc}"
+        printf '# Config for %s\n' "${target_id}" > "${output_config_in}"
+        printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
+        printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
+        printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+        ;;
+    *)
+        printf 'fake smelterl does not support command: %s\n' "${command_name}" >&2
+        exit 24
+        ;;
+esac
+
 exit 0
 FAKE_SMELTERL
         printf '%s\n' "${FAKE_REBAR3_OUTPUT:-built smelterl}" >> _build/default/bin/smelterl
@@ -321,6 +561,12 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/motherlode' ]]"
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.term' ]]"
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.env' ]]"
+    assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/targets/main/workspace' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/external.desc' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/Config.in' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/external.mk' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/configs/main_defconfig' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/alloy_context.sh' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/builtin/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/env_one/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/local_one/.nuggets' ]]"
@@ -331,6 +577,7 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_matches "Additional environment nugget sources: 1" "${output}"
     assert_matches "Plan file: ${build_root}/sdk/demo_product/plan/build_plan.term" "${output}"
     assert_matches "Plan environment file: ${build_root}/sdk/demo_product/plan/build_plan.env" "${output}"
+    assert_matches "Generated targets: main" "${output}"
     assert_matches "Staged nugget repositories: 3" "${output}"
     assert_matches "Dirty VCS checkouts are allowed" "${output}"
     assert_matches "Legal-info source export was requested" "${output}"
@@ -361,6 +608,42 @@ test_build_sdk_command_invokes_smelterl_plan_with_expected_artifacts() {
     assert_status_code 0 "grep -Fq -- 'ALLOY_FIRMWARE_WORK_DIR=\${ALLOY_FIRMWARE_WORK_DIR}' '${smelterl_log}'"
     assert_status_code 1 "grep -Fq -- 'ALLOY_MOTHERLODE=' '${smelterl_log}'"
     assert_matches "Initialized SDK build workspace for demo_product" "${output}"
+}
+
+test_build_sdk_command_generates_auxiliaries_before_main_from_shared_plan() {
+    local temp_dir build_root artefact_dir smelterl_log output status
+    local plan_path aux_beta_line aux_alpha_line main_line
+    temp_dir="$(harness_make_temp_dir "build-sdk-generate-loop")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    smelterl_log="${temp_dir}/smelterl.log"
+    plan_path="${build_root}/sdk/demo_product/plan/build_plan.term"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(FAKE_SMELTERL_LOG="${smelterl_log}" \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
+        ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/targets/aux_beta/workspace' ]]"
+    assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/targets/aux_alpha/workspace' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/aux_beta/br2_external/configs/aux_beta_defconfig' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/aux_alpha/br2_external/configs/aux_alpha_defconfig' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/configs/main_defconfig' ]]"
+    assert_matches "Generated targets: aux_beta aux_alpha main" "${output}"
+
+    aux_beta_line="$(grep -nF -- "generate --plan ${plan_path} --auxiliary aux_beta" "${smelterl_log}" | cut -d: -f1)"
+    aux_alpha_line="$(grep -nF -- "generate --plan ${plan_path} --auxiliary aux_alpha" "${smelterl_log}" | cut -d: -f1)"
+    main_line="$(grep -nF -- "generate --plan ${plan_path} --output-external-desc ${build_root}/sdk/demo_product/targets/main/br2_external/external.desc" "${smelterl_log}" | cut -d: -f1)"
+
+    assert_status_code 0 "[[ -n '${aux_beta_line}' ]]"
+    assert_status_code 0 "[[ -n '${aux_alpha_line}' ]]"
+    assert_status_code 0 "[[ -n '${main_line}' ]]"
+    assert_status_code 0 "[[ ${aux_beta_line} -lt ${aux_alpha_line} ]]"
+    assert_status_code 0 "[[ ${aux_alpha_line} -lt ${main_line} ]]"
 }
 
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {

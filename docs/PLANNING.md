@@ -240,7 +240,7 @@ Cross-repository development note:
   - Refinement note (from Task 5.1): Consume the pre-created `ALLOY_SDK_PLAN_DIR` and `ALLOY_SDK_STAGING_DIR` exports from the command-layer workspace setup so later plan/generate steps share one path source of truth.
   - Done when: One plan pass feeds all target generation passes.
 
-- [ ] **Task 5.5: Target loop and per-target generate invocation**
+- [x] **Task 5.5: Target loop and per-target generate invocation**
   - Scope: Build order auxiliaries first, main last; per-target file outputs.
   - Tests: Integration test for target order and generated paths.
   - Refinement note (from Task 5.4): Consume the already-exported
@@ -253,6 +253,10 @@ Cross-repository development note:
 - [ ] **Task 5.6: Hook wrapper symlinks and target context symlink**
   - Scope: Populate `board/<target>/scripts` wrapper links.
   - Tests: Filesystem tests for expected link targets.
+  - Refinement note (from Task 5.5): Reuse the target-local layout already
+    created by `build-sdk.sh` under `targets/<TARGET_ID>/` (`workspace/`,
+    `br2_external/`, generated defconfig, and `alloy_context.sh`) and add the
+    wrapper/context symlinks in place rather than moving those generated paths.
   - Done when: Buildroot hook wrappers resolve correctly for every target.
 
 - [ ] **Task 5.7: Global pre_build dedup execution**
@@ -446,7 +450,7 @@ Cross-repository development note:
   - Refinement note (from Task 9.4): Consolidate the repeated command bootstrap currently duplicated across `build-sdk.sh`, `build-project.sh`, `build-firmware.sh`, `serve-artefacts.sh`, and `grispio.sh` instead of preserving per-command root-resolution snippets.
   - Done when: Command/bootstrap path resolution is centralized and any remaining compatibility wrappers have an explicit, minimal policy surface.
 
-- [ ] **[IN_PROGRESS] Task 9.7: Changelog scope policy clarification**
+- [x] **Task 9.7: Changelog scope policy clarification**
   - Scope: Clarify in agent/workflow guidance what kinds of changes belong in `CHANGELOG.md` and which internal planning/history/process updates should stay out of it.
   - Scope: Remove changelog entries that were added only for repository-internal planning/workflow bookkeeping when they are not useful to users or developers consuming the repo.
   - Tests: Baseline/full workflow gates as applicable for docs-only changes.
