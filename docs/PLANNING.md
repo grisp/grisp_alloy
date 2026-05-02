@@ -259,7 +259,7 @@ Cross-repository development note:
     wrapper/context symlinks in place rather than moving those generated paths.
   - Done when: Buildroot hook wrappers resolve correctly for every target.
 
-- [ ] **Task 5.6a: Buildroot hook wrapper implementation (`script_hook.sh`)**
+- [x] **Task 5.6a: Buildroot hook wrapper implementation (`script_hook.sh`)**
   - Scope: Implement the real Buildroot hook-wrapper behavior in
     `scripts/buildroot/script_hook.sh` (hook-type detection from invocation
     name, context sourcing, hook-array dispatch, and failure semantics) per
