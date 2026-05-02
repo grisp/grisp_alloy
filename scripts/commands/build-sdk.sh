@@ -439,6 +439,7 @@ build_sdk_prepare_target_layout() {
     BUILD_SDK_TARGET_WORKSPACE_DIR="${BUILD_SDK_TARGET_DIR}/workspace"
     BUILD_SDK_TARGET_EXTERNAL_DIR="${BUILD_SDK_TARGET_DIR}/br2_external"
     BUILD_SDK_TARGET_CONFIGS_DIR="${BUILD_SDK_TARGET_EXTERNAL_DIR}/configs"
+    BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR="${BUILD_SDK_TARGET_EXTERNAL_DIR}/board/${target_id}/scripts"
     BUILD_SDK_TARGET_CONTEXT_FILE="${BUILD_SDK_TARGET_DIR}/alloy_context.sh"
     BUILD_SDK_TARGET_EXTERNAL_DESC_FILE="${BUILD_SDK_TARGET_EXTERNAL_DIR}/external.desc"
     BUILD_SDK_TARGET_CONFIG_IN_FILE="${BUILD_SDK_TARGET_EXTERNAL_DIR}/Config.in"
@@ -447,7 +448,24 @@ build_sdk_prepare_target_layout() {
 
     mkdir -p \
         "${BUILD_SDK_TARGET_WORKSPACE_DIR}" \
-        "${BUILD_SDK_TARGET_CONFIGS_DIR}"
+        "${BUILD_SDK_TARGET_CONFIGS_DIR}" \
+        "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}"
+}
+
+build_sdk_link_target_hooks() {
+    local target_id="$1"
+    local wrapper_script="${ROOT_DIR}/scripts/buildroot/script_hook.sh"
+    local context_link_target='../../../../alloy_context.sh'
+
+    [[ -f "${wrapper_script}" ]] ||
+        fail "Missing Buildroot hook wrapper script: ${wrapper_script}"
+
+    ln -sfn "${wrapper_script}" "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}/post-build.sh"
+    ln -sfn "${wrapper_script}" "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}/post-image.sh"
+    ln -sfn "${wrapper_script}" "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}/post-fakeroot.sh"
+    ln -sfn "${context_link_target}" "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}/alloy_context.sh"
+
+    log_debug "Hook wrapper links prepared for target '${target_id}' in ${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}."
 }
 
 build_sdk_generate_target() {
@@ -474,6 +492,7 @@ build_sdk_generate_target() {
     esac
 
     build_sdk_prepare_target_layout "${target_id}"
+    build_sdk_link_target_hooks "${target_id}"
 
     generate_args+=(
         --output-external-desc "${BUILD_SDK_TARGET_EXTERNAL_DESC_FILE}"

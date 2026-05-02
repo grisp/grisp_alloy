@@ -250,7 +250,7 @@ Cross-repository development note:
     authoritative plan input for every `smelterl generate` invocation.
   - Done when: All targets are generated from one shared plan.
 
-- [ ] **Task 5.6: Hook wrapper symlinks and target context symlink**
+- [x] **Task 5.6: Hook wrapper symlinks and target context symlink**
   - Scope: Populate `board/<target>/scripts` wrapper links.
   - Tests: Filesystem tests for expected link targets.
   - Refinement note (from Task 5.5): Reuse the target-local layout already
@@ -258,6 +258,19 @@ Cross-repository development note:
     `br2_external/`, generated defconfig, and `alloy_context.sh`) and add the
     wrapper/context symlinks in place rather than moving those generated paths.
   - Done when: Buildroot hook wrappers resolve correctly for every target.
+
+- [ ] **Task 5.6a: Buildroot hook wrapper implementation (`script_hook.sh`)**
+  - Scope: Implement the real Buildroot hook-wrapper behavior in
+    `scripts/buildroot/script_hook.sh` (hook-type detection from invocation
+    name, context sourcing, hook-array dispatch, and failure semantics) per
+    `docs/03_ALLOY_DESIGN.md` §5.8 and §8.9.1.
+  - Tests: Command/integration tests for `post-build`, `post-image`, and
+    `post-fakeroot` dispatch behavior and error handling.
+  - Refinement note: Task 5.6 may introduce a temporary minimal wrapper stub so
+    symlink targets resolve; Task 5.6a replaces that stub with the full
+    dispatch implementation.
+  - Done when: Buildroot-invoked hook wrappers execute nugget hook arrays
+    correctly with deterministic logging and strict failure behavior.
 
 - [ ] **Task 5.7: Global pre_build dedup execution**
   - Scope: Run each nugget `pre_build` hook at most once across all targets.
