@@ -272,7 +272,7 @@ Cross-repository development note:
   - Done when: Buildroot-invoked hook wrappers execute nugget hook arrays
     correctly with deterministic logging and strict failure behavior.
 
-- [ ] **Task 5.7: Global pre_build dedup execution**
+- [x] **Task 5.7: Global pre_build dedup execution**
   - Scope: Run each nugget `pre_build` hook at most once across all targets.
   - Tests: Integration test with shared nuggets in multiple targets.
   - Done when: Duplicate execution is prevented with deterministic first-run order.

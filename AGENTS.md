@@ -45,6 +45,21 @@ for the current task, add or refine a planning item for that follow-up before
 closing the task so the debt is not stranded only in chat, history, or local
 memory.
 
+## File-Edit Authorization Policy
+
+Agents are pre-authorized to create, modify, and delete repository files
+without per-change confirmation when performing implementation work.
+
+Scope:
+- Includes tracked files and new files under this repository.
+- Includes deleting files that are committed/tracked in Git (recoverable from history).
+- Does not include destructive/system-level operations outside normal repo editing.
+
+Git operations still require explicit human confirmation:
+- `git commit` (staging via `git add` is allowed without extra confirmation)
+- `git push`
+- history-rewriting or destructive Git commands (for example reset/rebase/revert/cherry-pick with side effects).
+
 ## Project Role
 
 GRiSP Alloy is a build system for embedded Linux firmware for Erlang and Elixir applications.

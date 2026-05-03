@@ -265,6 +265,52 @@ case "${command_name}" in
         printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
         printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
         printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+
+        if [[ "${FAKE_SMELTERL_EMIT_PRE_BUILD:-false}" == "true" ]]; then
+            sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+            hooks_root="${sdk_root}/pre-build-fixture"
+            shared_nugget_dir="${hooks_root}/shared"
+            target_nugget_id="target_${target_id}"
+            target_nugget_dir="${hooks_root}/${target_nugget_id}"
+            shared_var_suffix="SHARED"
+            target_var_suffix="${target_nugget_id^^}"
+            target_var_suffix="${target_var_suffix//[^A-Z0-9]/_}"
+
+            mkdir -p "${shared_nugget_dir}/scripts" "${target_nugget_dir}/scripts"
+            cat > "${shared_nugget_dir}/scripts/pre-build.sh" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_PRE_BUILD_LOG:-}" ]]; then
+    printf 'shared:%s:%s\n' "${ALLOY_PRODUCT:-}" "${ALLOY_NUGGET:-}" >> "${FAKE_PRE_BUILD_LOG}"
+fi
+HOOK
+            chmod +x "${shared_nugget_dir}/scripts/pre-build.sh"
+
+            cat > "${target_nugget_dir}/scripts/pre-build.sh" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_PRE_BUILD_LOG:-}" ]]; then
+    printf 'target:%s:%s\n' "${ALLOY_PRODUCT:-}" "${ALLOY_NUGGET:-}" >> "${FAKE_PRE_BUILD_LOG}"
+fi
+HOOK
+            chmod +x "${target_nugget_dir}/scripts/pre-build.sh"
+
+            {
+                printf 'ALLOY_PRE_BUILD_HOOKS=(%q %q)\n' \
+                    "shared:scripts/pre-build.sh" \
+                    "${target_nugget_id}:scripts/pre-build.sh"
+                printf 'export ALLOY_NUGGET_%s_DIR=%q\n' "${shared_var_suffix}" "${shared_nugget_dir}"
+                printf 'export ALLOY_NUGGET_%s_NAME=%q\n' "${shared_var_suffix}" "Shared"
+                printf 'export ALLOY_NUGGET_%s_DESC=%q\n' "${shared_var_suffix}" "Shared"
+                printf 'export ALLOY_NUGGET_%s_VERSION=%q\n' "${shared_var_suffix}" "1.0.0"
+                printf 'export ALLOY_NUGGET_%s_FLAVOR=%q\n' "${shared_var_suffix}" ""
+                printf 'export ALLOY_NUGGET_%s_DIR=%q\n' "${target_var_suffix}" "${target_nugget_dir}"
+                printf 'export ALLOY_NUGGET_%s_NAME=%q\n' "${target_var_suffix}" "${target_nugget_id}"
+                printf 'export ALLOY_NUGGET_%s_DESC=%q\n' "${target_var_suffix}" "${target_nugget_id}"
+                printf 'export ALLOY_NUGGET_%s_VERSION=%q\n' "${target_var_suffix}" "1.0.0"
+                printf 'export ALLOY_NUGGET_%s_FLAVOR=%q\n' "${target_var_suffix}" ""
+            } >> "${output_context}"
+        fi
         ;;
     *)
         printf 'fake smelterl does not support command: %s\n' "${command_name}" >&2
@@ -657,6 +703,44 @@ test_build_sdk_command_generates_auxiliaries_before_main_from_shared_plan() {
     assert_status_code 0 "[[ ${aux_alpha_line} -lt ${main_line} ]]"
 }
 
+test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
+    local temp_dir build_root artefact_dir pre_build_log output status
+    local shared_count target_count shared_line aux_beta_target_line aux_alpha_target_line main_target_line
+    temp_dir="$(harness_make_temp_dir "build-sdk-pre-build-dedup")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    pre_build_log="${temp_dir}/pre-build.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(FAKE_SMELTERL_EMIT_PRE_BUILD=true \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
+        FAKE_PRE_BUILD_LOG="${pre_build_log}" \
+        ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ -s '${pre_build_log}' ]]"
+    shared_count="$(grep -c '^shared:' "${pre_build_log}")"
+    target_count="$(grep -c '^target:' "${pre_build_log}")"
+    assert_equals "1" "${shared_count}"
+    assert_equals "3" "${target_count}"
+    assert_status_code 0 "grep -Fxq 'shared:aux_beta:shared' '${pre_build_log}'"
+    assert_status_code 0 "grep -Fxq 'target:aux_beta:target_aux_beta' '${pre_build_log}'"
+    assert_status_code 0 "grep -Fxq 'target:aux_alpha:target_aux_alpha' '${pre_build_log}'"
+    assert_status_code 0 "grep -Fxq 'target:main:target_main' '${pre_build_log}'"
+
+    shared_line="$(grep -n '^shared:aux_beta:shared$' "${pre_build_log}" | cut -d: -f1)"
+    aux_beta_target_line="$(grep -n '^target:aux_beta:target_aux_beta$' "${pre_build_log}" | cut -d: -f1)"
+    aux_alpha_target_line="$(grep -n '^target:aux_alpha:target_aux_alpha$' "${pre_build_log}" | cut -d: -f1)"
+    main_target_line="$(grep -n '^target:main:target_main$' "${pre_build_log}" | cut -d: -f1)"
+    assert_status_code 0 "[[ ${shared_line} -lt ${aux_beta_target_line} ]]"
+    assert_status_code 0 "[[ ${aux_beta_target_line} -lt ${aux_alpha_target_line} ]]"
+    assert_status_code 0 "[[ ${aux_alpha_target_line} -lt ${main_target_line} ]]"
+    assert_matches "Generated targets: aux_beta aux_alpha main" "${output}"
+}
+
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
     local temp_dir build_root artefact_dir env_source cli_source remote_repo output status
     temp_dir="$(harness_make_temp_dir "build-sdk-stage")"
@@ -712,6 +796,7 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
     assert_matches "INFO: Staging VCS nugget repository as 'remote_nuggets' \\(ref 'main'\\)" "${output}"
     assert_matches "INFO: Nugget staging complete: 3 repositories staged" "${output}"
     assert_matches "INFO: Using cached smelterl executable ${artefact_dir}/tools/smelterl-" "${output}"
+    assert_status_code 1 "printf '%s\n' '${output}' | grep -Fq 'pre_build summary:'"
 }
 
 test_build_sdk_command_debug_level_two_reports_staging_targets() {
@@ -733,6 +818,7 @@ test_build_sdk_command_debug_level_two_reports_staging_targets() {
     assert_matches "DEBUG: Stage target for builtin: ${build_root}/sdk/demo_product/motherlode/builtin" "${output}"
     assert_matches "DEBUG: Stage target for local_nuggets: ${build_root}/sdk/demo_product/motherlode/local_nuggets" "${output}"
     assert_matches "DEBUG: Smelterl executable path: ${artefact_dir}/tools/smelterl-" "${output}"
+    assert_matches "DEBUG: pre_build summary: ran=0, skipped=0, missing=0" "${output}"
 }
 
 test_build_sdk_command_rejects_missing_local_nugget_source() {
