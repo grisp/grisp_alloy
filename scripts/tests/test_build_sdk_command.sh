@@ -790,9 +790,10 @@ test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
     assert_matches "Generated targets: aux_beta aux_alpha main" "${output}"
 }
 
-test_build_sdk_command_runs_buildroot_make_per_target_with_isolated_context() {
+test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolated_context() {
     local temp_dir build_root artefact_dir make_log output status
     local aux_beta_defconfig_line aux_beta_build_line aux_alpha_defconfig_line aux_alpha_build_line main_defconfig_line main_build_line
+    local aux_beta_legal_line aux_alpha_legal_line main_legal_line
     temp_dir="$(harness_make_temp_dir "build-sdk-buildroot-loop")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
@@ -814,6 +815,9 @@ test_build_sdk_command_runs_buildroot_make_per_target_with_isolated_context() {
     assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'defconfig goal=main_defconfig O=${build_root}/sdk/demo_product/targets/main/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/main/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/main/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/main/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'custom goal=legal-info O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'custom goal=legal-info O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'custom goal=legal-info O=${build_root}/sdk/demo_product/targets/main/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/main/br2_external' '${make_log}'"
 
     aux_beta_defconfig_line="$(grep -nF 'defconfig goal=aux_beta_defconfig' "${make_log}" | cut -d: -f1)"
     aux_beta_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/aux_beta/workspace" "${make_log}" | cut -d: -f1)"
@@ -821,12 +825,18 @@ test_build_sdk_command_runs_buildroot_make_per_target_with_isolated_context() {
     aux_alpha_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/aux_alpha/workspace" "${make_log}" | cut -d: -f1)"
     main_defconfig_line="$(grep -nF 'defconfig goal=main_defconfig' "${make_log}" | cut -d: -f1)"
     main_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/main/workspace" "${make_log}" | cut -d: -f1)"
+    aux_beta_legal_line="$(grep -nF 'custom goal=legal-info O='"${build_root}/sdk/demo_product/targets/aux_beta/workspace" "${make_log}" | cut -d: -f1)"
+    aux_alpha_legal_line="$(grep -nF 'custom goal=legal-info O='"${build_root}/sdk/demo_product/targets/aux_alpha/workspace" "${make_log}" | cut -d: -f1)"
+    main_legal_line="$(grep -nF 'custom goal=legal-info O='"${build_root}/sdk/demo_product/targets/main/workspace" "${make_log}" | cut -d: -f1)"
 
     assert_status_code 0 "[[ ${aux_beta_defconfig_line} -lt ${aux_beta_build_line} ]]"
     assert_status_code 0 "[[ ${aux_beta_build_line} -lt ${aux_alpha_defconfig_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_defconfig_line} -lt ${aux_alpha_build_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_build_line} -lt ${main_defconfig_line} ]]"
     assert_status_code 0 "[[ ${main_defconfig_line} -lt ${main_build_line} ]]"
+    assert_status_code 0 "[[ ${main_build_line} -lt ${aux_beta_legal_line} ]]"
+    assert_status_code 0 "[[ ${aux_beta_legal_line} -lt ${aux_alpha_legal_line} ]]"
+    assert_status_code 0 "[[ ${aux_alpha_legal_line} -lt ${main_legal_line} ]]"
     assert_matches "Built targets: aux_beta aux_alpha main" "${output}"
 }
 

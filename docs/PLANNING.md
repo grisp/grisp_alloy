@@ -283,7 +283,7 @@ Cross-repository development note:
   - Refinement note (from Task 5.1b): Generate an executable `make_alloy` helper in each target workspace that forwards arbitrary Buildroot make targets with the same `ALLOY_*`, `O=`, and `BR2_EXTERNAL=` context used by the orchestrator, so manual Buildroot debugging does not require reconstructing the environment by hand.
   - Done when: Each target build is isolated and successful.
 
-- [ ] **Task 5.9: Per-target legal-info execution**
+- [x] **Task 5.9: Per-target legal-info execution**
   - Scope: Run `make legal-info` for every target workspace.
   - Tests: Integration test for expected legal-info directories.
   - Done when: Legal trees are available for merged pass.

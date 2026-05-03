@@ -8,6 +8,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to run `make legal-info` for every planned target
+  (auxiliaries first, main last) after the per-target Buildroot build loop,
+  using the same target-local `O=` and `BR2_EXTERNAL=` execution context.
 - Updated `alloy build sdk` to execute per-target Buildroot builds after
   Smelterl generation (`make <target>_defconfig` then `make`) with isolated
   target-local `O=` and `BR2_EXTERNAL=` contexts, preserving auxiliary-first
@@ -70,6 +73,8 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused `alloy build sdk` coverage asserting per-target `make
+  legal-info` invocation order and target-isolated Buildroot context.
 - Added target-local executable `make_alloy` helpers under
   `targets/<TARGET_ID>/workspace/` so manual Buildroot debugging can reuse the
   same `ALLOY_*`, `O=`, and `BR2_EXTERNAL=` context as orchestrator runs.
