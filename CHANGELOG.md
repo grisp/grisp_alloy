@@ -8,6 +8,12 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to collect declared auxiliary `.sdk_outputs`
+  registrations after per-target legal-info, validate absolute/existing output
+  paths, stage them under
+  `staging/auxiliary/<AUX_ID>/outputs/<OUTPUT_ID>/...`, and inject
+  main-context `ALLOY_SDK_OUTPUT_<AUX_ID>_<OUTPUT_ID>` mappings plus
+  unique-only `ALLOY_SDK_OUTPUT_<OUTPUT_ID>` aliases.
 - Updated `alloy build sdk` to run `make legal-info` for every planned target
   (auxiliaries first, main last) after the per-target Buildroot build loop,
   using the same target-local `O=` and `BR2_EXTERNAL=` execution context.
@@ -73,6 +79,16 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added hook-side SDK output registration support via
+  `scripts/utils/hook_common.sh` and `scripts/utils/sdk_tools.sh`, including
+  `alloy_sdk_add_output`, `alloy_sdk_has_output`, and `alloy_sdk_get_output`
+  for SDK-time hooks.
+- Added focused hook-wrapper coverage that sources `hook_common.sh` in a real
+  `post_build` hook and verifies `.sdk_outputs` registration through
+  `alloy_sdk_add_output`.
+- Added focused `alloy build sdk` coverage for auxiliary sdk output
+  collection/validation: valid staging and mapping export, missing registry
+  failure, and duplicate output-id alias suppression.
 - Added focused `alloy build sdk` coverage asserting per-target `make
   legal-info` invocation order and target-isolated Buildroot context.
 - Added target-local executable `make_alloy` helpers under

@@ -15,6 +15,8 @@ buildroot_hook_test_make_fixture() {
     cp "$(harness_repo_root)/scripts/utils/common.sh" "${root_dir}/scripts/utils/common.sh"
     cp "$(harness_repo_root)/scripts/utils/debug_utils.sh" "${root_dir}/scripts/utils/debug_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/console_utils.sh" "${root_dir}/scripts/utils/console_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/hook_common.sh" "${root_dir}/scripts/utils/hook_common.sh"
+    cp "$(harness_repo_root)/scripts/utils/sdk_tools.sh" "${root_dir}/scripts/utils/sdk_tools.sh"
     chmod +x "${root_dir}/scripts/buildroot/script_hook.sh"
 
     printf '%s\n' "${root_dir}"
@@ -183,4 +185,41 @@ EOF
     assert_matches "TRACE=true" "$(cat "${marker_file}")"
     assert_matches "XTRACE=.*" "$(cat "${marker_file}")"
     assert_matches "Running post_build hook: core:hooks/post-build.sh" "${output}"
+}
+
+test_buildroot_script_hook_hook_common_sdk_tools_register_sdk_output() {
+    local temp_dir root_dir run_dir nugget_dir output_file output status
+    temp_dir="$(harness_make_temp_dir "buildroot-hook-sdk-output")"
+    root_dir="$(buildroot_hook_test_make_fixture "${temp_dir}")"
+    run_dir="${temp_dir}/run/board/main/scripts"
+    nugget_dir="${temp_dir}/nuggets/core"
+    mkdir -p "${run_dir}" "${nugget_dir}/hooks"
+
+    cat > "${nugget_dir}/hooks/post-build.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+source "${ALLOY_ROOT_DIR}/scripts/utils/hook_common.sh"
+artifact_dir="${O}/generated"
+mkdir -p "${artifact_dir}"
+artifact_file="${artifact_dir}/sdk-payload.bin"
+printf 'payload\n' > "${artifact_file}"
+alloy_sdk_add_output "sdk_payload" "${artifact_file}"
+EOF
+    chmod +x "${nugget_dir}/hooks/post-build.sh"
+
+    buildroot_hook_test_write_context \
+        "${run_dir}/alloy_context.sh" \
+        "${nugget_dir}" \
+        "'core:hooks/post-build.sh'"
+    ln -s "${root_dir}/scripts/buildroot/script_hook.sh" "${run_dir}/post-build.sh"
+
+    output="$(ALLOY_ROOT_DIR="${root_dir}" \
+        O="${temp_dir}/workspace" \
+        "${run_dir}/post-build.sh" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    output_file="${temp_dir}/workspace/.sdk_outputs/sdk_payload"
+    assert_status_code 0 "[[ -f '${output_file}' ]]"
+    assert_status_code 0 "grep -Fq '${temp_dir}/workspace/generated/sdk-payload.bin' '${output_file}'"
 }

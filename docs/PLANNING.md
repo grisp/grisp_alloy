@@ -288,8 +288,9 @@ Cross-repository development note:
   - Tests: Integration test for expected legal-info directories.
   - Done when: Legal trees are available for merged pass.
 
-- [ ] **Task 5.10: Auxiliary sdk output collection and validation**
+- [x] **Task 5.10: Auxiliary sdk output collection and validation**
   - Scope: Collect `.sdk_outputs` registrations and stage artifacts for main consumption.
+  - Scope: Implement hook-side sdk output registration API (`hook_common.sh` + `sdk_tools.sh`) so SDK-time hooks can register outputs via `alloy_sdk_add_output`.
   - Tests: Integration tests for missing/duplicate/valid outputs.
   - Done when: `ALLOY_SDK_OUTPUT_<AUX_ID>_<OUTPUT_ID>` mappings are complete and validated.
 

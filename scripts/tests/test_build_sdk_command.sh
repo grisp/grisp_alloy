@@ -16,6 +16,8 @@ build_sdk_test_make_fixture() {
     cp "$(harness_repo_root)/scripts/utils/debug_utils.sh" "${root_dir}/scripts/utils/debug_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/console_utils.sh" "${root_dir}/scripts/utils/console_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/vcs_utils.sh" "${root_dir}/scripts/utils/vcs_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/file_utils.sh" "${root_dir}/scripts/utils/file_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/sdk_utils.sh" "${root_dir}/scripts/utils/sdk_utils.sh"
     cp "$(harness_repo_root)/scripts/argparse.sh" "${root_dir}/scripts/argparse.sh"
     chmod +x "${root_dir}/scripts/commands/build-sdk.sh"
     chmod +x "${root_dir}/scripts/buildroot/script_hook.sh"
@@ -289,6 +291,47 @@ MAKEFILE
         else
             printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
             printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+        fi
+        printf 'export ALLOY_SDK_OUTPUTS=()\n' >> "${output_context}"
+
+        if [[ "${target_id}" != "main" ]] && [[ -n "${FAKE_SMELTERL_AUX_OUTPUTS:-}" ]]; then
+            aux_output_spec=""
+            IFS=';' read -r -a aux_specs <<< "${FAKE_SMELTERL_AUX_OUTPUTS}"
+            for spec in "${aux_specs[@]}"; do
+                spec_target="${spec%%:*}"
+                spec_outputs="${spec#*:}"
+                if [[ "${spec_target}" == "${target_id}" ]]; then
+                    aux_output_spec="${spec_outputs}"
+                    break
+                fi
+            done
+
+            if [[ -n "${aux_output_spec}" ]]; then
+                read -r -a aux_output_ids <<< "${aux_output_spec//,/ }"
+                {
+                    printf 'export ALLOY_SDK_OUTPUTS=('
+                    for output_id in "${aux_output_ids[@]}"; do
+                        printf '%q ' "${output_id}"
+                    done
+                    printf ')\n'
+                    for output_id in "${aux_output_ids[@]}"; do
+                        output_var_suffix="${output_id^^}"
+                        output_var_suffix="${output_var_suffix//[^A-Z0-9]/_}"
+                        printf 'export ALLOY_SDK_OUTPUT_%s_NAME=%q\n' "${output_var_suffix}" "${output_id} name"
+                        printf 'export ALLOY_SDK_OUTPUT_%s_DESCRIPTION=%q\n' "${output_var_suffix}" "${output_id} description"
+                    done
+                } >> "${output_context}"
+
+                if [[ "${FAKE_SMELTERL_REGISTER_AUX_OUTPUTS:-true}" == "true" ]]; then
+                    target_workspace="$(dirname "${output_context}")/workspace"
+                    mkdir -p "${target_workspace}/.sdk_outputs"
+                    for output_id in "${aux_output_ids[@]}"; do
+                        output_file="${target_workspace}/${target_id}-${output_id}.bin"
+                        printf '%s\n' "${target_id}:${output_id}" > "${output_file}"
+                        printf '%s\n' "${output_file}" > "${target_workspace}/.sdk_outputs/${output_id}"
+                    done
+                fi
+            fi
         fi
 
         if [[ "${FAKE_SMELTERL_EMIT_PRE_BUILD:-false}" == "true" ]]; then
@@ -838,6 +881,75 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     assert_status_code 0 "[[ ${aux_beta_legal_line} -lt ${aux_alpha_legal_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_legal_line} -lt ${main_legal_line} ]]"
     assert_matches "Built targets: aux_beta aux_alpha main" "${output}"
+}
+
+test_build_sdk_command_collects_and_stages_auxiliary_sdk_outputs() {
+    local temp_dir build_root artefact_dir output status main_context
+    temp_dir="$(harness_make_temp_dir "build-sdk-aux-outputs-valid")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
+        FAKE_SMELTERL_AUX_OUTPUTS="aux_beta:initramfs,bundle;aux_alpha:debug" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "Staged auxiliary sdk outputs: 3" "${output}"
+    assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/staging/auxiliary/aux_beta/outputs/initramfs/aux_beta-initramfs.bin' ]]"
+    assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/staging/auxiliary/aux_beta/outputs/bundle/aux_beta-bundle.bin' ]]"
+    assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/staging/auxiliary/aux_alpha/outputs/debug/aux_alpha-debug.bin' ]]"
+
+    main_context="${build_root}/sdk/demo_product/targets/main/alloy_context.sh"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_AUX_BETA_INITRAMFS=' '${main_context}'"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_AUX_BETA_BUNDLE=' '${main_context}'"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_AUX_ALPHA_DEBUG=' '${main_context}'"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_INITRAMFS=' '${main_context}'"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_BUNDLE=' '${main_context}'"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_DEBUG=' '${main_context}'"
+}
+
+test_build_sdk_command_fails_when_declared_auxiliary_sdk_output_is_missing() {
+    local temp_dir build_root artefact_dir output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-aux-outputs-missing")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta" \
+        FAKE_SMELTERL_AUX_OUTPUTS="aux_beta:initramfs" \
+        FAKE_SMELTERL_REGISTER_AUX_OUTPUTS=false \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Missing sdk output registry for auxiliary target 'aux_beta'" "${output}"
+}
+
+test_build_sdk_command_skips_global_alias_for_duplicate_auxiliary_sdk_output_ids() {
+    local temp_dir build_root artefact_dir output status main_context
+    temp_dir="$(harness_make_temp_dir "build-sdk-aux-outputs-duplicate")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
+        FAKE_SMELTERL_AUX_OUTPUTS="aux_beta:initramfs;aux_alpha:initramfs" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    main_context="${build_root}/sdk/demo_product/targets/main/alloy_context.sh"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_AUX_BETA_INITRAMFS=' '${main_context}'"
+    assert_status_code 0 "grep -Fq 'ALLOY_SDK_OUTPUT_AUX_ALPHA_INITRAMFS=' '${main_context}'"
+    assert_status_code 1 "grep -Fq 'ALLOY_SDK_OUTPUT_INITRAMFS=' '${main_context}'"
 }
 
 test_build_sdk_command_make_alloy_helper_reuses_target_context() {

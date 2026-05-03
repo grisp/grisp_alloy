@@ -9,6 +9,8 @@ export ALLOY_ROOT_DIR="${ALLOY_ROOT_DIR:-${ROOT_DIR}}"
 source "${ROOT_DIR}/scripts/utils/common.sh"
 # shellcheck source=scripts/utils/vcs_utils.sh
 source "${ROOT_DIR}/scripts/utils/vcs_utils.sh"
+# shellcheck source=scripts/utils/sdk_utils.sh
+source "${ROOT_DIR}/scripts/utils/sdk_utils.sh"
 # shellcheck source=scripts/argparse.sh
 source "${ROOT_DIR}/scripts/argparse.sh"
 
@@ -784,6 +786,8 @@ build_sdk_generate_targets() {
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
         build_sdk_run_target_legal_info "${target_id}"
     done
+    sdk_utils_collect_auxiliary_sdk_outputs
+    sdk_utils_inject_main_context_sdk_outputs
 
     log_info "Smelterl generate + Buildroot build complete for ${#BUILD_SDK_GENERATED_TARGETS[@]} targets."
     log_debug "pre_build summary: ran=${BUILD_SDK_PRE_BUILD_RAN}, skipped=${BUILD_SDK_PRE_BUILD_SKIPPED}, missing=${BUILD_SDK_PRE_BUILD_MISSING}"
@@ -801,6 +805,7 @@ build_sdk_print_summary() {
     print_note "Targets directory: ${ALLOY_SDK_TARGETS_DIR}"
     print_note "Generated targets: ${BUILD_SDK_GENERATED_TARGETS[*]}"
     print_note "Built targets: ${BUILD_SDK_BUILT_TARGETS[*]}"
+    print_note "Staged auxiliary sdk outputs: ${BUILD_SDK_STAGED_AUX_OUTPUT_COUNT:-0}"
     print_note "Staging directory: ${ALLOY_SDK_STAGING_DIR}"
     print_note "Motherlode directory: ${ALLOY_MOTHERLODE}"
     print_note "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
