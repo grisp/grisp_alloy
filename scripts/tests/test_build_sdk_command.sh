@@ -254,6 +254,24 @@ case "${command_name}" in
             target_id="${auxiliary_target}"
         fi
 
+        sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+        buildroot_path="${FAKE_BUILDROOT_PATH:-${sdk_root}/fake-buildroot}"
+        mkdir -p "${buildroot_path}"
+        cat > "${buildroot_path}/Makefile" <<'MAKEFILE'
+.PHONY: all
+all:
+	@mkdir -p "$(O)"
+	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'build goal=all O=%s BR2_EXTERNAL=%s V=%s\n' "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
+
+%_defconfig:
+	@mkdir -p "$(O)"
+	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'defconfig goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
+
+%:
+	@mkdir -p "$(O)"
+	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'custom goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
+MAKEFILE
+
         mkdir -p \
             "$(dirname "${output_external_desc}")" \
             "$(dirname "${output_config_in}")" \
@@ -265,9 +283,15 @@ case "${command_name}" in
         printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
         printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
         printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+        printf 'export ALLOY_CONFIG_BUILDROOT_PATH=%q\n' "${buildroot_path}" >> "${output_context}"
+        if [[ "${target_id}" == "main" ]]; then
+            printf 'export ALLOY_IS_AUXILIARY=%q\n' "false" >> "${output_context}"
+        else
+            printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
+            printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+        fi
 
         if [[ "${FAKE_SMELTERL_EMIT_PRE_BUILD:-false}" == "true" ]]; then
-            sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
             hooks_root="${sdk_root}/pre-build-fixture"
             shared_nugget_dir="${hooks_root}/shared"
             target_nugget_id="target_${target_id}"
@@ -498,6 +522,24 @@ case "${command_name}" in
             target_id="${auxiliary_target}"
         fi
 
+        sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+        buildroot_path="${FAKE_BUILDROOT_PATH:-${sdk_root}/fake-buildroot}"
+        mkdir -p "${buildroot_path}"
+        cat > "${buildroot_path}/Makefile" <<'MAKEFILE'
+.PHONY: all
+all:
+	@mkdir -p "$(O)"
+	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'build goal=all O=%s BR2_EXTERNAL=%s V=%s\n' "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
+
+%_defconfig:
+	@mkdir -p "$(O)"
+	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'defconfig goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
+
+%:
+	@mkdir -p "$(O)"
+	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'custom goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
+MAKEFILE
+
         mkdir -p \
             "$(dirname "${output_external_desc}")" \
             "$(dirname "${output_config_in}")" \
@@ -509,6 +551,13 @@ case "${command_name}" in
         printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
         printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
         printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+        printf 'export ALLOY_CONFIG_BUILDROOT_PATH=%q\n' "${buildroot_path}" >> "${output_context}"
+        if [[ "${target_id}" == "main" ]]; then
+            printf 'export ALLOY_IS_AUXILIARY=%q\n' "false" >> "${output_context}"
+        else
+            printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
+            printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+        fi
         ;;
     *)
         printf 'fake smelterl does not support command: %s\n' "${command_name}" >&2
@@ -739,6 +788,71 @@ test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
     assert_status_code 0 "[[ ${aux_beta_target_line} -lt ${aux_alpha_target_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_target_line} -lt ${main_target_line} ]]"
     assert_matches "Generated targets: aux_beta aux_alpha main" "${output}"
+}
+
+test_build_sdk_command_runs_buildroot_make_per_target_with_isolated_context() {
+    local temp_dir build_root artefact_dir make_log output status
+    local aux_beta_defconfig_line aux_beta_build_line aux_alpha_defconfig_line aux_alpha_build_line main_defconfig_line main_build_line
+    temp_dir="$(harness_make_temp_dir "build-sdk-buildroot-loop")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    make_log="${temp_dir}/make.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ -s '${make_log}' ]]"
+    assert_status_code 0 "grep -Fq 'defconfig goal=aux_beta_defconfig O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'defconfig goal=aux_alpha_defconfig O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'defconfig goal=main_defconfig O=${build_root}/sdk/demo_product/targets/main/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/main/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/main/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/main/br2_external' '${make_log}'"
+
+    aux_beta_defconfig_line="$(grep -nF 'defconfig goal=aux_beta_defconfig' "${make_log}" | cut -d: -f1)"
+    aux_beta_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/aux_beta/workspace" "${make_log}" | cut -d: -f1)"
+    aux_alpha_defconfig_line="$(grep -nF 'defconfig goal=aux_alpha_defconfig' "${make_log}" | cut -d: -f1)"
+    aux_alpha_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/aux_alpha/workspace" "${make_log}" | cut -d: -f1)"
+    main_defconfig_line="$(grep -nF 'defconfig goal=main_defconfig' "${make_log}" | cut -d: -f1)"
+    main_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/main/workspace" "${make_log}" | cut -d: -f1)"
+
+    assert_status_code 0 "[[ ${aux_beta_defconfig_line} -lt ${aux_beta_build_line} ]]"
+    assert_status_code 0 "[[ ${aux_beta_build_line} -lt ${aux_alpha_defconfig_line} ]]"
+    assert_status_code 0 "[[ ${aux_alpha_defconfig_line} -lt ${aux_alpha_build_line} ]]"
+    assert_status_code 0 "[[ ${aux_alpha_build_line} -lt ${main_defconfig_line} ]]"
+    assert_status_code 0 "[[ ${main_defconfig_line} -lt ${main_build_line} ]]"
+    assert_matches "Built targets: aux_beta aux_alpha main" "${output}"
+}
+
+test_build_sdk_command_make_alloy_helper_reuses_target_context() {
+    local temp_dir build_root artefact_dir make_log helper_path output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-make-alloy-helper")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    make_log="${temp_dir}/make.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_SMELTERL_AUXILIARY_IDS="aux_beta" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    helper_path="${build_root}/sdk/demo_product/targets/aux_beta/workspace/make_alloy"
+    assert_status_code 0 "[[ -x '${helper_path}' ]]"
+
+    : > "${make_log}"
+    FAKE_MAKE_LOG="${make_log}" "${helper_path}" menuconfig >/dev/null 2>&1
+
+    assert_status_code 0 "grep -Fq 'custom goal=menuconfig O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
 }
 
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {

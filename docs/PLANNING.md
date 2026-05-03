@@ -277,7 +277,7 @@ Cross-repository development note:
   - Tests: Integration test with shared nuggets in multiple targets.
   - Done when: Duplicate execution is prevented with deterministic first-run order.
 
-- [ ] **Task 5.8: Per-target Buildroot build execution**
+- [x] **Task 5.8: Per-target Buildroot build execution**
   - Scope: `make <defconfig>` + `make` with target-local `O=` and `BR2_EXTERNAL=`.
   - Tests: Integration test for target workspace outputs.
   - Refinement note (from Task 5.1b): Generate an executable `make_alloy` helper in each target workspace that forwards arbitrary Buildroot make targets with the same `ALLOY_*`, `O=`, and `BR2_EXTERNAL=` context used by the orchestrator, so manual Buildroot debugging does not require reconstructing the environment by hand.

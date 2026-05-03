@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to execute per-target Buildroot builds after
+  Smelterl generation (`make <target>_defconfig` then `make`) with isolated
+  target-local `O=` and `BR2_EXTERNAL=` contexts, preserving auxiliary-first
+  then main build order.
 - Updated `alloy build sdk` to source `build_plan.env` after `smelterl plan`
   and run one shared-plan `smelterl generate` loop for every target,
   generating auxiliary targets first and the main target last under
@@ -66,6 +70,11 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added target-local executable `make_alloy` helpers under
+  `targets/<TARGET_ID>/workspace/` so manual Buildroot debugging can reuse the
+  same `ALLOY_*`, `O=`, and `BR2_EXTERNAL=` context as orchestrator runs.
+- Added focused `alloy build sdk` coverage for per-target Buildroot make-loop
+  execution and `make_alloy` forwarding behavior.
 - Added focused `alloy build sdk` coverage for per-target `smelterl generate`
   ordering plus generated target-local `br2_external/`, defconfig, context,
   and workspace paths.

@@ -177,6 +177,16 @@ Follow `docs/WORKFLOW.md` exactly:
 8. Write the current repository commit message file at
    `$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG` and commit with
    `git commit -F "$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`.
+   - Commit messages must describe the final change-set outcome from the
+     parent commit perspective (what changes after this commit is applied).
+   - Do not include process narration or repository bookkeeping in the commit
+     message unless that process/policy change is itself the actual change.
+     Examples to exclude by default: task-status flips, history-file creation,
+     “updated changelog”, “ran tests”, staging details, or review workflow
+     steps.
+   - Prefer imperative, outcome-focused subject/body wording and keep the
+     subject concise because Git treats the first line as the commit title used
+     by `git log --oneline`, format-patch subjects, and other tooling.
    - If `smelterl/` changed, commit there first. Prepare a `grisp_alloy`
      follow-up task only when the superproject is actually being changed; a
      pure submodule-pointer sync may be deferred and batched.

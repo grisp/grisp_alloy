@@ -286,10 +286,22 @@ For every task, execute these steps in order.
    - MUST create a fresh current commit-message file for the current task with
      a clear commit message (scope + final outcomes). Do not duplicate
      commit-message text in the history context file.
+   - Write commit-message content from the parent-commit perspective:
+     describe what this commit changes in behavior, interfaces, architecture,
+     or developer workflow after it lands.
+   - Subject/body should be imperative and outcome-focused; avoid first-person
+     process narration (“I changed...”, “during this task we...”).
    - Commit-message content MUST focus on final task outcomes (behavior,
      architecture, key user-visible effects). Avoid administrative noise
      (for example: marking task status, updating changelog/history files)
      unless that process change is itself part of the task outcome.
+   - Commit-message content MUST NOT include “process completed” bullets unless
+     the process contract itself changed. Exclude by default:
+     - task-status transitions in planning files,
+     - history/context file creation/update,
+     - changelog bookkeeping statements,
+     - staging/index state,
+     - “tests were run/passed” execution logs.
    - Commit-message content MUST NOT include acceptance criteria or validation
      logs (for example: `tests: ...`, gate names, PASS/FAIL statements).
      Validation evidence belongs in completion reporting and in task context
@@ -311,7 +323,7 @@ For every task, execute these steps in order.
    - MUST commit using the current commit-message file.
    - Example resolution:
      `COMMIT_MSG_FILE="$(git rev-parse --git-dir)/ALLOY_COMMIT_MSG"`
-   - Example draft command:
+   - Example draft command (outcome-focused, no process-only bullets):
      `cat > "${COMMIT_MSG_FILE}" <<'EOF'
      feat(scope): short summary
 
