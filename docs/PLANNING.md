@@ -304,7 +304,7 @@ Cross-repository development note:
   - Tests: Integration tests for archive structure and relocation metadata.
   - Done when: Packed SDK is self-contained and relocatable.
 
-- [ ] **Task 5.12b: SDK ELF RPATH verification and hardening**
+- [x] **Task 5.12b: SDK ELF RPATH verification and hardening**
   - Scope: Implement pack-time ELF RPATH verification/fixup for embedded SDK trees using `patchelf`.
   - Scope: Fail on unresolved/non-relocatable ELF RPATH cases and log deterministic fixup actions.
   - Tests: Focused utility/integration tests for valid `$ORIGIN`-relative RPATH, absolute-RPATH rewrite, and unfixable-error handling.

@@ -355,6 +355,150 @@ sdk_utils_manifest_product_version() {
     printf '%s\n' "${version}"
 }
 
+sdk_utils_is_elf_file() {
+    local file_path="$1"
+    local magic_hex
+    magic_hex="$(dd if="${file_path}" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')" || return 1
+    [[ "${magic_hex}" == "7f454c46" ]]
+}
+
+sdk_utils_split_rpath_entries() {
+    local rpath_value="$1"
+    local -n output_ref="$2"
+    output_ref=()
+    [[ -n "${rpath_value}" ]] || return 0
+
+    local entry
+    IFS=':' read -r -a output_ref <<< "${rpath_value}"
+    for entry in "${output_ref[@]}"; do
+        [[ -n "${entry}" ]] || return 1
+    done
+}
+
+sdk_utils_is_origin_relative_rpath_entry() {
+    local entry="$1"
+    [[ "${entry}" == '$ORIGIN' ]] ||
+        [[ "${entry}" == '$ORIGIN/'* ]] ||
+        [[ "${entry}" == '${ORIGIN}' ]] ||
+        [[ "${entry}" == '${ORIGIN}/'* ]]
+}
+
+sdk_utils_is_non_dynamic_rpath_probe_error() {
+    local patchelf_error_output="$1"
+    [[ "${patchelf_error_output}" == *".dynamic"* ]] ||
+        [[ "${patchelf_error_output}" == *"wrong ELF type"* ]] ||
+        [[ "${patchelf_error_output}" == *"not an ELF executable"* ]] ||
+        [[ "${patchelf_error_output}" == *"not a dynamic executable"* ]]
+}
+
+sdk_utils_make_origin_relative_rpath_entry() {
+    local sdk_dir="$1"
+    local elf_path="$2"
+    local entry="$3"
+    local target_dir relative_dir
+
+    if [[ "${entry}" != /* ]]; then
+        return 1
+    fi
+    target_dir="$(normalize_path "${entry}")" || return 1
+    if [[ "${target_dir}" != "${sdk_dir}" ]] && [[ "${target_dir}" != "${sdk_dir}/"* ]]; then
+        return 1
+    fi
+
+    relative_dir="$(relative_path "$(dirname "${elf_path}")" "${target_dir}")" || return 1
+    if [[ "${relative_dir}" == "." ]]; then
+        printf '$ORIGIN\n'
+    else
+        printf '$ORIGIN/%s\n' "${relative_dir}"
+    fi
+}
+
+sdk_utils_is_target_sysroot_elf_path() {
+    local sdk_dir="$1"
+    local elf_path="$2"
+    [[ "${elf_path}" == "${sdk_dir}/host/"*"/sysroot/"* ]] ||
+        [[ "${elf_path}" == "${sdk_dir}/staging/"*"/sysroot/"* ]] ||
+        [[ "${elf_path}" == "${sdk_dir}/staging/usr/"* ]] ||
+        [[ "${elf_path}" == "${sdk_dir}/staging/lib/"* ]]
+}
+
+# verify_elf_rpaths SDK_DIR
+# Scan embedded SDK trees for ELF files, enforce $ORIGIN-relative RPATHs, and rewrite fixable absolute RPATH entries with patchelf.
+# Env/side effects: requires `patchelf` on PATH; updates ELF RPATH entries in place when absolute paths can be converted to SDK-internal $ORIGIN-relative paths.
+# Errors: returns 2 for missing arguments, 1 for missing SDK trees, malformed/unfixable RPATH entries, or patchelf failures.
+verify_elf_rpaths() {
+    local sdk_dir="${1:-}"
+    if [[ -z "${sdk_dir}" ]]; then
+        log_error "verify_elf_rpaths requires SDK_DIR"
+        return 2
+    fi
+    [[ -d "${sdk_dir}/host" ]] || fail "Missing SDK host tree for ELF RPATH verification: ${sdk_dir}/host"
+    [[ -d "${sdk_dir}/images" ]] || fail "Missing SDK images tree for ELF RPATH verification: ${sdk_dir}/images"
+    [[ -d "${sdk_dir}/motherlode" ]] || fail "Missing SDK motherlode tree for ELF RPATH verification: ${sdk_dir}/motherlode"
+    require_command patchelf || return $?
+
+    local elf_path rpath_value updated_rpath entry patched patchelf_error
+    local -a rpath_entries=() rewritten_entries=() scan_dirs=(
+        "${sdk_dir}/host"
+        "${sdk_dir}/images"
+        "${sdk_dir}/motherlode"
+    )
+    if [[ -e "${sdk_dir}/staging" ]]; then
+        scan_dirs+=("${sdk_dir}/staging")
+    fi
+
+    while IFS= read -r elf_path; do
+        sdk_utils_is_elf_file "${elf_path}" || continue
+        if sdk_utils_is_target_sysroot_elf_path "${sdk_dir}" "${elf_path}"; then
+            log_debug "Skipping target-sysroot ELF for RPATH verification: ${elf_path}"
+            continue
+        fi
+        if ! rpath_value="$(patchelf --print-rpath "${elf_path}" 2>&1)"; then
+            patchelf_error="${rpath_value}"
+            if sdk_utils_is_non_dynamic_rpath_probe_error "${patchelf_error}"; then
+                log_debug "Skipping non-dynamic ELF for RPATH verification: ${elf_path}"
+                continue
+            fi
+            fail "Unable to read ELF RPATH: ${elf_path}"
+        fi
+        [[ -n "${rpath_value}" ]] || continue
+
+        sdk_utils_split_rpath_entries "${rpath_value}" rpath_entries ||
+            fail "Malformed ELF RPATH entry list for ${elf_path}: ${rpath_value}"
+
+        rewritten_entries=()
+        patched=false
+        for entry in "${rpath_entries[@]}"; do
+            if sdk_utils_is_origin_relative_rpath_entry "${entry}"; then
+                rewritten_entries+=("${entry}")
+                continue
+            fi
+            updated_rpath="$(sdk_utils_make_origin_relative_rpath_entry "${sdk_dir}" "${elf_path}" "${entry}")" ||
+                fail "Unfixable ELF RPATH entry for ${elf_path}: ${entry}"
+            rewritten_entries+=("${updated_rpath}")
+            patched=true
+        done
+
+        if [[ "${patched}" == "true" ]]; then
+            updated_rpath="$(IFS=:; printf '%s' "${rewritten_entries[*]}")"
+            log_info "Rewriting ELF RPATH: ${elf_path}"
+            log_debug "ELF RPATH old=${rpath_value}"
+            log_debug "ELF RPATH new=${updated_rpath}"
+            patchelf --set-rpath "${updated_rpath}" "${elf_path}" ||
+                fail "Failed to rewrite ELF RPATH for ${elf_path}"
+            rpath_value="$(patchelf --print-rpath "${elf_path}" 2>/dev/null)" ||
+                fail "Unable to re-read ELF RPATH after rewrite: ${elf_path}"
+            sdk_utils_split_rpath_entries "${rpath_value}" rpath_entries ||
+                fail "Malformed ELF RPATH after rewrite for ${elf_path}: ${rpath_value}"
+        fi
+
+        for entry in "${rpath_entries[@]}"; do
+            sdk_utils_is_origin_relative_rpath_entry "${entry}" ||
+                fail "ELF RPATH remains non-relocatable for ${elf_path}: ${entry}"
+        done
+    done < <(find "${scan_dirs[@]}" -type f | sort)
+}
+
 sdk_utils_sanitize_text_paths() {
     local sdk_dir="$1"
     local source_host_root="$2"
@@ -478,6 +622,7 @@ pack_sdk() {
         copy_with_exclusions "${source_staging}" "${sdk_dir}/staging"
     fi
 
+    verify_elf_rpaths "${sdk_dir}"
     sdk_utils_sanitize_text_paths "${sdk_dir}" "${source_host}" "${source_images}" "${source_motherlode}"
     local product_version host_arch archive_name archive_path
     product_version="$(sdk_utils_manifest_product_version "${manifest_path}")"

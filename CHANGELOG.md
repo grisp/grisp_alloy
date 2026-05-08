@@ -8,6 +8,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated SDK packing to run deterministic ELF RPATH hardening before text
+  relocation sanitization: `pack_sdk` now scans embedded ELF files across
+  `host/`, `images/`, `motherlode/`, and `staging`, rewrites fixable absolute
+  RPATH entries to `$ORIGIN`-relative paths with `patchelf`, and fails
+  immediately on malformed or non-relocatable entries.
 - Updated `alloy build sdk` to execute SDK packing after the target build and
   legal/manifest consolidation phases, producing a packed SDK tree under
   `staging/sdk` and a versioned SDK archive in `artefacts/sdk/`.

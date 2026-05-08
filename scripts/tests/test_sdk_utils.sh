@@ -176,3 +176,164 @@ test_sdk_utils_prepare_sdk_command_rejects_repository_mode() {
 test_sdk_utils_is_safe_to_source_multiple_times() {
     assert_status_code 0 "bash -c 'source \"${SDK_UTILS_SCRIPT}\"; source \"${SDK_UTILS_SCRIPT}\"; type ensure_sdk_relocated >/dev/null'"
 }
+
+sdk_utils_test_make_fake_elf() {
+    local file_path="$1"
+    mkdir -p "$(dirname "${file_path}")"
+    printf '\177ELFtest\n' > "${file_path}"
+}
+
+sdk_utils_test_set_fake_rpath() {
+    local file_path="$1"
+    local rpath_value="$2"
+    printf '%s\n' "${rpath_value}" > "${file_path}.rpath"
+}
+
+sdk_utils_test_make_fake_patchelf() {
+    local fake_dir="$1"
+    local log_file="$2"
+    mkdir -p "${fake_dir}"
+    cat > "${fake_dir}/patchelf" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${FAKE_PATCHELF_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${FAKE_PATCHELF_LOG}"
+fi
+
+case "${1:-}" in
+    --print-rpath)
+        file_path="${2:?}"
+        if [[ "${FAKE_PATCHELF_FAIL_NON_DYNAMIC:-}" == "true" ]] && [[ "${file_path}" == *.o ]]; then
+            echo "${FAKE_PATCHELF_NON_DYNAMIC_ERROR:-patchelf: cannot find section '.dynamic'}" >&2
+            exit 1
+        fi
+        if [[ -f "${file_path}.rpath" ]]; then
+            cat "${file_path}.rpath"
+        fi
+        ;;
+    --set-rpath)
+        value="${2:?}"
+        file_path="${3:?}"
+        printf '%s\n' "${value}" > "${file_path}.rpath"
+        ;;
+    *)
+        echo "unexpected fake patchelf invocation: $*" >&2
+        exit 31
+        ;;
+esac
+SCRIPT
+    chmod +x "${fake_dir}/patchelf"
+}
+
+test_sdk_utils_verify_elf_rpaths_accepts_origin_relative_rpaths() {
+    local temp_dir sdk_dir fake_bin fake_log elf_path output status
+    temp_dir="$(harness_make_temp_dir "sdk-utils-rpath-valid")"
+    sdk_dir="${temp_dir}/sdk"
+    fake_bin="${temp_dir}/bin"
+    fake_log="${temp_dir}/patchelf.log"
+    mkdir -p "${sdk_dir}/host/bin" "${sdk_dir}/images" "${sdk_dir}/motherlode"
+    sdk_utils_test_make_fake_patchelf "${fake_bin}" "${fake_log}"
+    elf_path="${sdk_dir}/host/bin/tool"
+    sdk_utils_test_make_fake_elf "${elf_path}"
+    sdk_utils_test_set_fake_rpath "${elf_path}" '$ORIGIN/../lib:$ORIGIN'
+
+    output="$(PATH="${fake_bin}:${PATH}" FAKE_PATCHELF_LOG="${fake_log}" verify_elf_rpaths "${sdk_dir}" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_equals '$ORIGIN/../lib:$ORIGIN' "$(cat "${elf_path}.rpath")"
+    assert_equals "" "${output}"
+}
+
+test_sdk_utils_verify_elf_rpaths_rewrites_absolute_entries() {
+    local temp_dir sdk_dir fake_bin fake_log elf_path output status
+    temp_dir="$(harness_make_temp_dir "sdk-utils-rpath-fix")"
+    sdk_dir="${temp_dir}/sdk"
+    fake_bin="${temp_dir}/bin"
+    fake_log="${temp_dir}/patchelf.log"
+    mkdir -p "${sdk_dir}/host/bin" "${sdk_dir}/host/usr/lib" "${sdk_dir}/images" "${sdk_dir}/motherlode"
+    sdk_utils_test_make_fake_patchelf "${fake_bin}" "${fake_log}"
+    elf_path="${sdk_dir}/host/bin/tool"
+    sdk_utils_test_make_fake_elf "${elf_path}"
+    sdk_utils_test_set_fake_rpath "${elf_path}" "${sdk_dir}/host/usr/lib:"'$ORIGIN'
+
+    output="$(ALLOY_DEBUG=1 PATH="${fake_bin}:${PATH}" FAKE_PATCHELF_LOG="${fake_log}" verify_elf_rpaths "${sdk_dir}" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_equals '$ORIGIN/../usr/lib:$ORIGIN' "$(cat "${elf_path}.rpath")"
+    assert_matches "Rewriting ELF RPATH: ${elf_path}" "${output}"
+    assert_status_code 0 "grep -Fq -- '--set-rpath \$ORIGIN/../usr/lib:\$ORIGIN ${elf_path}' '${fake_log}'"
+}
+
+test_sdk_utils_verify_elf_rpaths_rejects_unfixable_entries() {
+    local temp_dir sdk_dir fake_bin fake_log elf_path output status
+    temp_dir="$(harness_make_temp_dir "sdk-utils-rpath-bad")"
+    sdk_dir="${temp_dir}/sdk"
+    fake_bin="${temp_dir}/bin"
+    fake_log="${temp_dir}/patchelf.log"
+    mkdir -p "${sdk_dir}/host/bin" "${sdk_dir}/images" "${sdk_dir}/motherlode"
+    sdk_utils_test_make_fake_patchelf "${fake_bin}" "${fake_log}"
+    elf_path="${sdk_dir}/host/bin/tool"
+    sdk_utils_test_make_fake_elf "${elf_path}"
+    sdk_utils_test_set_fake_rpath "${elf_path}" "/opt/vendor/lib"
+
+    output="$(PATH="${fake_bin}:${PATH}" verify_elf_rpaths "${sdk_dir}" 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "Unfixable ELF RPATH entry for ${elf_path}: /opt/vendor/lib" "${output}"
+}
+
+test_sdk_utils_verify_elf_rpaths_skips_non_dynamic_object_files() {
+    local temp_dir sdk_dir fake_bin elf_path output status
+    temp_dir="$(harness_make_temp_dir "sdk-utils-rpath-non-dynamic")"
+    sdk_dir="${temp_dir}/sdk"
+    fake_bin="${temp_dir}/bin"
+    mkdir -p "${sdk_dir}/host/lib/gcc/x86_64-buildroot-linux-gnu/13.3.0" "${sdk_dir}/images" "${sdk_dir}/motherlode"
+    sdk_utils_test_make_fake_patchelf "${fake_bin}" "${temp_dir}/patchelf.log"
+    elf_path="${sdk_dir}/host/lib/gcc/x86_64-buildroot-linux-gnu/13.3.0/crtbegin.o"
+    sdk_utils_test_make_fake_elf "${elf_path}"
+
+    output="$(ALLOY_DEBUG=2 FAKE_PATCHELF_FAIL_NON_DYNAMIC=true PATH="${fake_bin}:${PATH}" verify_elf_rpaths "${sdk_dir}" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "Skipping non-dynamic ELF for RPATH verification: ${elf_path}" "${output}"
+}
+
+test_sdk_utils_verify_elf_rpaths_skips_wrong_elf_type_object_files() {
+    local temp_dir sdk_dir fake_bin elf_path output status
+    temp_dir="$(harness_make_temp_dir "sdk-utils-rpath-wrong-elf-type")"
+    sdk_dir="${temp_dir}/sdk"
+    fake_bin="${temp_dir}/bin"
+    mkdir -p "${sdk_dir}/host/lib/gcc/x86_64-buildroot-linux-gnu/13.3.0" "${sdk_dir}/images" "${sdk_dir}/motherlode"
+    sdk_utils_test_make_fake_patchelf "${fake_bin}" "${temp_dir}/patchelf.log"
+    elf_path="${sdk_dir}/host/lib/gcc/x86_64-buildroot-linux-gnu/13.3.0/crtbegin.o"
+    sdk_utils_test_make_fake_elf "${elf_path}"
+
+    output="$(ALLOY_DEBUG=2 FAKE_PATCHELF_FAIL_NON_DYNAMIC=true FAKE_PATCHELF_NON_DYNAMIC_ERROR='patchelf: wrong ELF type' PATH="${fake_bin}:${PATH}" verify_elf_rpaths "${sdk_dir}" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "Skipping non-dynamic ELF for RPATH verification: ${elf_path}" "${output}"
+}
+
+test_sdk_utils_verify_elf_rpaths_skips_target_sysroot_elfs() {
+    local temp_dir sdk_dir fake_bin elf_path output status
+    temp_dir="$(harness_make_temp_dir "sdk-utils-rpath-target-sysroot")"
+    sdk_dir="${temp_dir}/sdk"
+    fake_bin="${temp_dir}/bin"
+    mkdir -p "${sdk_dir}/host/x86_64-buildroot-linux-gnu/sysroot/usr/lib/gconv" "${sdk_dir}/images" "${sdk_dir}/motherlode"
+    sdk_utils_test_make_fake_patchelf "${fake_bin}" "${temp_dir}/patchelf.log"
+    elf_path="${sdk_dir}/host/x86_64-buildroot-linux-gnu/sysroot/usr/lib/gconv/EUC-CN.so"
+    sdk_utils_test_make_fake_elf "${elf_path}"
+    sdk_utils_test_set_fake_rpath "${elf_path}" "/usr/lib/gconv"
+
+    output="$(ALLOY_DEBUG=2 PATH="${fake_bin}:${PATH}" verify_elf_rpaths "${sdk_dir}" 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "Skipping target-sysroot ELF for RPATH verification: ${elf_path}" "${output}"
+}
