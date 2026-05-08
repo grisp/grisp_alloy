@@ -205,6 +205,10 @@ case "${command_name}" in
         output_external_mk=""
         output_defconfig=""
         output_context=""
+        output_manifest=""
+        export_legal=""
+        include_sources="false"
+        buildroot_legals=()
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -236,6 +240,22 @@ case "${command_name}" in
                     output_context="${2:?}"
                     shift 2
                     ;;
+                --output-manifest)
+                    output_manifest="${2:?}"
+                    shift 2
+                    ;;
+                --buildroot-legal)
+                    buildroot_legals+=("${2:?}")
+                    shift 2
+                    ;;
+                --export-legal)
+                    export_legal="${2:?}"
+                    shift 2
+                    ;;
+                --include-sources)
+                    include_sources="true"
+                    shift
+                    ;;
                 *)
                     printf 'unexpected fake smelterl generate arg: %s\n' "$1" >&2
                     exit 16
@@ -245,18 +265,27 @@ case "${command_name}" in
 
         [[ -n "${plan_path}" ]] || exit 17
         [[ -f "${plan_path}" ]] || exit 18
-        [[ -n "${output_external_desc}" ]] || exit 19
-        [[ -n "${output_config_in}" ]] || exit 20
-        [[ -n "${output_external_mk}" ]] || exit 21
-        [[ -n "${output_defconfig}" ]] || exit 22
-        [[ -n "${output_context}" ]] || exit 23
+        if [[ -z "${output_manifest}" ]]; then
+            [[ -n "${output_external_desc}" ]] || exit 19
+            [[ -n "${output_config_in}" ]] || exit 20
+            [[ -n "${output_external_mk}" ]] || exit 21
+            [[ -n "${output_defconfig}" ]] || exit 22
+            [[ -n "${output_context}" ]] || exit 23
+        fi
 
         target_id="main"
         if [[ -n "${auxiliary_target}" ]]; then
             target_id="${auxiliary_target}"
         fi
 
-        sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+        if [[ -n "${output_context}" ]]; then
+            sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+        elif [[ -n "${output_manifest}" ]]; then
+            sdk_root="$(cd "$(dirname "${output_manifest}")/.." && pwd -P)"
+        else
+            printf 'fake smelterl generate requires output context or manifest path\n' >&2
+            exit 27
+        fi
         buildroot_path="${FAKE_BUILDROOT_PATH:-${sdk_root}/fake-buildroot}"
         mkdir -p "${buildroot_path}"
         cat > "${buildroot_path}/Makefile" <<'MAKEFILE'
@@ -271,30 +300,43 @@ all:
 
 %:
 	@mkdir -p "$(O)"
+	@if [ "$@" = "legal-info" ]; then mkdir -p "$(O)/legal-info"; fi
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'custom goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 MAKEFILE
+        mkdir -p "${buildroot_path}/utils"
+        cat > "${buildroot_path}/utils/brmake" <<'BRMAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_BRMAKE_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${FAKE_BRMAKE_LOG}"
+fi
+exec make "$@"
+BRMAKE
+        chmod +x "${buildroot_path}/utils/brmake"
 
-        mkdir -p \
-            "$(dirname "${output_external_desc}")" \
-            "$(dirname "${output_config_in}")" \
-            "$(dirname "${output_external_mk}")" \
-            "$(dirname "${output_defconfig}")" \
-            "$(dirname "${output_context}")"
-        printf 'name: %s\n' "${target_id}" > "${output_external_desc}"
-        printf '# Config for %s\n' "${target_id}" > "${output_config_in}"
-        printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
-        printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
-        printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
-        printf 'export ALLOY_CONFIG_BUILDROOT_PATH=%q\n' "${buildroot_path}" >> "${output_context}"
-        if [[ "${target_id}" == "main" ]]; then
-            printf 'export ALLOY_IS_AUXILIARY=%q\n' "false" >> "${output_context}"
-        else
-            printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
-            printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+        if [[ -n "${output_external_desc}" ]]; then
+            mkdir -p \
+                "$(dirname "${output_external_desc}")" \
+                "$(dirname "${output_config_in}")" \
+                "$(dirname "${output_external_mk}")" \
+                "$(dirname "${output_defconfig}")" \
+                "$(dirname "${output_context}")"
+            printf 'name: %s\n' "${target_id}" > "${output_external_desc}"
+            printf '# Config for %s\n' "${target_id}" > "${output_config_in}"
+            printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
+            printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
+            printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+            printf 'export ALLOY_CONFIG_BUILDROOT_PATH=%q\n' "${buildroot_path}" >> "${output_context}"
+            if [[ "${target_id}" == "main" ]]; then
+                printf 'export ALLOY_IS_AUXILIARY=%q\n' "false" >> "${output_context}"
+            else
+                printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
+                printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+            fi
+            printf 'export ALLOY_SDK_OUTPUTS=()\n' >> "${output_context}"
         fi
-        printf 'export ALLOY_SDK_OUTPUTS=()\n' >> "${output_context}"
 
-        if [[ "${target_id}" != "main" ]] && [[ -n "${FAKE_SMELTERL_AUX_OUTPUTS:-}" ]]; then
+        if [[ -n "${output_context}" ]] && [[ "${target_id}" != "main" ]] && [[ -n "${FAKE_SMELTERL_AUX_OUTPUTS:-}" ]]; then
             aux_output_spec=""
             IFS=';' read -r -a aux_specs <<< "${FAKE_SMELTERL_AUX_OUTPUTS}"
             for spec in "${aux_specs[@]}"; do
@@ -334,7 +376,7 @@ MAKEFILE
             fi
         fi
 
-        if [[ "${FAKE_SMELTERL_EMIT_PRE_BUILD:-false}" == "true" ]]; then
+        if [[ -n "${output_context}" ]] && [[ "${FAKE_SMELTERL_EMIT_PRE_BUILD:-false}" == "true" ]]; then
             hooks_root="${sdk_root}/pre-build-fixture"
             shared_nugget_dir="${hooks_root}/shared"
             target_nugget_id="target_${target_id}"
@@ -377,6 +419,23 @@ HOOK
                 printf 'export ALLOY_NUGGET_%s_VERSION=%q\n' "${target_var_suffix}" "1.0.0"
                 printf 'export ALLOY_NUGGET_%s_FLAVOR=%q\n' "${target_var_suffix}" ""
             } >> "${output_context}"
+        fi
+
+        if [[ -n "${output_manifest}" ]]; then
+            [[ "${target_id}" == "main" ]] || exit 25
+            mkdir -p "$(dirname "${output_manifest}")"
+            printf '{sdk_manifest, <<"1.0">>, [{include_sources, %s}]}.\n' "${include_sources}" > "${output_manifest}"
+
+            if [[ -n "${export_legal}" ]]; then
+                legal_root="$(dirname "${output_manifest}")/${export_legal}"
+                mkdir -p "${legal_root}"
+                printf 'merged legal info\n' > "${legal_root}/README"
+            fi
+
+            legal_dir=""
+            for legal_dir in "${buildroot_legals[@]}"; do
+                [[ -d "${legal_dir}" ]] || exit 26
+            done
         fi
         ;;
     *)
@@ -514,6 +573,10 @@ case "${command_name}" in
         output_external_mk=""
         output_defconfig=""
         output_context=""
+        output_manifest=""
+        export_legal=""
+        include_sources="false"
+        buildroot_legals=()
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -545,6 +608,22 @@ case "${command_name}" in
                     output_context="${2:?}"
                     shift 2
                     ;;
+                --output-manifest)
+                    output_manifest="${2:?}"
+                    shift 2
+                    ;;
+                --buildroot-legal)
+                    buildroot_legals+=("${2:?}")
+                    shift 2
+                    ;;
+                --export-legal)
+                    export_legal="${2:?}"
+                    shift 2
+                    ;;
+                --include-sources)
+                    include_sources="true"
+                    shift
+                    ;;
                 *)
                     printf 'unexpected fake smelterl generate arg: %s\n' "$1" >&2
                     exit 16
@@ -554,18 +633,27 @@ case "${command_name}" in
 
         [[ -n "${plan_path}" ]] || exit 17
         [[ -f "${plan_path}" ]] || exit 18
-        [[ -n "${output_external_desc}" ]] || exit 19
-        [[ -n "${output_config_in}" ]] || exit 20
-        [[ -n "${output_external_mk}" ]] || exit 21
-        [[ -n "${output_defconfig}" ]] || exit 22
-        [[ -n "${output_context}" ]] || exit 23
+        if [[ -z "${output_manifest}" ]]; then
+            [[ -n "${output_external_desc}" ]] || exit 19
+            [[ -n "${output_config_in}" ]] || exit 20
+            [[ -n "${output_external_mk}" ]] || exit 21
+            [[ -n "${output_defconfig}" ]] || exit 22
+            [[ -n "${output_context}" ]] || exit 23
+        fi
 
         target_id="main"
         if [[ -n "${auxiliary_target}" ]]; then
             target_id="${auxiliary_target}"
         fi
 
-        sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+        if [[ -n "${output_context}" ]]; then
+            sdk_root="$(cd "$(dirname "${output_context}")/../.." && pwd -P)"
+        elif [[ -n "${output_manifest}" ]]; then
+            sdk_root="$(cd "$(dirname "${output_manifest}")/.." && pwd -P)"
+        else
+            printf 'fake smelterl generate requires output context or manifest path\n' >&2
+            exit 27
+        fi
         buildroot_path="${FAKE_BUILDROOT_PATH:-${sdk_root}/fake-buildroot}"
         mkdir -p "${buildroot_path}"
         cat > "${buildroot_path}/Makefile" <<'MAKEFILE'
@@ -580,26 +668,56 @@ all:
 
 %:
 	@mkdir -p "$(O)"
+	@if [ "$@" = "legal-info" ]; then mkdir -p "$(O)/legal-info"; fi
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'custom goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 MAKEFILE
+        mkdir -p "${buildroot_path}/utils"
+        cat > "${buildroot_path}/utils/brmake" <<'BRMAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_BRMAKE_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${FAKE_BRMAKE_LOG}"
+fi
+exec make "$@"
+BRMAKE
+        chmod +x "${buildroot_path}/utils/brmake"
 
-        mkdir -p \
-            "$(dirname "${output_external_desc}")" \
-            "$(dirname "${output_config_in}")" \
-            "$(dirname "${output_external_mk}")" \
-            "$(dirname "${output_defconfig}")" \
-            "$(dirname "${output_context}")"
-        printf 'name: %s\n' "${target_id}" > "${output_external_desc}"
-        printf '# Config for %s\n' "${target_id}" > "${output_config_in}"
-        printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
-        printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
-        printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
-        printf 'export ALLOY_CONFIG_BUILDROOT_PATH=%q\n' "${buildroot_path}" >> "${output_context}"
-        if [[ "${target_id}" == "main" ]]; then
-            printf 'export ALLOY_IS_AUXILIARY=%q\n' "false" >> "${output_context}"
-        else
-            printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
-            printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+        if [[ -n "${output_external_desc}" ]]; then
+            mkdir -p \
+                "$(dirname "${output_external_desc}")" \
+                "$(dirname "${output_config_in}")" \
+                "$(dirname "${output_external_mk}")" \
+                "$(dirname "${output_defconfig}")" \
+                "$(dirname "${output_context}")"
+            printf 'name: %s\n' "${target_id}" > "${output_external_desc}"
+            printf '# Config for %s\n' "${target_id}" > "${output_config_in}"
+            printf '# external.mk for %s\n' "${target_id}" > "${output_external_mk}"
+            printf 'BR2_%s=y\n' "${target_id^^}" > "${output_defconfig}"
+            printf 'export ALLOY_PRODUCT=%q\n' "${target_id}" > "${output_context}"
+            printf 'export ALLOY_CONFIG_BUILDROOT_PATH=%q\n' "${buildroot_path}" >> "${output_context}"
+            if [[ "${target_id}" == "main" ]]; then
+                printf 'export ALLOY_IS_AUXILIARY=%q\n' "false" >> "${output_context}"
+            else
+                printf 'export ALLOY_IS_AUXILIARY=%q\n' "true" >> "${output_context}"
+                printf 'export ALLOY_AUXILIARY=%q\n' "${target_id}" >> "${output_context}"
+            fi
+        fi
+
+        if [[ -n "${output_manifest}" ]]; then
+            [[ "${target_id}" == "main" ]] || exit 25
+            mkdir -p "$(dirname "${output_manifest}")"
+            printf '{sdk_manifest, <<"1.0">>, [{include_sources, %s}]}.\n' "${include_sources}" > "${output_manifest}"
+
+            if [[ -n "${export_legal}" ]]; then
+                legal_root="$(dirname "${output_manifest}")/${export_legal}"
+                mkdir -p "${legal_root}"
+                printf 'merged legal info\n' > "${legal_root}/README"
+            fi
+
+            legal_dir=""
+            for legal_dir in "${buildroot_legals[@]}"; do
+                [[ -d "${legal_dir}" ]] || exit 26
+            done
         fi
         ;;
     *)
@@ -675,17 +793,19 @@ test_build_sdk_command_direct_invocation_infers_sdk_mode_from_manifest_and_rejec
 }
 
 test_build_sdk_command_creates_expected_layout_and_reports_sources() {
-    local temp_dir build_root artefact_dir env_source cli_source output status
+    local temp_dir build_root artefact_dir env_source cli_source smelterl_log output status
     temp_dir="$(harness_make_temp_dir "build-sdk-layout")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
+    smelterl_log="${temp_dir}/smelterl.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     env_source="${temp_dir}/env_one"
     cli_source="${temp_dir}/local_one"
     build_sdk_test_write_registry "${env_source}" env_one_feature
     build_sdk_test_write_registry "${cli_source}" local_one_feature
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(FAKE_SMELTERL_LOG="${smelterl_log}" \
+        ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         ALLOY_NUGGET_PATH="${env_source}" \
         "${BUILD_SDK_COMMAND}" demo_product \
@@ -726,6 +846,7 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_matches "Staged nugget repositories: 3" "${output}"
     assert_matches "Dirty VCS checkouts are allowed" "${output}"
     assert_matches "Legal-info source export was requested" "${output}"
+    assert_status_code 0 "grep -Fq -- '--output-manifest ${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST --export-legal legal-info --buildroot-legal ${build_root}/sdk/demo_product/targets/main/workspace/legal-info --include-sources' '${smelterl_log}'"
 }
 
 test_build_sdk_command_invokes_smelterl_plan_with_expected_artifacts() {
@@ -834,24 +955,29 @@ test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
 }
 
 test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolated_context() {
-    local temp_dir build_root artefact_dir make_log output status
+    local temp_dir build_root artefact_dir make_log brmake_log smelterl_log output status
     local aux_beta_defconfig_line aux_beta_build_line aux_alpha_defconfig_line aux_alpha_build_line main_defconfig_line main_build_line
-    local aux_beta_legal_line aux_alpha_legal_line main_legal_line
+    local aux_beta_legal_line aux_alpha_legal_line main_legal_line consolidation_line
     temp_dir="$(harness_make_temp_dir "build-sdk-buildroot-loop")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
     make_log="${temp_dir}/make.log"
+    brmake_log="${temp_dir}/brmake.log"
+    smelterl_log="${temp_dir}/smelterl.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
     output="$(ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
+        FAKE_SMELTERL_LOG="${smelterl_log}" \
+        FAKE_BRMAKE_LOG="${brmake_log}" \
         FAKE_MAKE_LOG="${make_log}" \
         "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
     status=$?
 
     assert_equals "0" "${status}"
     assert_status_code 0 "[[ -s '${make_log}' ]]"
+    assert_status_code 0 "[[ -s '${brmake_log}' ]]"
     assert_status_code 0 "grep -Fq 'defconfig goal=aux_beta_defconfig O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'defconfig goal=aux_alpha_defconfig O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
@@ -861,6 +987,9 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     assert_status_code 0 "grep -Fq 'custom goal=legal-info O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'custom goal=legal-info O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'custom goal=legal-info O=${build_root}/sdk/demo_product/targets/main/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/main/br2_external' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'generate --plan ${build_root}/sdk/demo_product/plan/build_plan.term --output-manifest ${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST --export-legal legal-info --buildroot-legal ${build_root}/sdk/demo_product/targets/aux_beta/workspace/legal-info --buildroot-legal ${build_root}/sdk/demo_product/targets/aux_alpha/workspace/legal-info --buildroot-legal ${build_root}/sdk/demo_product/targets/main/workspace/legal-info' '${smelterl_log}'"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/staging/legal-info/README' ]]"
 
     aux_beta_defconfig_line="$(grep -nF 'defconfig goal=aux_beta_defconfig' "${make_log}" | cut -d: -f1)"
     aux_beta_build_line="$(grep -nF 'build goal=all O='"${build_root}/sdk/demo_product/targets/aux_beta/workspace" "${make_log}" | cut -d: -f1)"
@@ -871,6 +1000,7 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     aux_beta_legal_line="$(grep -nF 'custom goal=legal-info O='"${build_root}/sdk/demo_product/targets/aux_beta/workspace" "${make_log}" | cut -d: -f1)"
     aux_alpha_legal_line="$(grep -nF 'custom goal=legal-info O='"${build_root}/sdk/demo_product/targets/aux_alpha/workspace" "${make_log}" | cut -d: -f1)"
     main_legal_line="$(grep -nF 'custom goal=legal-info O='"${build_root}/sdk/demo_product/targets/main/workspace" "${make_log}" | cut -d: -f1)"
+    consolidation_line="$(grep -nF 'generate --plan '"${build_root}/sdk/demo_product/plan/build_plan.term"' --output-manifest '"${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST" "${smelterl_log}" | cut -d: -f1)"
 
     assert_status_code 0 "[[ ${aux_beta_defconfig_line} -lt ${aux_beta_build_line} ]]"
     assert_status_code 0 "[[ ${aux_beta_build_line} -lt ${aux_alpha_defconfig_line} ]]"
@@ -880,6 +1010,7 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     assert_status_code 0 "[[ ${main_build_line} -lt ${aux_beta_legal_line} ]]"
     assert_status_code 0 "[[ ${aux_beta_legal_line} -lt ${aux_alpha_legal_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_legal_line} -lt ${main_legal_line} ]]"
+    assert_status_code 0 "[[ -n '${consolidation_line}' ]]"
     assert_matches "Built targets: aux_beta aux_alpha main" "${output}"
 }
 
@@ -1009,10 +1140,11 @@ test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
 }
 
 test_build_sdk_command_debug_level_one_reports_staging_progress() {
-    local temp_dir build_root artefact_dir local_source remote_repo output status
+    local temp_dir build_root artefact_dir local_source remote_repo brmake_log output status
     temp_dir="$(harness_make_temp_dir "build-sdk-debug-one")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
+    brmake_log="${temp_dir}/brmake.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     local_source="${temp_dir}/local_nuggets"
     build_sdk_test_write_registry "${local_source}" local_feature
@@ -1020,6 +1152,7 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
 
     output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_BRMAKE_LOG="${brmake_log}" \
         "${BUILD_SDK_COMMAND}" demo_product \
         -n "${local_source}" \
         -n "git+file://${remote_repo}#main" 2>&1)"
@@ -1032,6 +1165,7 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
     assert_matches "INFO: Staging VCS nugget repository as 'remote_nuggets' \\(ref 'main'\\)" "${output}"
     assert_matches "INFO: Nugget staging complete: 3 repositories staged" "${output}"
     assert_matches "INFO: Using cached smelterl executable ${artefact_dir}/tools/smelterl-" "${output}"
+    assert_status_code 1 "[[ -s '${brmake_log}' ]]"
     assert_status_code 1 "printf '%s\n' '${output}' | grep -Fq 'pre_build summary:'"
 }
 

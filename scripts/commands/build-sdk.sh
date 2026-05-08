@@ -575,7 +575,7 @@ build_sdk_build_target() {
     local target_defconfig="${target_id}_defconfig"
     local buildroot_path
     local debug_level="${ALLOY_DEBUG:-0}"
-    local -a make_base_args
+    local -a make_base_args make_cmd
 
     [[ -f "${context_file}" ]] ||
         fail "Target context is missing for Buildroot build execution: ${context_file}"
@@ -624,13 +624,22 @@ build_sdk_build_target() {
         make_base_args+=("V=1")
     fi
 
+    make_cmd=(make)
+    if (( debug_level == 0 )); then
+        if [[ -x "${buildroot_path}/utils/brmake" ]]; then
+            make_cmd=("${buildroot_path}/utils/brmake")
+        else
+            log_warn "Buildroot brmake not found for target '${target_id}', falling back to make: ${buildroot_path}/utils/brmake"
+        fi
+    fi
+
     log_info "Running Buildroot defconfig for target '${target_id}'."
-    if ! make "${make_base_args[@]}" "${target_defconfig}"; then
+    if ! "${make_cmd[@]}" "${make_base_args[@]}" "${target_defconfig}"; then
         fail "Buildroot defconfig failed for target '${target_id}'"
     fi
 
     log_info "Running Buildroot build for target '${target_id}'."
-    if ! make "${make_base_args[@]}"; then
+    if ! "${make_cmd[@]}" "${make_base_args[@]}"; then
         fail "Buildroot build failed for target '${target_id}'"
     fi
 
@@ -642,7 +651,7 @@ build_sdk_run_target_legal_info() {
     local context_file="${ALLOY_SDK_TARGETS_DIR}/${target_id}/alloy_context.sh"
     local buildroot_path
     local debug_level="${ALLOY_DEBUG:-0}"
-    local -a make_base_args
+    local -a make_base_args make_cmd
 
     [[ -f "${context_file}" ]] ||
         fail "Target context is missing for legal-info execution: ${context_file}"
@@ -687,10 +696,50 @@ build_sdk_run_target_legal_info() {
         make_base_args+=("V=1")
     fi
 
+    make_cmd=(make)
+    if (( debug_level == 0 )); then
+        if [[ -x "${buildroot_path}/utils/brmake" ]]; then
+            make_cmd=("${buildroot_path}/utils/brmake")
+        else
+            log_warn "Buildroot brmake not found for target '${target_id}', falling back to make: ${buildroot_path}/utils/brmake"
+        fi
+    fi
+
     log_info "Running Buildroot legal-info for target '${target_id}'."
-    if ! make "${make_base_args[@]}" legal-info; then
+    if ! "${make_cmd[@]}" "${make_base_args[@]}" legal-info; then
         fail "Buildroot legal-info failed for target '${target_id}'"
     fi
+}
+
+build_sdk_run_main_consolidation() {
+    local -a generate_args=(
+        generate
+        --plan "${ALLOY_SDK_PLAN_FILE}"
+        --output-manifest "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+        --export-legal "legal-info"
+    )
+
+    local target_id legal_dir
+    for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        legal_dir="${ALLOY_SDK_TARGETS_DIR}/${target_id}/workspace/legal-info"
+        [[ -d "${legal_dir}" ]] ||
+            fail "Missing Buildroot legal-info directory for target '${target_id}': ${legal_dir}"
+        generate_args+=(--buildroot-legal "${legal_dir}")
+    done
+
+    if [[ "${ARG_INCLUDE_SOURCES}" == "true" ]]; then
+        generate_args+=(--include-sources)
+    fi
+
+    log_info "Running main legal/manifest consolidation pass."
+    if ! "${ALLOY_SMELTERL}" "${generate_args[@]}"; then
+        fail "Smelterl main legal/manifest consolidation failed"
+    fi
+
+    [[ -s "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST" ]] ||
+        fail "Smelterl consolidation did not produce ALLOY_SDK_MANIFEST in staging"
+    [[ -d "${ALLOY_SDK_STAGING_DIR}/legal-info" ]] ||
+        fail "Smelterl consolidation did not produce merged legal-info in staging"
 }
 
 build_sdk_run_target_pre_build_hooks() {
@@ -788,6 +837,7 @@ build_sdk_generate_targets() {
     done
     sdk_utils_collect_auxiliary_sdk_outputs
     sdk_utils_inject_main_context_sdk_outputs
+    build_sdk_run_main_consolidation
 
     log_info "Smelterl generate + Buildroot build complete for ${#BUILD_SDK_GENERATED_TARGETS[@]} targets."
     log_debug "pre_build summary: ran=${BUILD_SDK_PRE_BUILD_RAN}, skipped=${BUILD_SDK_PRE_BUILD_SKIPPED}, missing=${BUILD_SDK_PRE_BUILD_MISSING}"
@@ -807,6 +857,8 @@ build_sdk_print_summary() {
     print_note "Built targets: ${BUILD_SDK_BUILT_TARGETS[*]}"
     print_note "Staged auxiliary sdk outputs: ${BUILD_SDK_STAGED_AUX_OUTPUT_COUNT:-0}"
     print_note "Staging directory: ${ALLOY_SDK_STAGING_DIR}"
+    print_note "Staged SDK manifest: ${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+    print_note "Staged merged legal-info: ${ALLOY_SDK_STAGING_DIR}/legal-info"
     print_note "Motherlode directory: ${ALLOY_MOTHERLODE}"
     print_note "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
 
@@ -826,7 +878,7 @@ build_sdk_print_summary() {
         print_note "Queued clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
     fi
 
-    print_hint "Per-target Buildroot and legal-info execution is complete; manifest consolidation and SDK packing follow in later Phase 5 tasks."
+    print_hint "Per-target Buildroot/legal-info and main legal/manifest consolidation are complete; SDK packing follows in later Phase 5 tasks."
 }
 
 build_sdk_infer_mode

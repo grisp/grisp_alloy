@@ -294,7 +294,7 @@ Cross-repository development note:
   - Tests: Integration tests for missing/duplicate/valid outputs.
   - Done when: `ALLOY_SDK_OUTPUT_<AUX_ID>_<OUTPUT_ID>` mappings are complete and validated.
 
-- [ ] **Task 5.11: Main legal/manifest consolidation pass**
+- [x] **Task 5.11: Main legal/manifest consolidation pass**
   - Scope: Final main `smelterl generate` with repeatable `--buildroot-legal`, optional `--export-legal`, `--output-manifest`.
   - Tests: Integration tests for merged legal tree and manifest content.
   - Done when: One merged legal tree and final `ALLOY_SDK_MANIFEST` are emitted.

@@ -8,6 +8,18 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to run a final main-target legal/manifest
+  consolidation pass after per-target `make legal-info`, invoking
+  `smelterl generate` with repeatable `--buildroot-legal` inputs plus
+  `--output-manifest` and `--export-legal legal-info` to produce staged merged
+  legal output and `ALLOY_SDK_MANIFEST`.
+- Updated `alloy build sdk` summary output to report staged
+  `ALLOY_SDK_MANIFEST` and merged `legal-info/` paths now that the
+  consolidation pass is implemented.
+- Updated `alloy build sdk` Buildroot execution to prefer
+  `BUILDROOT_DIR/utils/brmake` (instead of `make`) for defconfig/build and
+  `legal-info` invocations when `ALLOY_DEBUG=0`, reducing default command
+  verbosity while preserving `make` execution for higher debug levels.
 - Updated `alloy build sdk` to collect declared auxiliary `.sdk_outputs`
   registrations after per-target legal-info, validate absolute/existing output
   paths, stage them under
@@ -79,6 +91,9 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused `alloy build sdk` coverage for the main legal/manifest
+  consolidation pass, including repeatable `--buildroot-legal` wiring,
+  staged manifest/legal outputs, and `--include-sources` forwarding.
 - Added hook-side SDK output registration support via
   `scripts/utils/hook_common.sh` and `scripts/utils/sdk_tools.sh`, including
   `alloy_sdk_add_output`, `alloy_sdk_has_output`, and `alloy_sdk_get_output`
