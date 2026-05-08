@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` summary and Alloy-owned log path reporting to show paths relative to the current working directory when they are inside that directory, while preserving absolute paths for out-of-tree locations.
 - Updated SDK packing to run deterministic ELF RPATH hardening before text
   relocation sanitization: `pack_sdk` now scans embedded ELF files across
   `host/`, `images/`, `motherlode/`, and `staging`, rewrites fixable absolute

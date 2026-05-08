@@ -11,6 +11,8 @@ source "${ROOT_DIR}/scripts/utils/common.sh"
 source "${ROOT_DIR}/scripts/utils/vcs_utils.sh"
 # shellcheck source=scripts/utils/sdk_utils.sh
 source "${ROOT_DIR}/scripts/utils/sdk_utils.sh"
+# shellcheck source=scripts/utils/file_utils.sh
+source "${ROOT_DIR}/scripts/utils/file_utils.sh"
 # shellcheck source=scripts/argparse.sh
 source "${ROOT_DIR}/scripts/argparse.sh"
 
@@ -33,6 +35,13 @@ Global options accepted anywhere:
       --debug[=N]          Set debug verbosity explicitly.
       --trace              Enable bash execution tracing.
 EOF
+}
+
+build_sdk_display_path() {
+    local path_value="${1:-}"
+    local cwd
+    cwd="$(pwd -P)"
+    display_path_for_root "${cwd}" "${path_value}"
 }
 
 build_sdk_infer_mode() {
@@ -143,7 +152,7 @@ build_sdk_rsync_nugget_repo() {
     local target_dir="$2"
 
     require_command rsync
-    log_debug "Syncing nugget repository ${source_dir} -> ${target_dir}"
+    log_debug "Syncing nugget repository $(build_sdk_display_path "${source_dir}") -> $(build_sdk_display_path "${target_dir}")"
     rm -rf "${target_dir}"
     mkdir -p "${target_dir}"
     rsync -a --checksum --delete --exclude '/.git/' \
@@ -272,11 +281,11 @@ build_sdk_stage_nuggets() {
         fail "Builtin nugget repository is missing: ${builtin_source}"
     fi
 
-    log_info "Staging nugget repositories into ${ALLOY_MOTHERLODE}."
+    log_info "Staging nugget repositories into $(build_sdk_display_path "${ALLOY_MOTHERLODE}")."
     mkdir -p "${ALLOY_MOTHERLODE}"
     BUILD_SDK_STAGE_NAMES+=("builtin")
     log_info "Staging builtin nugget repository as 'builtin'."
-    log_debug "Stage target for builtin: ${ALLOY_MOTHERLODE}/builtin"
+    log_debug "Stage target for builtin: $(build_sdk_display_path "${ALLOY_MOTHERLODE}/builtin")"
     build_sdk_rsync_nugget_repo "${builtin_source}" "${ALLOY_MOTHERLODE}/builtin"
     BUILD_SDK_STAGED_REPOS+=("builtin")
 
@@ -350,7 +359,7 @@ build_sdk_update_smelterl_link() {
 
     ALLOY_SMELTERL_LINK="${link_path}"
     export ALLOY_SMELTERL_LINK
-    log_debug "Smelterl current link: ${ALLOY_SMELTERL_LINK} -> ${target_name}"
+    log_debug "Smelterl current link: $(build_sdk_display_path "${ALLOY_SMELTERL_LINK}") -> ${target_name}"
 }
 
 build_sdk_ensure_smelterl() {
@@ -362,7 +371,7 @@ build_sdk_ensure_smelterl() {
     if [[ "${ALLOY_DEV_MODE:-false}" == "true" ]]; then
         build_sdk_build_smelterl dev
     elif [[ -x "${ALLOY_SMELTERL}" ]]; then
-        log_info "Using cached smelterl executable ${ALLOY_SMELTERL}."
+        log_info "Using cached smelterl executable $(build_sdk_display_path "${ALLOY_SMELTERL}")."
     else
         build_sdk_build_smelterl normal
     fi
@@ -370,7 +379,7 @@ build_sdk_ensure_smelterl() {
     [[ -x "${ALLOY_SMELTERL}" ]] ||
         fail "Smelterl executable is not available or executable: ${ALLOY_SMELTERL}"
     build_sdk_update_smelterl_link
-    log_debug "Smelterl executable path: ${ALLOY_SMELTERL}"
+    log_debug "Smelterl executable path: $(build_sdk_display_path "${ALLOY_SMELTERL}")"
 }
 
 build_sdk_run_plan() {
@@ -395,8 +404,8 @@ build_sdk_run_plan() {
     )
 
     log_info "Running smelterl plan for ${ARG_PRODUCT_NUGGET}."
-    log_debug "Plan term output: ${ALLOY_SDK_PLAN_FILE}"
-    log_debug "Plan environment output: ${ALLOY_SDK_PLAN_ENV_FILE}"
+    log_debug "Plan term output: $(build_sdk_display_path "${ALLOY_SDK_PLAN_FILE}")"
+    log_debug "Plan environment output: $(build_sdk_display_path "${ALLOY_SDK_PLAN_ENV_FILE}")"
     if ! "${ALLOY_SMELTERL}" "${plan_args[@]}"; then
         fail "Smelterl plan failed for product: ${ARG_PRODUCT_NUGGET}"
     fi
@@ -409,7 +418,7 @@ build_sdk_run_plan() {
 }
 
 build_sdk_load_plan_metadata() {
-    log_info "Loading target loop metadata from ${ALLOY_SDK_PLAN_ENV_FILE}."
+    log_info "Loading target loop metadata from $(build_sdk_display_path "${ALLOY_SDK_PLAN_ENV_FILE}")."
     unset ALLOY_PLAN_PRODUCT ALLOY_PLAN_MAIN_TARGET ALLOY_PLAN_AUXILIARY_IDS \
         ALLOY_PLAN_TARGET_IDS ALLOY_PLAN_TARGET_KIND ALLOY_PLAN_TARGET_ROOT \
         ALLOY_PLAN_EXTRA_CONFIG || true
@@ -467,7 +476,7 @@ build_sdk_link_target_hooks() {
     ln -sfn "${wrapper_script}" "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}/post-fakeroot.sh"
     ln -sfn "${context_link_target}" "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}/alloy_context.sh"
 
-    log_debug "Hook wrapper links prepared for target '${target_id}' in ${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}."
+    log_debug "Hook wrapper links prepared for target '${target_id}' in $(build_sdk_display_path "${BUILD_SDK_TARGET_BOARD_SCRIPTS_DIR}")."
 }
 
 build_sdk_generate_target() {
@@ -505,7 +514,7 @@ build_sdk_generate_target() {
     )
 
     log_info "Generating Buildroot inputs for ${target_kind} target '${target_id}'."
-    log_debug "Target '${target_id}' workspace: ${BUILD_SDK_TARGET_WORKSPACE_DIR}"
+    log_debug "Target '${target_id}' workspace: $(build_sdk_display_path "${BUILD_SDK_TARGET_WORKSPACE_DIR}")"
     if ! "${ALLOY_SMELTERL}" "${generate_args[@]}"; then
         fail "Smelterl generate failed for target '${target_id}'"
     fi
@@ -566,7 +575,7 @@ build_sdk_write_make_alloy_helper() {
         printf ' "$@"\n'
     } > "${helper_path}"
     chmod +x "${helper_path}"
-    log_debug "Generated make_alloy helper for target '${target_id}': ${helper_path}"
+    log_debug "Generated make_alloy helper for target '${target_id}': $(build_sdk_display_path "${helper_path}")"
 }
 
 build_sdk_build_target() {
@@ -713,11 +722,11 @@ build_sdk_run_target_legal_info() {
 
 build_sdk_run_main_consolidation() {
     if [[ -d "${ALLOY_SDK_STAGING_DIR}/legal-info" ]]; then
-        log_debug "Removing stale staged legal-info before main consolidation: ${ALLOY_SDK_STAGING_DIR}/legal-info"
+        log_debug "Removing stale staged legal-info before main consolidation: $(build_sdk_display_path "${ALLOY_SDK_STAGING_DIR}/legal-info")"
         rm -rf "${ALLOY_SDK_STAGING_DIR}/legal-info"
     fi
     if [[ -f "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST" ]]; then
-        log_debug "Removing stale staged SDK manifest before main consolidation: ${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+        log_debug "Removing stale staged SDK manifest before main consolidation: $(build_sdk_display_path "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST")"
         rm -f "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
     fi
 
@@ -854,22 +863,40 @@ build_sdk_generate_targets() {
 
 build_sdk_print_summary() {
     local build_dir="$1"
+    local cwd
+    cwd="$(pwd -P)"
+    local smelterl_display build_dir_display plan_dir_display plan_file_display
+    local plan_env_display targets_dir_display staging_dir_display manifest_display
+    local legal_display packed_sdk_dir_display motherlode_display archive_display
+
+    smelterl_display="$(display_path_for_root "${cwd}" "${ALLOY_SMELTERL}")" || fail "Failed to format summary path: ${ALLOY_SMELTERL}"
+    build_dir_display="$(display_path_for_root "${cwd}" "${build_dir}")" || fail "Failed to format summary path: ${build_dir}"
+    plan_dir_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_PLAN_DIR}")" || fail "Failed to format summary path: ${ALLOY_SDK_PLAN_DIR}"
+    plan_file_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_PLAN_FILE}")" || fail "Failed to format summary path: ${ALLOY_SDK_PLAN_FILE}"
+    plan_env_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_PLAN_ENV_FILE}")" || fail "Failed to format summary path: ${ALLOY_SDK_PLAN_ENV_FILE}"
+    targets_dir_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_TARGETS_DIR}")" || fail "Failed to format summary path: ${ALLOY_SDK_TARGETS_DIR}"
+    staging_dir_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_STAGING_DIR}")" || fail "Failed to format summary path: ${ALLOY_SDK_STAGING_DIR}"
+    manifest_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST")" || fail "Failed to format summary path: ${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+    legal_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_STAGING_DIR}/legal-info")" || fail "Failed to format summary path: ${ALLOY_SDK_STAGING_DIR}/legal-info"
+    packed_sdk_dir_display="$(display_path_for_root "${cwd}" "${ALLOY_SDK_STAGING_DIR}")" || fail "Failed to format summary path: ${ALLOY_SDK_STAGING_DIR}"
+    motherlode_display="$(display_path_for_root "${cwd}" "${ALLOY_MOTHERLODE}")" || fail "Failed to format summary path: ${ALLOY_MOTHERLODE}"
+    archive_display="$(display_path_for_root "${cwd}" "${BUILD_SDK_ARCHIVE_PATH}")" || fail "Failed to format summary path: ${BUILD_SDK_ARCHIVE_PATH}"
 
     print_result "Initialized SDK build workspace for ${ARG_PRODUCT_NUGGET}."
-    print_note "Smelterl executable: ${ALLOY_SMELTERL}"
-    print_note "Build directory: ${build_dir}"
-    print_note "Plan directory: ${ALLOY_SDK_PLAN_DIR}"
-    print_note "Plan file: ${ALLOY_SDK_PLAN_FILE}"
-    print_note "Plan environment file: ${ALLOY_SDK_PLAN_ENV_FILE}"
-    print_note "Targets directory: ${ALLOY_SDK_TARGETS_DIR}"
+    print_note "Smelterl executable: ${smelterl_display}"
+    print_note "Build directory: ${build_dir_display}"
+    print_note "Plan directory: ${plan_dir_display}"
+    print_note "Plan file: ${plan_file_display}"
+    print_note "Plan environment file: ${plan_env_display}"
+    print_note "Targets directory: ${targets_dir_display}"
     print_note "Generated targets: ${BUILD_SDK_GENERATED_TARGETS[*]}"
     print_note "Built targets: ${BUILD_SDK_BUILT_TARGETS[*]}"
     print_note "Staged auxiliary sdk outputs: ${BUILD_SDK_STAGED_AUX_OUTPUT_COUNT:-0}"
-    print_note "Staging directory: ${ALLOY_SDK_STAGING_DIR}"
-    print_note "Staged SDK manifest: ${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
-    print_note "Staged merged legal-info: ${ALLOY_SDK_STAGING_DIR}/legal-info"
-    print_note "Packed SDK directory: ${ALLOY_SDK_STAGING_DIR}"
-    print_note "Motherlode directory: ${ALLOY_MOTHERLODE}"
+    print_note "Staging directory: ${staging_dir_display}"
+    print_note "Staged SDK manifest: ${manifest_display}"
+    print_note "Staged merged legal-info: ${legal_display}"
+    print_note "Packed SDK directory: ${packed_sdk_dir_display}"
+    print_note "Motherlode directory: ${motherlode_display}"
     print_note "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
 
     if [[ ${#ARG_NUGGET_PATHS[@]} -gt 0 ]]; then
@@ -889,7 +916,7 @@ build_sdk_print_summary() {
     fi
 
     print_hint "SDK packing completed with relocation metadata markers for first-use relocation."
-    print_result "Generated SDK artefact: ${BUILD_SDK_ARCHIVE_PATH}"
+    print_result "Generated SDK artefact: ${archive_display}"
 }
 
 build_sdk_pack_sdk() {
@@ -899,7 +926,7 @@ build_sdk_pack_sdk() {
         fail "SDK packing failed"
     [[ -f "${BUILD_SDK_ARCHIVE_PATH}" ]] ||
         fail "SDK archive was not created: ${BUILD_SDK_ARCHIVE_PATH}"
-    log_info "SDK archive created: ${BUILD_SDK_ARCHIVE_PATH}"
+    log_info "SDK archive created: $(build_sdk_display_path "${BUILD_SDK_ARCHIVE_PATH}")"
 }
 
 build_sdk_infer_mode
@@ -958,7 +985,7 @@ export ALLOY_SDK_STAGING_DIR="${build_dir}/staging"
 export ALLOY_MOTHERLODE="${build_dir}/motherlode"
 export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 
-log_debug "SDK build workspace root: ${build_dir}"
+log_debug "SDK build workspace root: $(build_sdk_display_path "${build_dir}")"
 build_sdk_stage_nuggets
 build_sdk_ensure_smelterl
 build_sdk_run_plan

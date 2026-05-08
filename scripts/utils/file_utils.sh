@@ -135,6 +135,52 @@ relative_path() {
     printf '%s\n' "${result}"
 }
 
+# display_path_for_root ROOT_DIR PATH_VALUE
+# Print PATH_VALUE for user-facing output: keep relative inputs unchanged, convert absolute paths under ROOT_DIR
+# to a relative path, and keep absolute paths outside ROOT_DIR unchanged.
+# Env/side effects: none.
+# Errors: returns 2 and logs for missing arguments or invalid ROOT_DIR normalization failures.
+display_path_for_root() {
+    local root_dir="${1:-}"
+    local path_value="${2:-}"
+    if [[ -z "${root_dir}" ]] || [[ -z "${path_value}" ]]; then
+        log_error "display_path_for_root requires ROOT_DIR and PATH_VALUE arguments"
+        return 2
+    fi
+
+    # Keep relative inputs as provided by the caller.
+    if [[ "${path_value}" != /* ]]; then
+        printf '%s\n' "${path_value}"
+        return 0
+    fi
+
+    local root_norm path_norm
+    root_norm="$(normalize_path "${root_dir}")" || return $?
+    path_norm="$(normalize_path "${path_value}")" || return $?
+
+    if [[ "${root_norm}" != /* ]]; then
+        log_error "display_path_for_root requires ROOT_DIR to resolve to an absolute path"
+        return 2
+    fi
+
+    if [[ "${path_norm}" == "${root_norm}" ]]; then
+        printf '.\n'
+        return 0
+    fi
+
+    if [[ "${root_norm}" == "/" ]]; then
+        relative_path "/" "${path_norm}"
+        return $?
+    fi
+
+    if [[ "${path_norm}" == "${root_norm}/"* ]]; then
+        relative_path "${root_norm}" "${path_norm}"
+        return $?
+    fi
+
+    printf '%s\n' "${path_norm}"
+}
+
 # copy_with_exclusions SRC DEST [EXCLUDE_PATTERN...]
 # Copy SRC into DEST, skipping any entries matched by the optional rsync-style exclusion patterns.
 # Env/side effects: creates DEST when needed and writes files there; requires rsync on PATH.

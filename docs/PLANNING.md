@@ -310,10 +310,28 @@ Cross-repository development note:
   - Tests: Focused utility/integration tests for valid `$ORIGIN`-relative RPATH, absolute-RPATH rewrite, and unfixable-error handling.
   - Done when: Packed SDK enforces the documented ELF relocatability contract across embedded ELF artefacts.
 
-- [ ] **Task 5.12c: Relative-path summary output ergonomics**
+- [x] **Task 5.12c: Relative-path summary output ergonomics**
   - Scope: Update `alloy build sdk` summary/path reporting so paths under the current working directory are shown as relative paths, while keeping absolute-path output for paths outside the current directory.
   - Tests: Focused command-output tests for mixed relative/absolute path reporting in summary lines.
   - Done when: Summary output is easier to scan locally without losing path clarity for out-of-tree locations.
+
+- [ ] **Task 5.12d: Hook logging API consolidation and nugget hook migration**
+  - Scope: Consolidate hook-facing logging under one shared API sourced by `hook_common.sh` (reuse/extend `debug_tools.sh` rather than creating parallel logging modules), with standard `alloy_log_info|warn|error|debug` behavior and consistent hook-context prefixing.
+  - Scope: Add hook-facing path-format helper(s) (for example `alloy_log_format_path` or `alloy_log_path`) so hook logs can present root-relative paths when possible while preserving absolute paths when out-of-tree.
+  - Scope: Migrate the current builtin nugget hook scripts to the shared hook logging/path-format API and remove ad-hoc nugget-local logging helpers where equivalent shared behavior exists.
+  - Tests: Focused shell tests for hook logging helpers (prefixing, levels, path formatting), plus integration coverage that exercises at least one migrated nugget hook through `alloy build sdk` and asserts the standardized log output shape.
+  - Design/workflow update requirement: Update `docs/03_ALLOY_DESIGN.md` and `docs/WORKFLOW.md` to document the canonical hook logging API and require new hook scripts to use it instead of direct `echo`/custom logger functions unless explicitly justified.
+  - Done when: Hook logging behavior is centralized, existing builtin nugget hooks use the shared API, and path output in hook-controlled logs follows the same relative/absolute ergonomics contract as command summaries/logs.
+
+- [ ] **Task 5.12e: Decouple Buildroot verbosity controls from Alloy debug levels**
+  - Scope: Introduce command-level Buildroot verbosity flags independent from Alloy `-d/--debug`, using `-D` and `-DD` for `alloy build sdk`.
+  - Scope: Implement `-D` to force Buildroot execution through `make` (instead of `brmake`) while keeping normal Buildroot output verbosity (no `V=1`).
+  - Scope: Implement `-DD` to force `make` and add Buildroot verbose mode (`V=1`).
+  - Scope: Keep Alloy debug logging controlled only by `-d/--debug`; do not make `-d` imply Buildroot verbosity changes.
+  - Scope: Remove legacy coupling behavior (no backward-compatibility shim): `-ddd` must no longer enable Buildroot verbosity implicitly.
+  - Tests: Update parser/command tests for `-D`/`-DD`, verify `brmake` vs `make` selection, verify `V=1` is set only for `-DD`, and verify Alloy debug level does not alter Buildroot verbosity without `-D` flags.
+  - Design update requirement: Update `docs/03_ALLOY_DESIGN.md` in the same change so CLI debug/verbosity semantics match the new contract exactly.
+  - Done when: Buildroot verbosity is controlled only by `-D` flags, Alloy debug is controlled only by `-d` flags, and docs/tests reflect the decoupled behavior.
 
 ## Phase 6: `alloy build project`
 

@@ -5,6 +5,30 @@ log_info() {
     printf 'builder_buildroot: %s\n' "$*" >&2
 }
 
+display_path_for_cwd() {
+    local path_value="${1:-}"
+    local cwd
+    cwd="$(pwd -P)"
+
+    if [[ "${path_value}" != /* ]]; then
+        printf '%s\n' "${path_value}"
+        return 0
+    fi
+    if [[ "${path_value}" == "${cwd}" ]]; then
+        printf '.\n'
+        return 0
+    fi
+    if [[ "${cwd}" == "/" ]]; then
+        printf '%s\n' "${path_value#/}"
+        return 0
+    fi
+    if [[ "${path_value}" == "${cwd}/"* ]]; then
+        printf '%s\n' "${path_value#"${cwd}/"}"
+        return 0
+    fi
+    printf '%s\n' "${path_value}"
+}
+
 fail() {
     printf 'builder_buildroot: error: %s\n' "$*" >&2
     exit 1
@@ -120,7 +144,7 @@ main() {
         "$(dirname "${ALLOY_CONFIG_BUILDROOT_PATH}")"
 
     if buildroot_tree_matches "${ALLOY_CONFIG_BUILDROOT_PATH}" "${ALLOY_CONFIG_BUILDROOT_VERSION}"; then
-        log_info "using existing Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION} at ${ALLOY_CONFIG_BUILDROOT_PATH}"
+        log_info "using existing Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION} at $(display_path_for_cwd "${ALLOY_CONFIG_BUILDROOT_PATH}")"
         link_download_cache "${ALLOY_CONFIG_BUILDROOT_PATH}" "${downloads_dir}"
         return 0
     fi

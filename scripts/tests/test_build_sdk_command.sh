@@ -871,6 +871,58 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_status_code 0 "grep -Fq -- '--output-manifest ${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST --export-legal legal-info --buildroot-legal ${build_root}/sdk/demo_product/targets/main/workspace/legal-info --include-sources' '${smelterl_log}'"
 }
 
+test_build_sdk_command_summary_paths_are_relative_only_within_cwd() {
+    local temp_dir workspace build_root artefact_dir output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-summary-paths")"
+    workspace="${temp_dir}/workspace"
+    mkdir -p "${workspace}"
+    build_root="${workspace}/build"
+    artefact_dir="${temp_dir}_artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(
+        cd "${workspace}" &&
+            ALLOY_BUILD_DIR="${build_root}" \
+            ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+            "${BUILD_SDK_COMMAND}" demo_product 2>&1
+    )"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "Build directory: build/sdk/demo_product" "${output}"
+    assert_matches "Plan directory: build/sdk/demo_product/plan" "${output}"
+    assert_matches "Staged SDK manifest: build/sdk/demo_product/staging/ALLOY_SDK_MANIFEST" "${output}"
+    assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-" "${output}"
+    assert_matches "Generated SDK artefact: ${artefact_dir}/sdk/sdk-demo_product-" "${output}"
+}
+
+test_build_sdk_command_debug_logs_use_relative_paths_within_cwd() {
+    local temp_dir workspace build_root artefact_dir output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-debug-relative-paths")"
+    workspace="${temp_dir}/workspace"
+    mkdir -p "${workspace}"
+    build_root="${workspace}/build"
+    artefact_dir="${workspace}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(
+        cd "${workspace}" &&
+            ALLOY_DEBUG=2 \
+            ALLOY_BUILD_DIR="${build_root}" \
+            ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+            "${BUILD_SDK_COMMAND}" demo_product 2>&1
+    )"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_matches "DEBUG: SDK build workspace root: build/sdk/demo_product" "${output}"
+    assert_matches "INFO: Staging nugget repositories into build/sdk/demo_product/motherlode\\." "${output}"
+    assert_matches "DEBUG: Stage target for builtin: build/sdk/demo_product/motherlode/builtin" "${output}"
+    assert_matches "DEBUG: Smelterl executable path: artefacts/tools/smelterl-" "${output}"
+    assert_matches "DEBUG: Plan term output: build/sdk/demo_product/plan/build_plan.term" "${output}"
+    assert_matches "DEBUG: Plan environment output: build/sdk/demo_product/plan/build_plan.env" "${output}"
+}
+
 test_build_sdk_command_invokes_smelterl_plan_with_expected_artifacts() {
     local temp_dir build_root artefact_dir smelterl_log output status
     temp_dir="$(harness_make_temp_dir "build-sdk-plan")"

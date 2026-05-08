@@ -120,6 +120,22 @@ test_file_utils_make_symlink_relative_creates_relative_link() {
     assert_equals "payload" "$(cat "${link_file}")"
 }
 
+test_file_utils_display_path_for_root_formats_inside_and_outside_paths() {
+    assert_equals "build/out" "$(display_path_for_root "/tmp/work" "/tmp/work/build/out")"
+    assert_equals "." "$(display_path_for_root "/tmp/work" "/tmp/work")"
+    assert_equals "/tmp/workspace/out" "$(display_path_for_root "/tmp/work" "/tmp/workspace/out")"
+    assert_equals "relative/path" "$(display_path_for_root "/tmp/work" "relative/path")"
+}
+
+test_file_utils_display_path_for_root_requires_arguments() {
+    local output status
+    output="$({ display_path_for_root "/tmp/work"; } 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "display_path_for_root requires ROOT_DIR and PATH_VALUE arguments" "${output}"
+}
+
 test_file_utils_is_safe_to_source_multiple_times() {
     assert_status_code 0 "bash -c 'source \"${FILE_UTILS_SCRIPT}\"; source \"${FILE_UTILS_SCRIPT}\"; normalize_path /tmp >/dev/null'"
 }

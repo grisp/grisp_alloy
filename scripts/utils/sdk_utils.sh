@@ -26,6 +26,13 @@ sdk_utils_manifest_file() {
     printf '%s\n' "${1}/.alloy_relocation_manifest"
 }
 
+sdk_utils_display_path() {
+    local path_value="${1:-}"
+    local cwd
+    cwd="$(pwd -P)"
+    display_path_for_root "${cwd}" "${path_value}"
+}
+
 sdk_utils_read_recorded_root() {
     local sdk_dir="$1"
     local state_file
@@ -169,7 +176,7 @@ ensure_sdk_relocated() {
         return 1
     fi
 
-    print_note "Relocating SDK to ${current_root}..."
+    print_note "Relocating SDK to $(sdk_utils_display_path "${current_root}")..."
     relocate_sdk "${current_root}"
 }
 
@@ -450,13 +457,13 @@ verify_elf_rpaths() {
     while IFS= read -r elf_path; do
         sdk_utils_is_elf_file "${elf_path}" || continue
         if sdk_utils_is_target_sysroot_elf_path "${sdk_dir}" "${elf_path}"; then
-            log_debug "Skipping target-sysroot ELF for RPATH verification: ${elf_path}"
+            log_debug "Skipping target-sysroot ELF for RPATH verification: $(sdk_utils_display_path "${elf_path}")"
             continue
         fi
         if ! rpath_value="$(patchelf --print-rpath "${elf_path}" 2>&1)"; then
             patchelf_error="${rpath_value}"
             if sdk_utils_is_non_dynamic_rpath_probe_error "${patchelf_error}"; then
-                log_debug "Skipping non-dynamic ELF for RPATH verification: ${elf_path}"
+                log_debug "Skipping non-dynamic ELF for RPATH verification: $(sdk_utils_display_path "${elf_path}")"
                 continue
             fi
             fail "Unable to read ELF RPATH: ${elf_path}"
@@ -481,7 +488,7 @@ verify_elf_rpaths() {
 
         if [[ "${patched}" == "true" ]]; then
             updated_rpath="$(IFS=:; printf '%s' "${rewritten_entries[*]}")"
-            log_info "Rewriting ELF RPATH: ${elf_path}"
+            log_info "Rewriting ELF RPATH: $(sdk_utils_display_path "${elf_path}")"
             log_debug "ELF RPATH old=${rpath_value}"
             log_debug "ELF RPATH new=${updated_rpath}"
             patchelf --set-rpath "${updated_rpath}" "${elf_path}" ||
