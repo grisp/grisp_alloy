@@ -76,6 +76,33 @@ test_sdk_utils_relocate_sdk_rewrites_stale_sdk_path() {
     assert_equals "${sdk_dir}" "$(cat "${sdk_dir}/.alloy_sdk_dir")"
 }
 
+test_sdk_utils_sanitize_text_paths_writes_manifest_and_placeholder_state() {
+    local temp_dir sdk_dir source_host source_images source_motherlode text_file manifest_file
+    temp_dir="$(harness_make_temp_dir "sdk-utils")"
+    sdk_dir="${temp_dir}/packed-sdk"
+    source_host="${temp_dir}/build/workspace/host"
+    source_images="${temp_dir}/build/workspace/images"
+    source_motherlode="${temp_dir}/build/motherlode"
+    mkdir -p "${sdk_dir}/scripts" "${source_host}" "${source_images}" "${source_motherlode}"
+
+    text_file="${sdk_dir}/scripts/paths.env"
+    cat > "${text_file}" <<EOF
+HOST=${source_host}/usr/lib
+IMAGES=${source_images}/bundle
+MOTHERLODE=${source_motherlode}/builtin
+EOF
+
+    sdk_utils_sanitize_text_paths "${sdk_dir}" "${source_host}" "${source_images}" "${source_motherlode}"
+
+    manifest_file="${sdk_dir}/.alloy_relocation_manifest"
+    assert_status_code 0 "[[ -s '${manifest_file}' ]]"
+    assert_status_code 0 "grep -Fxq 'scripts/paths.env' '${manifest_file}'"
+    assert_status_code 0 "grep -Fq 'HOST=@@ALLOY_SDK_DIR@@/host/usr/lib' '${text_file}'"
+    assert_status_code 0 "grep -Fq 'IMAGES=@@ALLOY_SDK_DIR@@/images/bundle' '${text_file}'"
+    assert_status_code 0 "grep -Fq 'MOTHERLODE=@@ALLOY_SDK_DIR@@/motherlode/builtin' '${text_file}'"
+    assert_equals "@@ALLOY_SDK_DIR@@" "$(cat "${sdk_dir}/.alloy_sdk_dir")"
+}
+
 test_sdk_utils_ensure_sdk_relocated_fails_when_sdk_root_is_not_writable() {
     local temp_dir sdk_dir
     temp_dir="$(harness_make_temp_dir "sdk-utils")"

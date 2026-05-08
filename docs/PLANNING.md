@@ -299,10 +299,21 @@ Cross-repository development note:
   - Tests: Integration tests for merged legal tree and manifest content.
   - Done when: One merged legal tree and final `ALLOY_SDK_MANIFEST` are emitted.
 
-- [ ] **Task 5.12: SDK packing and relocation markers**
+- [x] **Task 5.12a: SDK packing and relocation markers**
   - Scope: Package SDK and produce relocation metadata files.
   - Tests: Integration tests for archive structure and relocation metadata.
   - Done when: Packed SDK is self-contained and relocatable.
+
+- [ ] **Task 5.12b: SDK ELF RPATH verification and hardening**
+  - Scope: Implement pack-time ELF RPATH verification/fixup for embedded SDK trees using `patchelf`.
+  - Scope: Fail on unresolved/non-relocatable ELF RPATH cases and log deterministic fixup actions.
+  - Tests: Focused utility/integration tests for valid `$ORIGIN`-relative RPATH, absolute-RPATH rewrite, and unfixable-error handling.
+  - Done when: Packed SDK enforces the documented ELF relocatability contract across embedded ELF artefacts.
+
+- [ ] **Task 5.12c: Relative-path summary output ergonomics**
+  - Scope: Update `alloy build sdk` summary/path reporting so paths under the current working directory are shown as relative paths, while keeping absolute-path output for paths outside the current directory.
+  - Tests: Focused command-output tests for mixed relative/absolute path reporting in summary lines.
+  - Done when: Summary output is easier to scan locally without losing path clarity for out-of-tree locations.
 
 ## Phase 6: `alloy build project`
 
@@ -463,6 +474,12 @@ Cross-repository development note:
   - Tests: Command-entry regression tests and baseline/full workflow gates.
   - Refinement note (from Task 9.4): Consolidate the repeated command bootstrap currently duplicated across `build-sdk.sh`, `build-project.sh`, `build-firmware.sh`, `serve-artefacts.sh`, and `grispio.sh` instead of preserving per-command root-resolution snippets.
   - Done when: Command/bootstrap path resolution is centralized and any remaining compatibility wrappers have an explicit, minimal policy surface.
+
+- [ ] **Task 9.8: `argparse.sh` relocation into shared utils**
+  - Scope: Move `scripts/argparse.sh` into `scripts/utils/argparse.sh` and update command/test sourcing paths so parser ownership aligns with shared utility modules instead of the legacy top-level script layout.
+  - Scope: Keep migration compatibility explicit and temporary (if needed) while removing direct dependency on the legacy path in canonical command implementations.
+  - Tests: Parser unit tests plus command-entry regression coverage for touched commands and baseline/full workflow gates.
+  - Done when: Canonical command/runtime paths source `argparse` from `scripts/utils/` and the legacy top-level path is removed or reduced to a clearly temporary compatibility shim.
 
 - [x] **Task 9.7: Changelog scope policy clarification**
   - Scope: Clarify in agent/workflow guidance what kinds of changes belong in `CHANGELOG.md` and which internal planning/history/process updates should stay out of it.

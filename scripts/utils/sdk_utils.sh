@@ -344,3 +344,166 @@ sdk_utils_inject_main_context_sdk_outputs() {
         done
     } >> "${main_context_file}"
 }
+
+sdk_utils_manifest_product_version() {
+    local manifest_file="$1"
+    local version
+    version="$(sed -n 's/.*{product_version,[[:space:]]*<<"\([^"]\+\)">>.*/\1/p' "${manifest_file}" | head -n 1)"
+    if [[ -z "${version}" ]]; then
+        version="0.0.0"
+    fi
+    printf '%s\n' "${version}"
+}
+
+sdk_utils_sanitize_text_paths() {
+    local sdk_dir="$1"
+    local source_host_root="$2"
+    local source_images_root="$3"
+    local source_motherlode_root="$4"
+    local manifest_file
+    manifest_file="$(sdk_utils_manifest_file "${sdk_dir}")"
+    : > "${manifest_file}"
+
+    local file rel_path updated
+    while IFS= read -r file; do
+        if ! grep -Iq . "${file}" 2>/dev/null; then
+            continue
+        fi
+
+        updated=false
+        if grep -Fq "${source_host_root}" "${file}" 2>/dev/null; then
+            sed -i -e "s|${source_host_root}|${ALLOY_SDK_RELOCATION_PLACEHOLDER}/host|g" "${file}"
+            updated=true
+        fi
+        if grep -Fq "${source_images_root}" "${file}" 2>/dev/null; then
+            sed -i -e "s|${source_images_root}|${ALLOY_SDK_RELOCATION_PLACEHOLDER}/images|g" "${file}"
+            updated=true
+        fi
+        if grep -Fq "${source_motherlode_root}" "${file}" 2>/dev/null; then
+            sed -i -e "s|${source_motherlode_root}|${ALLOY_SDK_RELOCATION_PLACEHOLDER}/motherlode|g" "${file}"
+            updated=true
+        fi
+
+        if [[ "${updated}" == "true" ]] && grep -Fq "${ALLOY_SDK_RELOCATION_PLACEHOLDER}" "${file}" 2>/dev/null; then
+            rel_path="$(relative_path "${sdk_dir}" "${file}")"
+            printf '%s\n' "${rel_path}" >> "${manifest_file}"
+        fi
+    done < <(find "${sdk_dir}" -type f | sort)
+
+    if [[ -s "${manifest_file}" ]]; then
+        sort -u -o "${manifest_file}" "${manifest_file}"
+    fi
+
+    printf '%s\n' "${ALLOY_SDK_RELOCATION_PLACEHOLDER}" > "$(sdk_utils_state_file "${sdk_dir}")"
+}
+
+# pack_sdk BUILD_ROOT PRODUCT_ID
+# Assemble a packed SDK directory and tarball from the completed build-sdk workspace and return tarball path on stdout.
+# Env/side effects: reads ALLOY_SDK_* workspace vars, writes packed SDK tree under ALLOY_SDK_STAGING_DIR, emits tarball under ALLOY_ARTEFACT_DIR/sdk.
+# Errors: returns 2 for missing arguments, 1 for missing required build artefacts or failed copy/archive operations.
+pack_sdk() {
+    local build_root="${1:-}"
+    local product_id="${2:-}"
+    if [[ -z "${build_root}" ]] || [[ -z "${product_id}" ]]; then
+        log_error "pack_sdk requires BUILD_ROOT and PRODUCT_ID"
+        return 2
+    fi
+
+    local main_target="${ALLOY_PLAN_MAIN_TARGET:-main}"
+    local main_workspace="${ALLOY_SDK_TARGETS_DIR}/${main_target}/workspace"
+    local main_context="${ALLOY_SDK_TARGETS_DIR}/${main_target}/alloy_context.sh"
+    local manifest_path="${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+    local legal_info_dir="${ALLOY_SDK_STAGING_DIR}/legal-info"
+    local sdk_dir="${ALLOY_SDK_STAGING_DIR}"
+    local source_host="${main_workspace}/host"
+    local source_images="${main_workspace}/images"
+    local source_staging="${main_workspace}/staging"
+    local source_motherlode="${ALLOY_MOTHERLODE}"
+
+    local alloy_root="${ALLOY_ROOT_DIR:-${ALLOY_ROOT:-}}"
+    [[ -n "${alloy_root}" ]] || fail "ALLOY_ROOT_DIR must be set for SDK packing"
+    [[ -f "${alloy_root}/alloy" ]] || fail "Missing alloy entrypoint for SDK packing: ${alloy_root}/alloy"
+    [[ -d "${alloy_root}/scripts" ]] || fail "Missing scripts directory for SDK packing: ${alloy_root}/scripts"
+    [[ -f "${main_context}" ]] || fail "Missing main target context for SDK packing: ${main_context}"
+    [[ -f "${manifest_path}" ]] || fail "Missing staged SDK manifest for packing: ${manifest_path}"
+    [[ -d "${legal_info_dir}" ]] || fail "Missing staged legal-info directory for packing: ${legal_info_dir}"
+    [[ -d "${source_host}" ]] || fail "Missing main target host directory for SDK packing: ${source_host}"
+    [[ -d "${source_images}" ]] || fail "Missing main target images directory for SDK packing: ${source_images}"
+    [[ -e "${source_staging}" ]] || fail "Missing main target staging path for SDK packing: ${source_staging}"
+    [[ -d "${source_motherlode}" ]] || fail "Missing motherlode for SDK packing: ${source_motherlode}"
+
+    rm -rf \
+        "${sdk_dir}/alloy" \
+        "${sdk_dir}/scripts" \
+        "${sdk_dir}/host" \
+        "${sdk_dir}/images" \
+        "${sdk_dir}/staging" \
+        "${sdk_dir}/motherlode" \
+        "${sdk_dir}/.alloy_relocation_manifest" \
+        "${sdk_dir}/.alloy_sdk_dir"
+    mkdir -p "${sdk_dir}"
+
+    cp "${alloy_root}/alloy" "${sdk_dir}/alloy"
+    chmod +x "${sdk_dir}/alloy"
+
+    mkdir -p "${sdk_dir}/scripts"
+    cp "${alloy_root}/scripts/argparse.sh" "${sdk_dir}/scripts/argparse.sh"
+    copy_with_exclusions "${alloy_root}/scripts/commands" "${sdk_dir}/scripts/commands"
+    copy_with_exclusions "${alloy_root}/scripts/utils" "${sdk_dir}/scripts/utils"
+    copy_with_exclusions "${alloy_root}/scripts/tools" "${sdk_dir}/scripts/tools"
+    copy_with_exclusions "${alloy_root}/scripts/plugins" "${sdk_dir}/scripts/plugins"
+    copy_with_exclusions "${alloy_root}/scripts/buildroot" "${sdk_dir}/scripts/buildroot"
+    cp "${main_context}" "${sdk_dir}/scripts/alloy_context.sh"
+    # ALLOY_SDK_MANIFEST and legal-info are already generated in staging by the
+    # main consolidation pass and serve as authoritative pack inputs.
+    [[ -s "${sdk_dir}/ALLOY_SDK_MANIFEST" ]] || fail "Missing staged SDK manifest for packing: ${sdk_dir}/ALLOY_SDK_MANIFEST"
+    [[ -d "${sdk_dir}/legal-info" ]] || fail "Missing staged legal-info for packing: ${sdk_dir}/legal-info"
+    copy_with_exclusions "${source_images}" "${sdk_dir}/images"
+    copy_with_exclusions "${source_host}" "${sdk_dir}/host"
+    copy_with_exclusions "${source_motherlode}" "${sdk_dir}/motherlode"
+
+    if [[ -L "${source_staging}" ]]; then
+        local staging_link_target staging_real staging_rel
+        staging_link_target="$(readlink "${source_staging}")"
+        if [[ "${staging_link_target}" == /* ]]; then
+            staging_real="$(normalize_path "${staging_link_target}")"
+        else
+            staging_real="$(normalize_path "$(dirname "${source_staging}")/${staging_link_target}")"
+        fi
+        [[ -d "${staging_real}" ]] || fail "Main target staging symlink target does not exist: ${staging_real}"
+        staging_rel="$(relative_path "${main_workspace}" "${staging_real}")"
+        copy_with_exclusions "${staging_real}" "${sdk_dir}/${staging_rel}"
+        ln -sfn "${staging_rel}" "${sdk_dir}/staging"
+    else
+        copy_with_exclusions "${source_staging}" "${sdk_dir}/staging"
+    fi
+
+    sdk_utils_sanitize_text_paths "${sdk_dir}" "${source_host}" "${source_images}" "${source_motherlode}"
+    local product_version host_arch archive_name archive_path
+    product_version="$(sdk_utils_manifest_product_version "${manifest_path}")"
+    host_arch="$(uname -m)"
+    archive_name="sdk-${product_id}-${product_version}-${host_arch}.tar.gz"
+    archive_path="${ALLOY_ARTEFACT_DIR}/sdk/${archive_name}"
+    mkdir -p "$(dirname "${archive_path}")"
+    local bundle_root
+    bundle_root="sdk-${product_id}-${product_version}-${host_arch}"
+    local -a tar_entries=(
+        alloy
+        scripts
+        host
+        images
+        staging
+        motherlode
+        legal-info
+        ALLOY_SDK_MANIFEST
+        .alloy_relocation_manifest
+        .alloy_sdk_dir
+    )
+    if [[ -d "${sdk_dir}/auxiliary" ]]; then
+        tar_entries+=(auxiliary)
+    fi
+    tar -czf "${archive_path}" -C "${sdk_dir}" \
+        --transform "s,^,${bundle_root}/," \
+        "${tar_entries[@]}"
+    printf '%s\n' "${archive_path}"
+}

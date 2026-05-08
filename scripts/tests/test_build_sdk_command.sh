@@ -19,6 +19,8 @@ build_sdk_test_make_fixture() {
     cp "$(harness_repo_root)/scripts/utils/file_utils.sh" "${root_dir}/scripts/utils/file_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/sdk_utils.sh" "${root_dir}/scripts/utils/sdk_utils.sh"
     cp "$(harness_repo_root)/scripts/argparse.sh" "${root_dir}/scripts/argparse.sh"
+    cp "$(harness_repo_root)/alloy" "${root_dir}/alloy"
+    chmod +x "${root_dir}/alloy"
     chmod +x "${root_dir}/scripts/commands/build-sdk.sh"
     chmod +x "${root_dir}/scripts/buildroot/script_hook.sh"
     build_sdk_test_write_registry "${root_dir}/nuggets" builtin_feature
@@ -292,6 +294,14 @@ case "${command_name}" in
 .PHONY: all
 all:
 	@mkdir -p "$(O)"
+	@mkdir -p "$(O)/host/usr/lib" "$(O)/images" "$(O)/staging/usr"
+	@if [ "$$FAKE_MAKE_STAGING_ABSOLUTE_SYMLINK" = "true" ]; then \
+		mkdir -p "$(O)/host/x86_64-buildroot-linux-gnu/sysroot/usr"; \
+		rm -rf "$(O)/staging"; \
+		ln -s "$(O)/host/x86_64-buildroot-linux-gnu/sysroot" "$(O)/staging"; \
+	fi
+	@printf 'SDK_HOST_PATH=%s/host\n' "$(O)" > "$(O)/host/usr/lib/sdk-paths.env"
+	@printf 'SDK_IMAGES_PATH=%s/images\n' "$(O)" > "$(O)/images/sdk-paths.env"
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'build goal=all O=%s BR2_EXTERNAL=%s V=%s\n' "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 
 %_defconfig:
@@ -660,6 +670,14 @@ case "${command_name}" in
 .PHONY: all
 all:
 	@mkdir -p "$(O)"
+	@mkdir -p "$(O)/host/usr/lib" "$(O)/images" "$(O)/staging/usr"
+	@if [ "$$FAKE_MAKE_STAGING_ABSOLUTE_SYMLINK" = "true" ]; then \
+		mkdir -p "$(O)/host/x86_64-buildroot-linux-gnu/sysroot/usr"; \
+		rm -rf "$(O)/staging"; \
+		ln -s "$(O)/host/x86_64-buildroot-linux-gnu/sysroot" "$(O)/staging"; \
+	fi
+	@printf 'SDK_HOST_PATH=%s/host\n' "$(O)" > "$(O)/host/usr/lib/sdk-paths.env"
+	@printf 'SDK_IMAGES_PATH=%s/images\n' "$(O)" > "$(O)/images/sdk-paths.env"
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'build goal=all O=%s BR2_EXTERNAL=%s V=%s\n' "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 
 %_defconfig:
@@ -822,6 +840,9 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.term' ]]"
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/plan/build_plan.env' ]]"
     assert_status_code 0 "[[ -d '${build_root}/sdk/demo_product/targets/main/workspace' ]]"
+    assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/staging/.alloy_relocation_manifest' ]]"
+    assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/staging/.alloy_sdk_dir' ]]"
+    assert_status_code 0 "[[ \"\$(cat '${build_root}/sdk/demo_product/staging/.alloy_sdk_dir')\" == '@@ALLOY_SDK_DIR@@' ]]"
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/external.desc' ]]"
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/Config.in' ]]"
     assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/br2_external/external.mk' ]]"
@@ -843,6 +864,7 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_matches "Plan file: ${build_root}/sdk/demo_product/plan/build_plan.term" "${output}"
     assert_matches "Plan environment file: ${build_root}/sdk/demo_product/plan/build_plan.env" "${output}"
     assert_matches "Generated targets: main" "${output}"
+    assert_matches "Generated SDK artefact: ${artefact_dir}/sdk/sdk-demo_product-" "${output}"
     assert_matches "Staged nugget repositories: 3" "${output}"
     assert_matches "Dirty VCS checkouts are allowed" "${output}"
     assert_matches "Legal-info source export was requested" "${output}"
@@ -1014,6 +1036,32 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     assert_matches "Built targets: aux_beta aux_alpha main" "${output}"
 }
 
+test_build_sdk_command_removes_stale_staging_legal_info_before_main_consolidation() {
+    local temp_dir build_root artefact_dir stale_dir stale_manifest output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-stale-legal-info")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    stale_dir="${build_root}/sdk/demo_product/staging/legal-info"
+    stale_manifest="${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST"
+    mkdir -p "${stale_dir}"
+    printf 'stale\n' > "${stale_dir}/README"
+    printf '{stale_manifest, []}.\n' > "${stale_manifest}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "[[ -s '${stale_dir}/README' ]]"
+    assert_status_code 0 "grep -Fxq 'merged legal info' '${stale_dir}/README'"
+    assert_status_code 1 "grep -Fxq 'stale' '${stale_dir}/README'"
+    assert_status_code 0 "[[ -s '${stale_manifest}' ]]"
+    assert_status_code 1 "grep -Fq 'stale_manifest' '${stale_manifest}'"
+}
+
 test_build_sdk_command_collects_and_stages_auxiliary_sdk_outputs() {
     local temp_dir build_root artefact_dir output status main_context
     temp_dir="$(harness_make_temp_dir "build-sdk-aux-outputs-valid")"
@@ -1106,6 +1154,25 @@ test_build_sdk_command_make_alloy_helper_reuses_target_context() {
     FAKE_MAKE_LOG="${make_log}" "${helper_path}" menuconfig >/dev/null 2>&1
 
     assert_status_code 0 "grep -Fq 'custom goal=menuconfig O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
+}
+
+test_build_sdk_command_packs_with_absolute_staging_symlink_target() {
+    local temp_dir build_root artefact_dir output status packed_sdk
+    temp_dir="$(harness_make_temp_dir "build-sdk-pack-staging-symlink")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_STAGING_ABSOLUTE_SYMLINK=true \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    packed_sdk="${build_root}/sdk/demo_product/staging"
+    assert_status_code 0 "[[ -L '${packed_sdk}/staging' ]]"
+    assert_status_code 0 "[[ -d '${packed_sdk}/host' ]]"
 }
 
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {

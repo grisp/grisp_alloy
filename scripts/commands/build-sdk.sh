@@ -712,6 +712,15 @@ build_sdk_run_target_legal_info() {
 }
 
 build_sdk_run_main_consolidation() {
+    if [[ -d "${ALLOY_SDK_STAGING_DIR}/legal-info" ]]; then
+        log_debug "Removing stale staged legal-info before main consolidation: ${ALLOY_SDK_STAGING_DIR}/legal-info"
+        rm -rf "${ALLOY_SDK_STAGING_DIR}/legal-info"
+    fi
+    if [[ -f "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST" ]]; then
+        log_debug "Removing stale staged SDK manifest before main consolidation: ${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+        rm -f "${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
+    fi
+
     local -a generate_args=(
         generate
         --plan "${ALLOY_SDK_PLAN_FILE}"
@@ -832,6 +841,7 @@ build_sdk_generate_targets() {
         build_sdk_run_target_pre_build_hooks "${target_id}"
         build_sdk_build_target "${target_id}"
     done
+    log_debug "pre_build summary: ran=${BUILD_SDK_PRE_BUILD_RAN}, skipped=${BUILD_SDK_PRE_BUILD_SKIPPED}, missing=${BUILD_SDK_PRE_BUILD_MISSING}"
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
         build_sdk_run_target_legal_info "${target_id}"
     done
@@ -840,7 +850,6 @@ build_sdk_generate_targets() {
     build_sdk_run_main_consolidation
 
     log_info "Smelterl generate + Buildroot build complete for ${#BUILD_SDK_GENERATED_TARGETS[@]} targets."
-    log_debug "pre_build summary: ran=${BUILD_SDK_PRE_BUILD_RAN}, skipped=${BUILD_SDK_PRE_BUILD_SKIPPED}, missing=${BUILD_SDK_PRE_BUILD_MISSING}"
 }
 
 build_sdk_print_summary() {
@@ -859,6 +868,7 @@ build_sdk_print_summary() {
     print_note "Staging directory: ${ALLOY_SDK_STAGING_DIR}"
     print_note "Staged SDK manifest: ${ALLOY_SDK_STAGING_DIR}/ALLOY_SDK_MANIFEST"
     print_note "Staged merged legal-info: ${ALLOY_SDK_STAGING_DIR}/legal-info"
+    print_note "Packed SDK directory: ${ALLOY_SDK_STAGING_DIR}"
     print_note "Motherlode directory: ${ALLOY_MOTHERLODE}"
     print_note "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
 
@@ -878,7 +888,18 @@ build_sdk_print_summary() {
         print_note "Queued clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
     fi
 
-    print_hint "Per-target Buildroot/legal-info and main legal/manifest consolidation are complete; SDK packing follows in later Phase 5 tasks."
+    print_hint "SDK packing completed with relocation metadata markers for first-use relocation."
+    print_result "Generated SDK artefact: ${BUILD_SDK_ARCHIVE_PATH}"
+}
+
+build_sdk_pack_sdk() {
+    print_note "Packaging SDK artefact from staged build outputs..."
+    log_info "Packing SDK archive."
+    BUILD_SDK_ARCHIVE_PATH="$(pack_sdk "${ALLOY_SDK_BUILD_DIR}" "${ARG_PRODUCT_NUGGET}")" ||
+        fail "SDK packing failed"
+    [[ -f "${BUILD_SDK_ARCHIVE_PATH}" ]] ||
+        fail "SDK archive was not created: ${BUILD_SDK_ARCHIVE_PATH}"
+    log_info "SDK archive created: ${BUILD_SDK_ARCHIVE_PATH}"
 }
 
 build_sdk_infer_mode
@@ -926,8 +947,9 @@ fi
 
 mkdir -p "${build_dir}/plan" \
     "${build_dir}/targets" \
-    "${build_dir}/staging" \
     "${build_dir}/motherlode"
+rm -rf "${build_dir}/staging"
+mkdir -p "${build_dir}/staging"
 
 export ALLOY_SDK_BUILD_DIR="${build_dir}"
 export ALLOY_SDK_PLAN_DIR="${build_dir}/plan"
@@ -941,4 +963,5 @@ build_sdk_stage_nuggets
 build_sdk_ensure_smelterl
 build_sdk_run_plan
 build_sdk_generate_targets
+build_sdk_pack_sdk
 build_sdk_print_summary "${build_dir}"

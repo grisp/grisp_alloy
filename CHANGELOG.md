@@ -8,6 +8,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build sdk` to execute SDK packing after the target build and
+  legal/manifest consolidation phases, producing a packed SDK tree under
+  `staging/sdk` and a versioned SDK archive in `artefacts/sdk/`.
+- Updated `alloy build sdk` summary output to report the packed SDK directory
+  and resulting SDK archive path.
 - Updated `alloy build sdk` to run a final main-target legal/manifest
   consolidation pass after per-target `make legal-info`, invoking
   `smelterl generate` with repeatable `--buildroot-legal` inputs plus
@@ -91,6 +96,14 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added initial SDK packer support in `scripts/utils/sdk_utils.sh` via
+  `pack_sdk` and pack-time text path sanitization that emits
+  `.alloy_relocation_manifest` and `.alloy_sdk_dir` relocation metadata in the
+  packed SDK tree.
+- Added focused `sdk_utils` coverage for pack-time path sanitization and
+  relocation-manifest/state-file generation.
+- Added `alloy build sdk` integration coverage for packed SDK output layout and
+  relocation-marker files.
 - Added focused `alloy build sdk` coverage for the main legal/manifest
   consolidation pass, including repeatable `--buildroot-legal` wiring,
   staged manifest/legal outputs, and `--include-sources` forwarding.
