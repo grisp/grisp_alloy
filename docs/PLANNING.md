@@ -315,7 +315,7 @@ Cross-repository development note:
   - Tests: Focused command-output tests for mixed relative/absolute path reporting in summary lines.
   - Done when: Summary output is easier to scan locally without losing path clarity for out-of-tree locations.
 
-- [ ] **Task 5.12d: Hook logging API consolidation and nugget hook migration**
+- [x] **Task 5.12d: Hook logging API consolidation and nugget hook migration**
   - Scope: Consolidate hook-facing logging under one shared API sourced by `hook_common.sh` (reuse/extend `debug_tools.sh` rather than creating parallel logging modules), with standard `alloy_log_info|warn|error|debug` behavior and consistent hook-context prefixing.
   - Scope: Add hook-facing path-format helper(s) (for example `alloy_log_format_path` or `alloy_log_path`) so hook logs can present root-relative paths when possible while preserving absolute paths when out-of-tree.
   - Scope: Migrate the current builtin nugget hook scripts to the shared hook logging/path-format API and remove ad-hoc nugget-local logging helpers where equivalent shared behavior exists.

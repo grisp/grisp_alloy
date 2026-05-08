@@ -77,6 +77,7 @@ test_builtin_nuggets_builder_pre_build_extracts_buildroot_and_links_download_cac
     printf 'export BR2_VERSION := 2025.05\n' > "${source_dir}/Makefile"
     tar -C "${temp_dir}/source" -czf "${tarball_path}" buildroot-2025.05
 
+    ALLOY_ROOT_DIR="$(harness_repo_root)" \
     ALLOY_CACHE_DIR="${temp_dir}/cache" \
         ALLOY_CONFIG_BUILDROOT_PATH="${buildroot_path}" \
         ALLOY_CONFIG_BUILDROOT_VERSION="2025.05" \

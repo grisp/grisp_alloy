@@ -3732,8 +3732,11 @@ The orchestrator uses these internal names. Hook scripts never source this file;
 | `alloy_log_debug MESSAGE` | `ALLOY_DEBUG >= 2` | Print developer debug message to stderr. |
 | `alloy_enter_hidden` | - | Temporarily suppress `set -x` trace (use around sensitive operations, e.g. crypto or credential access). |
 | `alloy_leave_hidden` | - | Re-enable `set -x` trace if it was active before `alloy_enter_hidden`. |
+| `alloy_log_format_path PATH` | - | Return `PATH` formatted for logs: root-relative when under `ALLOY_ROOT_DIR`, cwd-relative fallback when possible, otherwise absolute. |
 
 **Implementation contract:** Sourced only by [hook_common.sh](#860-hookcommonsh-hook-entry-point) (which is sourced by the hook). **No export**: no `export -f` in this file. The _tools.sh is loaded in the hook process when the hook sources the entry point. It must be **self-sufficient** in the hook context: it has no access to `*_utils.sh` (orchestrator-only), so all behaviour must be implemented inline or via other _tools.sh already sourced by hook_common.sh.
+
+**Logging shape contract:** `alloy_log_*` output must include a deterministic hook-context prefix derived from hook environment (for example hook type and nugget id) so logs can be attributed when multiple hooks run in one build.
 
 **Sensitive operations:** Hooks that perform cryptographic operations (signing, key reading, credential handling) or that touch secrets from the environment MUST wrap those sections in `alloy_enter_hidden` / `alloy_leave_hidden` so that `set -x` does not expose keys or tokens in build logs.
 

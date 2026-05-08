@@ -8,6 +8,17 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Consolidated hook-side logging under `scripts/utils/debug_tools.sh` and
+  `hook_common.sh`: SDK-time hooks now use the canonical
+  `alloy_log_error|warn|info|debug` and `alloy_die` API with deterministic
+  hook-context prefixes, plus `alloy_log_format_path` for root-relative path
+  logging when possible.
+- Migrated the builtin `builder_buildroot` pre-build hook to source
+  `hook_common.sh`, use the shared hook logging API, and format logged paths
+  through the new hook path helper contract.
+- Updated workflow/design docs to require hook scripts to use the shared
+  `alloy_log_*` API (via `hook_common.sh`) rather than ad-hoc `echo` or
+  custom hook-local logging wrappers.
 - Updated `alloy build sdk` summary and Alloy-owned log path reporting to show paths relative to the current working directory when they are inside that directory, while preserving absolute paths for out-of-tree locations.
 - Updated SDK packing to run deterministic ELF RPATH hardening before text
   relocation sanitization: `pack_sdk` now scans embedded ELF files across
@@ -102,6 +113,10 @@ and this project adheres to Semantic Versioning.
   guidance with the canonical Smelterl checkout and repository documentation.
 
 ### Added
+- Added focused hook logging API coverage in
+  `scripts/tests/test_debug_tools.sh` (levels, prefixing, and path formatting)
+  and updated hook/builtin-nugget tests to exercise the shared hook logging
+  module loading path.
 - Added initial SDK packer support in `scripts/utils/sdk_utils.sh` via
   `pack_sdk` and pack-time text path sanitization that emits
   `.alloy_relocation_manifest` and `.alloy_sdk_dir` relocation metadata in the

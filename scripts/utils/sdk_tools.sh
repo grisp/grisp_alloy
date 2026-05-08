@@ -29,21 +29,21 @@ alloy_sdk_add_output() {
     local file_path="${2:-}"
     local workspace registry_dir output_file
 
-    [[ -n "${output_id}" ]] || alloy_hook_die "alloy_sdk_add_output requires OUTPUT_ID" || return 2
-    [[ -n "${file_path}" ]] || alloy_hook_die "alloy_sdk_add_output requires FILE_PATH" || return 2
-    [[ "${file_path}" == /* ]] || alloy_hook_die "alloy_sdk_add_output requires an absolute FILE_PATH: ${file_path}" || return 2
-    [[ -e "${file_path}" ]] || alloy_hook_die "alloy_sdk_add_output path does not exist: ${file_path}" || return 2
+    [[ -n "${output_id}" ]] || alloy_die 2 "alloy_sdk_add_output requires OUTPUT_ID"
+    [[ -n "${file_path}" ]] || alloy_die 2 "alloy_sdk_add_output requires FILE_PATH"
+    [[ "${file_path}" == /* ]] || alloy_die 2 "alloy_sdk_add_output requires an absolute FILE_PATH: ${file_path}"
+    [[ -e "${file_path}" ]] || alloy_die 2 "alloy_sdk_add_output path does not exist: ${file_path}"
 
     workspace="$(alloy_sdk_resolve_workspace)" ||
-        alloy_hook_die "alloy_sdk_add_output could not resolve target workspace (ALLOY_TARGET_WORKSPACE or O)" || return 2
+        alloy_die 2 "alloy_sdk_add_output could not resolve target workspace (ALLOY_TARGET_WORKSPACE or O)"
     registry_dir="${workspace}/.sdk_outputs"
     output_file="${registry_dir}/${output_id}"
 
     mkdir -p "${registry_dir}" ||
-        alloy_hook_die "alloy_sdk_add_output could not create registry directory: ${registry_dir}" || return 2
+        alloy_die 2 "alloy_sdk_add_output could not create registry directory: $(alloy_log_format_path "${registry_dir}")"
     printf '%s\n' "${file_path}" > "${output_file}" ||
-        alloy_hook_die "alloy_sdk_add_output could not write registry file: ${output_file}" || return 2
-    alloy_hook_debug "Registered sdk output '${output_id}' -> ${file_path}"
+        alloy_die 2 "alloy_sdk_add_output could not write registry file: $(alloy_log_format_path "${output_file}")"
+    alloy_log_debug "Registered sdk output '${output_id}' -> $(alloy_log_format_path "${file_path}")"
 }
 
 alloy_sdk_get_output() {

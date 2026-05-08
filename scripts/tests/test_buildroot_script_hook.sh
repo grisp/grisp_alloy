@@ -15,6 +15,7 @@ buildroot_hook_test_make_fixture() {
     cp "$(harness_repo_root)/scripts/utils/common.sh" "${root_dir}/scripts/utils/common.sh"
     cp "$(harness_repo_root)/scripts/utils/debug_utils.sh" "${root_dir}/scripts/utils/debug_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/console_utils.sh" "${root_dir}/scripts/utils/console_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/debug_tools.sh" "${root_dir}/scripts/utils/debug_tools.sh"
     cp "$(harness_repo_root)/scripts/utils/hook_common.sh" "${root_dir}/scripts/utils/hook_common.sh"
     cp "$(harness_repo_root)/scripts/utils/sdk_tools.sh" "${root_dir}/scripts/utils/sdk_tools.sh"
     chmod +x "${root_dir}/scripts/buildroot/script_hook.sh"

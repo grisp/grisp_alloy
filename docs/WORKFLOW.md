@@ -205,6 +205,11 @@ For every task, execute these steps in order.
      that helps users understand what `-d` changed, and `log_debug` for
      developer-facing details such as resolved paths, selected targets,
      delegated commands, and staging decisions.
+   - For nugget hook scripts, source `scripts/utils/hook_common.sh` and use
+     the shared `alloy_log_*` / `alloy_die` API from `debug_tools.sh`.
+     Do not add ad-hoc hook-local logging wrappers or direct `echo`-based
+     diagnostic output unless a task explicitly documents and justifies an
+     exception.
    - For Smelterl Erlang code, treat `smelterl.erl` as the canonical home for
      cross-module shared types. Before adding a new shared `-type`, check
      whether the shape already exists there; prefer remote type references

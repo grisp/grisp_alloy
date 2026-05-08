@@ -1,43 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log_info() {
-    printf 'builder_buildroot: %s\n' "$*" >&2
+[[ -n "${ALLOY_ROOT_DIR:-}" ]] || {
+    printf 'ERROR: ALLOY_ROOT_DIR must be set before running builder_buildroot pre-build hook\n' >&2
+    exit 2
 }
 
-display_path_for_cwd() {
-    local path_value="${1:-}"
-    local cwd
-    cwd="$(pwd -P)"
+export ALLOY_HOOK_TYPE="${ALLOY_HOOK_TYPE:-pre_build}"
+export ALLOY_NUGGET="${ALLOY_NUGGET:-builder_buildroot}"
 
-    if [[ "${path_value}" != /* ]]; then
-        printf '%s\n' "${path_value}"
-        return 0
-    fi
-    if [[ "${path_value}" == "${cwd}" ]]; then
-        printf '.\n'
-        return 0
-    fi
-    if [[ "${cwd}" == "/" ]]; then
-        printf '%s\n' "${path_value#/}"
-        return 0
-    fi
-    if [[ "${path_value}" == "${cwd}/"* ]]; then
-        printf '%s\n' "${path_value#"${cwd}/"}"
-        return 0
-    fi
-    printf '%s\n' "${path_value}"
-}
-
-fail() {
-    printf 'builder_buildroot: error: %s\n' "$*" >&2
-    exit 1
-}
+# shellcheck source=scripts/utils/hook_common.sh
+source "${ALLOY_ROOT_DIR}/scripts/utils/hook_common.sh"
 
 require_env() {
     local name="$1"
     if [[ -z "${!name:-}" ]]; then
-        fail "required environment variable is not set: ${name}"
+        alloy_die "required environment variable is not set: ${name}"
     fi
 }
 
@@ -45,7 +23,7 @@ safe_remove_dir() {
     local path="$1"
     case "${path}" in
         ""|"/"|".")
-            fail "refusing to remove unsafe path: ${path}"
+            alloy_die "refusing to remove unsafe path: ${path}"
             ;;
     esac
     rm -rf -- "${path}"
@@ -89,7 +67,7 @@ download_buildroot_tarball() {
             elif command -v wget >/dev/null 2>&1; then
                 wget -O "${tmp_path}" "${url}"
             else
-                fail "curl or wget is required to download Buildroot"
+                alloy_die "curl or wget is required to download Buildroot"
             fi
             ;;
     esac
@@ -111,7 +89,7 @@ extract_buildroot_tree() {
         local actual_version
         actual_version="$(buildroot_tree_version "${tmp_dir}")"
         safe_remove_dir "${tmp_dir}"
-        fail "Buildroot archive version mismatch: expected ${expected_version}, got ${actual_version:-unknown}"
+        alloy_die "Buildroot archive version mismatch: expected ${expected_version}, got ${actual_version:-unknown}"
     fi
 
     safe_remove_dir "${buildroot_path}"
@@ -144,24 +122,24 @@ main() {
         "$(dirname "${ALLOY_CONFIG_BUILDROOT_PATH}")"
 
     if buildroot_tree_matches "${ALLOY_CONFIG_BUILDROOT_PATH}" "${ALLOY_CONFIG_BUILDROOT_VERSION}"; then
-        log_info "using existing Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION} at $(display_path_for_cwd "${ALLOY_CONFIG_BUILDROOT_PATH}")"
+        alloy_log_info "Using existing Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION} at $(alloy_log_format_path "${ALLOY_CONFIG_BUILDROOT_PATH}")"
         link_download_cache "${ALLOY_CONFIG_BUILDROOT_PATH}" "${downloads_dir}"
         return 0
     fi
 
     if [[ -e "${ALLOY_CONFIG_BUILDROOT_PATH}" ]]; then
-        log_info "discarding stale Buildroot tree at ${ALLOY_CONFIG_BUILDROOT_PATH}"
+        alloy_log_info "Discarding stale Buildroot tree at $(alloy_log_format_path "${ALLOY_CONFIG_BUILDROOT_PATH}")"
         safe_remove_dir "${ALLOY_CONFIG_BUILDROOT_PATH}"
     fi
 
     if [[ ! -f "${tarball_path}" ]]; then
-        log_info "downloading Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION}"
+        alloy_log_info "Downloading Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION}"
         download_buildroot_tarball "${ALLOY_CONFIG_BUILDROOT_URL}" "${tarball_path}"
     else
-        log_info "using cached ${tarball_path}"
+        alloy_log_info "Using cached $(alloy_log_format_path "${tarball_path}")"
     fi
 
-    log_info "extracting Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION} to ${ALLOY_CONFIG_BUILDROOT_PATH}"
+    alloy_log_info "Extracting Buildroot ${ALLOY_CONFIG_BUILDROOT_VERSION} to $(alloy_log_format_path "${ALLOY_CONFIG_BUILDROOT_PATH}")"
     extract_buildroot_tree \
         "${tarball_path}" \
         "${ALLOY_CONFIG_BUILDROOT_PATH}" \
