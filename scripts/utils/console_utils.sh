@@ -5,6 +5,13 @@ if [[ "${__ALLOY_CONSOLE_UTILS_SH_LOADED:-0}" == "1" ]]; then
 fi
 __ALLOY_CONSOLE_UTILS_SH_LOADED=1
 
+console_log_prefix() {
+    local prefix="${ALLOY_LOG_PREFIX:-}"
+    if [[ -n "${prefix}" ]]; then
+        printf '[%s] ' "${prefix}"
+    fi
+}
+
 # console_supports_color [stdout|stderr|1|2]
 # Return 0 when the selected stream is a TTY and NO_COLOR is not set.
 # Env/side effects: reads NO_COLOR and TTY state; no stdout output, no exports.
@@ -80,7 +87,7 @@ console_print_to() {
 # Env/side effects: writes to stdout; style selection is delegated to console_print_to.
 # Errors: propagates console_print_to return codes.
 print_result() {
-    console_print_to stdout result "$*"
+    console_print_to stdout result "$(console_log_prefix)$*"
 }
 
 # print_note TEXT...
@@ -88,7 +95,7 @@ print_result() {
 # Env/side effects: writes to stdout; no exports.
 # Errors: propagates console_print_to return codes.
 print_note() {
-    console_print_to stdout note "$*"
+    console_print_to stdout note "$(console_log_prefix)$*"
 }
 
 # print_hint TEXT...
@@ -96,5 +103,5 @@ print_note() {
 # Env/side effects: writes to stdout; no exports.
 # Errors: propagates console_print_to return codes.
 print_hint() {
-    console_print_to stdout hint "$*"
+    console_print_to stdout hint "$(console_log_prefix)$*"
 }

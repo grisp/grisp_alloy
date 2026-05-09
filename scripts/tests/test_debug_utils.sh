@@ -98,6 +98,18 @@ test_debug_utils_no_color_disables_colored_logs() {
     assert_equals "WARN: warn" "${warn_out}"
 }
 
+test_debug_utils_honors_explicit_alloy_log_prefix() {
+    debug_utils_test_reset
+    set_debug_level 2
+    export ALLOY_LOG_PREFIX="alloy"
+
+    local info_out
+    info_out="$(log_info "hello" 2>&1)"
+    unset ALLOY_LOG_PREFIX || true
+
+    assert_equals "[alloy] INFO: hello" "${info_out}"
+}
+
 test_debug_utils_set_trace_toggles_xtrace_and_env() {
     debug_utils_test_reset
 

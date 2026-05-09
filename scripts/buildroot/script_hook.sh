@@ -32,6 +32,9 @@ case "${hook_type}" in
         ;;
 esac
 
+ALLOY_LOG_PREFIX="alloy:${hook_type}"
+export ALLOY_LOG_PREFIX
+
 context_file="$(cd "$(dirname "${0}")" && pwd -P)/alloy_context.sh"
 [[ -f "${context_file}" ]] ||
     fail "Buildroot hook context is missing: ${context_file}"

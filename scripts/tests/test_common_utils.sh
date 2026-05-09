@@ -24,7 +24,7 @@ test_common_utils_sources_debug_utilities() {
     debug_output="$(log_debug "common debug works" 2>&1)"
 
     assert_equals "2" "${ALLOY_DEBUG}"
-    assert_matches "DEBUG: common debug works" "${debug_output}"
+    assert_matches "\\[alloy\\] DEBUG: common debug works" "${debug_output}"
 }
 
 test_common_utils_fail_uses_exit_code_2_and_error_format() {
@@ -33,7 +33,7 @@ test_common_utils_fail_uses_exit_code_2_and_error_format() {
     status=$?
 
     assert_equals "2" "${status}"
-    assert_matches "ERROR: boom" "${output}"
+    assert_matches "\\[alloy\\] ERROR: boom" "${output}"
 }
 
 test_common_utils_require_var_accepts_set_values() {
@@ -137,7 +137,7 @@ test_common_utils_print_helpers_emit_plain_output_by_default() {
     note_out="$(print_note "remember this")"
     hint_out="$(print_hint "try --help")"
 
-    assert_equals "build complete" "${result_out}"
-    assert_equals "remember this" "${note_out}"
-    assert_equals "try --help" "${hint_out}"
+    assert_equals "[alloy] build complete" "${result_out}"
+    assert_equals "[alloy] remember this" "${note_out}"
+    assert_equals "[alloy] try --help" "${hint_out}"
 }

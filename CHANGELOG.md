@@ -8,6 +8,24 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Decoupled Buildroot verbosity controls from Alloy debug levels in
+  `alloy build sdk`: `-D` now enables full Buildroot console output without
+  `V=1`, `-DD` enables full console output plus `V=1`, and `-d/--debug`
+  controls only Alloy logging behavior.
+- Replaced direct `make`/`brmake` selection in SDK Buildroot invocations with
+  `scripts/buildroot/make_buildroot.sh`, which always appends timestamped full
+  Buildroot output to target-local `workspace/br.log` and prefixes console
+  output lines with `[buildroot]`.
+- Updated generated `targets/<TARGET>/workspace/make_alloy` helpers to remain
+  direct `make` wrappers with full target context, preserving interactive
+  workflows (for example `menuconfig`) while Buildroot wrapper behavior
+  (`scripts/buildroot/make_buildroot.sh`) remains scoped to orchestrated SDK
+  build/defconfig/legal-info executions.
+- Standardized logging prefixes via `ALLOY_LOG_PREFIX` across orchestrator and
+  hook logging paths: orchestrator logs now default to `[alloy]`, Buildroot
+  hook-wrapper logs to `[alloy:<hook_type>]`, and hook-script logs to
+  `[alloy:<hook_type>:<nugget>]`, with reduced Buildroot console mode
+  preserving these prefixed lines.
 - Consolidated hook-side logging under `scripts/utils/debug_tools.sh` and
   `hook_common.sh`: SDK-time hooks now use the canonical
   `alloy_log_error|warn|info|debug` and `alloy_die` API with deterministic

@@ -28,6 +28,8 @@ if [[ -z "${ALLOY_ROOT:-}" ]]; then
 fi
 ALLOY_ROOT_DIR="${ALLOY_ROOT_DIR:-${ALLOY_ROOT}}"
 export ALLOY_ROOT ALLOY_ROOT_DIR
+ALLOY_LOG_PREFIX="${ALLOY_LOG_PREFIX:-alloy}"
+export ALLOY_LOG_PREFIX
 
 # source_required_utility RELPATH
 # Source a utility file located under ALLOY_ROOT using a repo-relative path.

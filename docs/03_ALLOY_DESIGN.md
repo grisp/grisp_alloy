@@ -164,7 +164,7 @@ alloy [GLOBAL_OPTIONS] verb [noun] [COMMAND_OPTIONS] [ARGUMENTS]
 
 | Option | Description |
 |--------|-------------|
-| `--debug[=N]` / `-d[N]` / `-ddd` | Set log verbosity level. `--debug` or `-d` alone implies level 1 (informational progress). `--debug=2` or `-dd` shows developer debug messages. `--debug=3`, `-d3`, or `-ddd` additionally enables Buildroot verbose output. Sets `ALLOY_DEBUG=N`. See [§4.9](#49-logging-and-debugging). |
+| `--debug[=N]` / `-d[N]` / `-ddd` | Set Alloy log verbosity level only. `--debug` or `-d` alone implies level 1 (informational progress). `--debug=2` or `-dd` shows developer debug messages. `--debug=3`, `-d3`, or `-ddd` increases Alloy debug detail only. Sets `ALLOY_DEBUG=N`. See [§4.9](#49-logging-and-debugging). |
 | `--trace` | Enable bash `set -x` execution tracing in the orchestrator and all hook wrappers. Sets `ALLOY_TRACE=true`. Independent of `--debug` - can be combined freely with any debug level. Intended for debugging the bash scripts themselves. See [§4.9](#49-logging-and-debugging). |
 | `--dev` | Development mode; sets `ALLOY_DEV_MODE=true`. Enables behaviours useful during alloy/smelterl development (e.g. force rebuild of smelterl from source). |
 | `--force-vagrant` / `-F` | Force Vagrant VM usage even on Linux. |
@@ -242,6 +242,7 @@ alloy build sdk PRODUCT_NUGGET [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `-n PATH`, `--nugget-path PATH` | Additional nugget source (local directory or VCS URL). Repeatable. |
+| `-D`, `-DD` | Buildroot console verbosity for `build sdk` only. `-D` enables full Buildroot console output while keeping normal Buildroot verbosity. `-DD` enables full Buildroot console output and Buildroot `V=1`. |
 | `--allow-dirty` | Allow nugget sources that are VCS checkouts (local or cloned) to have uncommitted changes. By default, the orchestrator fails if a repository has a dirty working tree. Use for local development when you have uncommitted edits. Can also be enabled by setting `ALLOY_ALLOW_DIRTY=true`; the command-line flag takes precedence. See [Nugget staging](#54-nugget-staging-flow) (VCS URL / working tree cleanliness). |
 | `--include-sources` | Include redistributable source code in SDK legal-info. |
 | `--clean` / `-c` | Remove the entire build directory before building, redoing everything from scratch (Buildroot, smelterl generation, hooks). |
@@ -895,7 +896,7 @@ Buildroot is the underlying build system that compiles packages, kernels, bootlo
    - `O=` pointing to the workspace (build output directory).
    - `BR2_EXTERNAL=` pointing to the generated br2_external tree.
    - `ALLOY_*` variables passed as make parameters (exported to hook scripts).
-   Alloy also writes a target-local `make_alloy` helper in the workspace. The helper sets the same target context (`O=`, `BR2_EXTERNAL`, `ALLOY_MOTHERLODE`, cache/build/staging paths, debug flags) and forwards all arguments to Buildroot, so developers can run commands such as `./make_alloy menuconfig`, `./make_alloy linux-menuconfig`, or `./make_alloy V=1` without reconstructing the Alloy environment by hand. Buildroot may generate its own forwarding `Makefile` in the workspace after configuration, but plain `make` is not the canonical debugging interface because Alloy hooks and generated Kconfig sources require the Alloy context variables.
+   Alloy also writes a target-local `make_alloy` helper in the workspace. The helper sets the same target context (`O=`, `BR2_EXTERNAL`, `ALLOY_MOTHERLODE`, cache/build/staging paths, debug flags) and forwards all arguments directly to `make`, so developers can run commands such as `./make_alloy menuconfig` or `./make_alloy linux-menuconfig` without reconstructing the Alloy environment by hand. Buildroot may generate its own forwarding `Makefile` in the workspace after configuration, but plain `make` is not the canonical debugging interface because Alloy hooks and generated Kconfig sources require the Alloy context variables.
 4. **Buildroot calls hook scripts** - During the build, Buildroot invokes `post-build.sh`, `post-image.sh`, and `post-fakeroot.sh` (symlinks to `script_hook.sh`). The wrapper sources `alloy_context.sh` and dispatches to nugget-specific hooks.
 5. **alloy runs `make legal-info`** - After the main build, Buildroot generates license information and package manifests.
 
@@ -1348,9 +1349,9 @@ Debug output is gated by the debug level (see [Log verbosity levels](#log-verbos
 | `0` | *(default)* | `log_error`, `log_warn`, `die` - errors and warnings only |
 | `1` | `--debug` | + `log_info` - informational progress messages; smelterl progress |
 | `2` | `--debug=2` | + `log_debug` - detailed developer debug messages |
-| `3` | `--debug=3` | + Buildroot verbose output (`V=1` make parameter) |
+| `3` | `--debug=3` | Highest Alloy-side debug detail (`log_debug` volume), still no Buildroot verbosity change by itself |
 
-`--debug` without a value is equivalent to `--debug=1`. Setting `ALLOY_TRACE=true` (see below) is independent and can be combined with any level.
+`--debug` without a value is equivalent to `--debug=1`. Setting `ALLOY_TRACE=true` (see below) is independent and can be combined with any level. Buildroot verbosity is controlled separately via `-D` / `-DD` (exported as `ALLOY_BUILDROOT_DEBUG` for Buildroot invocation wrappers).
 
 #### Log functions
 
@@ -1367,6 +1368,8 @@ Debug output is gated by the debug level (see [Log verbosity levels](#log-verbos
 | `alloy_log_debug MESSAGE` | stderr | 2 |
 
 Color output is supported for interactive terminals; auto-disabled when not connected to a terminal or when `NO_COLOR` is set.
+
+Both orchestrator and hook logging paths honor optional `ALLOY_LOG_PREFIX`: when set, logs are prefixed with `[$ALLOY_LOG_PREFIX] ` before the level label. Current conventions are `alloy` for orchestrator logs, `alloy:<hook_type>` for wrapper-level hook orchestration logs, and `alloy:<hook_type>:<nugget>` for hook-script logs.
 
 Hook scripts MUST use the `alloy_log_*` and `alloy_die` functions instead of bare `echo` for all diagnostic output. This ensures messages are suppressed at the right level and output is uniformly formatted across all hook scripts.
 
@@ -1398,7 +1401,7 @@ Hook scripts that handle sensitive material (crypto, signing, credential access)
 
 1. **CLI -> orchestrator:** The command script sources `common.sh` early, then parses arguments. After parsing, it calls `set_debug_level N` when `--debug[=N]` was passed and `set_trace true` when `--trace` was passed (both functions are provided by common.sh). So the debug level and tracing are applied from the parsed command arguments; `common.sh` also applies any existing `ALLOY_DEBUG` / `ALLOY_TRACE` from the environment when sourced (e.g. for the Buildroot wrapper).
 2. **Orchestrator -> Vagrant VM:** `--debug=N` and `--trace` are forwarded in the re-invocation argument list; `ALLOY_DEBUG` and `ALLOY_TRACE` are forwarded as environment variables (see [§5.3](#53-vagrant-vm-abstraction-layer)).
-3. **Orchestrator -> Buildroot:** `ALLOY_DEBUG` and `ALLOY_TRACE` are passed as Buildroot make parameters (exported to hook scripts). `V=1` is additionally appended to the make invocation when `ALLOY_DEBUG >= 3`.
+3. **Orchestrator -> Buildroot:** `ALLOY_DEBUG`, `ALLOY_TRACE`, and `ALLOY_BUILDROOT_DEBUG` are passed as Buildroot make parameters/environment (exported to hook scripts). `ALLOY_BUILDROOT_DEBUG` controls console filtering and Buildroot `V=1` behavior in the Buildroot make wrapper (`0`: reduced progress output, `1`: full console output, `2+`: full output + `V=1`).
 4. **Orchestrator -> smelterl:** `--debug` is passed to the smelterl escript when `ALLOY_DEBUG >= 1`.
 5. **Buildroot -> hook scripts:** `ALLOY_DEBUG` and `ALLOY_TRACE` arrive in the environment of `script_hook.sh` via Buildroot make parameters. The wrapper sources `common.sh`, which enables tracing for the **wrapper** when `ALLOY_TRACE=true`. Each hook script sources [hook_common.sh](#860-hookcommonsh-hook-entry-point) at the top, which enables `set -x` for the **hook** when `ALLOY_TRACE=true` (see [§5.8](#58-hook-invocation-flow)).
 
@@ -1887,8 +1890,8 @@ The host-side artefact path depends on mode:
    - Buildroot source path is provided via consolidated config (for example `ALLOY_CONFIG_BUILDROOT_PATH`) and used in step 9.
 9. **Build each target with Buildroot** - For each target, run `make <target_defconfig>` then `make` with target-local `O=` and `BR2_EXTERNAL=`.
    - Pass runtime `ALLOY_*` values to `make` so `script_hook.sh` and SDK-time hooks receive them (for example `ALLOY_ROOT_DIR`, `ALLOY_SDK_STAGING_DIR`, `ALLOY_BUILD_DIR`, `ALLOY_MOTHERLODE`, debug/trace flags).
-   - Append `V=1` only when debug verbosity requires full Buildroot command tracing.
-   - Write an executable `make_alloy` helper into each target workspace that delegates arbitrary Buildroot make targets with the same environment and `O=` / `BR2_EXTERNAL=` values used by Alloy. This keeps each target workspace usable for manual Buildroot debugging (`./make_alloy menuconfig`, `./make_alloy V=1`) without requiring developers to reconstruct the orchestration environment.
+   - Route Buildroot make calls through the Buildroot wrapper (`scripts/buildroot/make_buildroot.sh`) so console filtering, `[buildroot]` prefixing, timestamped `br.log` capture, and `V=1` selection are controlled by `ALLOY_BUILDROOT_DEBUG` instead of `ALLOY_DEBUG`.
+   - Write an executable `make_alloy` helper into each target workspace that delegates arbitrary Buildroot make targets with the same environment and `O=` / `BR2_EXTERNAL=` values used by Alloy. This keeps each target workspace usable for manual Buildroot debugging (`./make_alloy menuconfig`) without requiring developers to reconstruct the orchestration environment.
 10. **Run `make legal-info` per target** - Capture target-local legal-info trees.
     - For each target workspace, run legal-info with the same target-local Buildroot `O=` and `BR2_EXTERNAL=` context.
     - Result per target: `targets/<TARGET_ID>/workspace/legal-info/`.

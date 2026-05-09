@@ -12,6 +12,7 @@ build_sdk_test_make_fixture() {
     mkdir -p "${root_dir}/scripts/commands" "${root_dir}/scripts/utils" "${root_dir}/scripts/tests/lib" "${root_dir}/scripts/buildroot"
     cp "${BUILD_SDK_COMMAND}" "${root_dir}/scripts/commands/build-sdk.sh"
     cp "$(harness_repo_root)/scripts/buildroot/script_hook.sh" "${root_dir}/scripts/buildroot/script_hook.sh"
+    cp "$(harness_repo_root)/scripts/buildroot/make_buildroot.sh" "${root_dir}/scripts/buildroot/make_buildroot.sh"
     cp "$(harness_repo_root)/scripts/utils/common.sh" "${root_dir}/scripts/utils/common.sh"
     cp "$(harness_repo_root)/scripts/utils/debug_utils.sh" "${root_dir}/scripts/utils/debug_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/console_utils.sh" "${root_dir}/scripts/utils/console_utils.sh"
@@ -23,6 +24,7 @@ build_sdk_test_make_fixture() {
     chmod +x "${root_dir}/alloy"
     chmod +x "${root_dir}/scripts/commands/build-sdk.sh"
     chmod +x "${root_dir}/scripts/buildroot/script_hook.sh"
+    chmod +x "${root_dir}/scripts/buildroot/make_buildroot.sh"
     build_sdk_test_write_registry "${root_dir}/nuggets" builtin_feature
     mkdir -p "${root_dir}/smelterl/src"
     : > "${root_dir}/smelterl/rebar.config"
@@ -295,6 +297,8 @@ case "${command_name}" in
 all:
 	@mkdir -p "$(O)"
 	@mkdir -p "$(O)/host/usr/lib" "$(O)/images" "$(O)/staging/usr"
+	@echo '>>> build all'
+	@echo '>>> build all'
 	@if [ "$$FAKE_MAKE_STAGING_ABSOLUTE_SYMLINK" = "true" ]; then \
 		mkdir -p "$(O)/host/x86_64-buildroot-linux-gnu/sysroot/usr"; \
 		rm -rf "$(O)/staging"; \
@@ -306,10 +310,12 @@ all:
 
 %_defconfig:
 	@mkdir -p "$(O)"
+	@echo '>>> defconfig $@'
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'defconfig goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 
 %:
 	@mkdir -p "$(O)"
+	@echo '>>> custom $@'
 	@if [ "$@" = "legal-info" ]; then mkdir -p "$(O)/legal-info"; fi
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'custom goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 MAKEFILE
@@ -682,10 +688,12 @@ all:
 
 %_defconfig:
 	@mkdir -p "$(O)"
+	@echo '>>> defconfig $@'
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'defconfig goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 
 %:
 	@mkdir -p "$(O)"
+	@echo '>>> custom $@'
 	@if [ "$@" = "legal-info" ]; then mkdir -p "$(O)/legal-info"; fi
 	@if [ -n "$$FAKE_MAKE_LOG" ]; then printf 'custom goal=%s O=%s BR2_EXTERNAL=%s V=%s\n' "$@" "$(O)" "$(BR2_EXTERNAL)" "$(V)" >> "$$FAKE_MAKE_LOG"; fi
 MAKEFILE
@@ -769,6 +777,7 @@ test_build_sdk_command_help_shows_canonical_usage() {
     assert_matches "Global options accepted anywhere" "${output}"
     assert_matches "-d, -dd, -ddd" "${output}"
     assert_matches "--debug\\[=N\\]" "${output}"
+    assert_matches "-D, -DD" "${output}"
     assert_matches "--clean-package PKG" "${output}"
     assert_status_code 1 "printf '%s\n' '${output}' | grep -F -- '-c PKG'"
 }
@@ -1029,14 +1038,13 @@ test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
 }
 
 test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolated_context() {
-    local temp_dir build_root artefact_dir make_log brmake_log smelterl_log output status
+    local temp_dir build_root artefact_dir make_log smelterl_log output status
     local aux_beta_defconfig_line aux_beta_build_line aux_alpha_defconfig_line aux_alpha_build_line main_defconfig_line main_build_line
     local aux_beta_legal_line aux_alpha_legal_line main_legal_line consolidation_line
     temp_dir="$(harness_make_temp_dir "build-sdk-buildroot-loop")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
     make_log="${temp_dir}/make.log"
-    brmake_log="${temp_dir}/brmake.log"
     smelterl_log="${temp_dir}/smelterl.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
@@ -1044,14 +1052,15 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
         FAKE_SMELTERL_LOG="${smelterl_log}" \
-        FAKE_BRMAKE_LOG="${brmake_log}" \
         FAKE_MAKE_LOG="${make_log}" \
         "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
     status=$?
 
     assert_equals "0" "${status}"
     assert_status_code 0 "[[ -s '${make_log}' ]]"
-    assert_status_code 0 "[[ -s '${brmake_log}' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/aux_beta/workspace/br.log' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/aux_alpha/workspace/br.log' ]]"
+    assert_status_code 0 "[[ -s '${build_root}/sdk/demo_product/targets/main/workspace/br.log' ]]"
     assert_status_code 0 "grep -Fq 'defconfig goal=aux_beta_defconfig O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'build goal=all O=${build_root}/sdk/demo_product/targets/aux_beta/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_beta/br2_external' '${make_log}'"
     assert_status_code 0 "grep -Fq 'defconfig goal=aux_alpha_defconfig O=${build_root}/sdk/demo_product/targets/aux_alpha/workspace BR2_EXTERNAL=${build_root}/sdk/demo_product/targets/aux_alpha/br2_external' '${make_log}'"
@@ -1259,11 +1268,10 @@ test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
 }
 
 test_build_sdk_command_debug_level_one_reports_staging_progress() {
-    local temp_dir build_root artefact_dir local_source remote_repo brmake_log output status
+    local temp_dir build_root artefact_dir local_source remote_repo output status
     temp_dir="$(harness_make_temp_dir "build-sdk-debug-one")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
-    brmake_log="${temp_dir}/brmake.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
     local_source="${temp_dir}/local_nuggets"
     build_sdk_test_write_registry "${local_source}" local_feature
@@ -1271,7 +1279,6 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
 
     output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
-        FAKE_BRMAKE_LOG="${brmake_log}" \
         "${BUILD_SDK_COMMAND}" demo_product \
         -n "${local_source}" \
         -n "git+file://${remote_repo}#main" 2>&1)"
@@ -1284,7 +1291,6 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
     assert_matches "INFO: Staging VCS nugget repository as 'remote_nuggets' \\(ref 'main'\\)" "${output}"
     assert_matches "INFO: Nugget staging complete: 3 repositories staged" "${output}"
     assert_matches "INFO: Using cached smelterl executable ${artefact_dir}/tools/smelterl-" "${output}"
-    assert_status_code 1 "[[ -s '${brmake_log}' ]]"
     assert_status_code 1 "printf '%s\n' '${output}' | grep -Fq 'pre_build summary:'"
 }
 
@@ -1308,6 +1314,53 @@ test_build_sdk_command_debug_level_two_reports_staging_targets() {
     assert_matches "DEBUG: Stage target for local_nuggets: ${build_root}/sdk/demo_product/motherlode/local_nuggets" "${output}"
     assert_matches "DEBUG: Smelterl executable path: ${artefact_dir}/tools/smelterl-" "${output}"
     assert_matches "DEBUG: pre_build summary: ran=0, skipped=0, missing=0" "${output}"
+}
+
+test_build_sdk_command_buildroot_debug_flags_control_v_and_console_noise() {
+    local temp_dir build_root artefact_dir make_log output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-buildroot-debug-flags")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    make_log="${temp_dir}/make.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 1 "grep -Fq ' V=1' '${make_log}'"
+    assert_matches "\\[buildroot\\] >>> defconfig" "${output}"
+    assert_status_code 0 "grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' '${build_root}/sdk/demo_product/targets/main/workspace/br.log'"
+
+    : > "${make_log}"
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product -D 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 1 "grep -Fq ' V=1' '${make_log}'"
+    assert_matches "\\[buildroot\\] make: Entering directory" "${output}"
+
+    : > "${make_log}"
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product -DD 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 0 "grep -Fq ' V=1' '${make_log}'"
+
+    : > "${make_log}"
+    output="$(ALLOY_DEBUG=3 ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 1 "grep -Fq ' V=1' '${make_log}'"
 }
 
 test_build_sdk_command_rejects_missing_local_nugget_source() {

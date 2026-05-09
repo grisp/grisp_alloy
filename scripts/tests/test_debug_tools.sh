@@ -62,3 +62,13 @@ test_debug_tools_alloy_log_format_path_prefers_root_relative_then_absolute() {
     assert_equals "nuggets/core/file.txt" "${formatted_inside}"
     assert_equals "${outside}" "${formatted_outside}"
 }
+
+test_debug_tools_honors_explicit_alloy_log_prefix() {
+    local output
+    output="$(ALLOY_LOG_PREFIX='alloy:post_build:core' ALLOY_DEBUG=1 bash -c '
+        source "'"${DEBUG_TOOLS_SCRIPT}"'";
+        alloy_log_info "prefixed";
+    ' 2>&1)"
+
+    assert_equals "[alloy:post_build:core] INFO: prefixed" "${output}"
+}

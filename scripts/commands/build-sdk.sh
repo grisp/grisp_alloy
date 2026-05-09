@@ -24,6 +24,7 @@ Initialize the repository-mode SDK build workspace for PRODUCT_NUGGET.
 
 Options:
   -n, --nugget-path PATH   Additional nugget source path or VCS URL. Repeatable.
+  -D, -DD                  Buildroot console verbosity (`-D`: full, `-DD`: full + V=1).
       --allow-dirty        Allow dirty VCS checkouts for staged nugget sources.
       --include-sources    Request redistributable source export in legal-info.
   -c, --clean             Remove the existing SDK build directory before setup.
@@ -101,6 +102,20 @@ build_sdk_resolve_allow_dirty() {
     fi
 
     BUILD_SDK_ALLOW_DIRTY="${effective}"
+}
+
+build_sdk_resolve_buildroot_debug() {
+    local level="${ARG_BUILDROOT_DEBUG:-0}"
+    if [[ -z "${level}" ]]; then
+        level=0
+    fi
+
+    if ! [[ "${level}" =~ ^[0-9]+$ ]]; then
+        fail "Internal error: parsed Buildroot debug level is not numeric: ${level}"
+    fi
+
+    BUILD_SDK_BUILDROOT_DEBUG="${level}"
+    export ALLOY_BUILDROOT_DEBUG="${BUILD_SDK_BUILDROOT_DEBUG}"
 }
 
 build_sdk_split_env_nugget_paths() {
@@ -537,7 +552,6 @@ build_sdk_write_make_alloy_helper() {
     local target_id="$1"
     local buildroot_path="$2"
     local helper_path="${BUILD_SDK_TARGET_WORKSPACE_DIR}/make_alloy"
-    local debug_level="${ALLOY_DEBUG:-0}"
     local -a helper_args=(
         "-C" "${buildroot_path}"
         "O=${BUILD_SDK_TARGET_WORKSPACE_DIR}"
@@ -547,6 +561,8 @@ build_sdk_write_make_alloy_helper() {
         "ALLOY_CACHE_DIR=${ALLOY_CACHE_DIR}"
         "ALLOY_ARTEFACT_DIR=${ALLOY_ARTEFACT_DIR}"
         "ALLOY_ROOT_DIR=${ALLOY_ROOT_DIR}"
+        "ALLOY_SDK_DIR=${ALLOY_SDK_DIR:-}"
+        "ALLOY_FIRMWARE_WORK_DIR=${ALLOY_FIRMWARE_WORK_DIR:-}"
         "ALLOY_SDK_STAGING_DIR=${ALLOY_SDK_STAGING_DIR}"
         "ALLOY_DEBUG=${ALLOY_DEBUG:-0}"
         "ALLOY_TRACE=${ALLOY_TRACE:-false}"
@@ -560,13 +576,12 @@ build_sdk_write_make_alloy_helper() {
     if [[ -n "${ALLOY_AUXILIARY:-}" ]]; then
         helper_args+=("ALLOY_AUXILIARY=${ALLOY_AUXILIARY}")
     fi
-    if (( debug_level >= 3 )); then
-        helper_args+=("V=1")
-    fi
-
     {
         printf '#!/usr/bin/env bash\n'
         printf 'set -euo pipefail\n'
+        printf ': "${ALLOY_DEBUG:=%q}"\n' "${ALLOY_DEBUG:-0}"
+        printf ': "${ALLOY_TRACE:=%q}"\n' "${ALLOY_TRACE:-false}"
+        printf 'export ALLOY_DEBUG ALLOY_TRACE\n'
         printf 'exec make'
         local arg
         for arg in "${helper_args[@]}"; do
@@ -583,7 +598,7 @@ build_sdk_build_target() {
     local context_file="${ALLOY_SDK_TARGETS_DIR}/${target_id}/alloy_context.sh"
     local target_defconfig="${target_id}_defconfig"
     local buildroot_path
-    local debug_level="${ALLOY_DEBUG:-0}"
+    local buildroot_make_wrapper="${ROOT_DIR}/scripts/buildroot/make_buildroot.sh"
     local -a make_base_args make_cmd
 
     [[ -f "${context_file}" ]] ||
@@ -600,6 +615,8 @@ build_sdk_build_target() {
         fail "Buildroot path does not exist for target '${target_id}': ${buildroot_path}"
     [[ -f "${buildroot_path}/Makefile" ]] ||
         fail "Buildroot path is missing Makefile for target '${target_id}': ${buildroot_path}"
+    [[ -x "${buildroot_make_wrapper}" ]] ||
+        fail "Buildroot make wrapper is missing or not executable: ${buildroot_make_wrapper}"
 
     build_sdk_prepare_target_layout "${target_id}"
     [[ -s "${BUILD_SDK_TARGET_DEFCONFIG_FILE}" ]] ||
@@ -616,8 +633,11 @@ build_sdk_build_target() {
         "ALLOY_CACHE_DIR=${ALLOY_CACHE_DIR}"
         "ALLOY_ARTEFACT_DIR=${ALLOY_ARTEFACT_DIR}"
         "ALLOY_ROOT_DIR=${ALLOY_ROOT_DIR}"
+        "ALLOY_SDK_DIR=${ALLOY_SDK_DIR:-}"
+        "ALLOY_FIRMWARE_WORK_DIR=${ALLOY_FIRMWARE_WORK_DIR:-}"
         "ALLOY_SDK_STAGING_DIR=${ALLOY_SDK_STAGING_DIR}"
         "ALLOY_DEBUG=${ALLOY_DEBUG:-0}"
+        "ALLOY_BUILDROOT_DEBUG=${ALLOY_BUILDROOT_DEBUG:-0}"
         "ALLOY_TRACE=${ALLOY_TRACE:-false}"
     )
     if [[ -n "${ALLOY_PRODUCT:-}" ]]; then
@@ -629,18 +649,7 @@ build_sdk_build_target() {
     if [[ -n "${ALLOY_AUXILIARY:-}" ]]; then
         make_base_args+=("ALLOY_AUXILIARY=${ALLOY_AUXILIARY}")
     fi
-    if (( debug_level >= 3 )); then
-        make_base_args+=("V=1")
-    fi
-
-    make_cmd=(make)
-    if (( debug_level == 0 )); then
-        if [[ -x "${buildroot_path}/utils/brmake" ]]; then
-            make_cmd=("${buildroot_path}/utils/brmake")
-        else
-            log_warn "Buildroot brmake not found for target '${target_id}', falling back to make: ${buildroot_path}/utils/brmake"
-        fi
-    fi
+    make_cmd=("${buildroot_make_wrapper}")
 
     log_info "Running Buildroot defconfig for target '${target_id}'."
     if ! "${make_cmd[@]}" "${make_base_args[@]}" "${target_defconfig}"; then
@@ -659,7 +668,7 @@ build_sdk_run_target_legal_info() {
     local target_id="$1"
     local context_file="${ALLOY_SDK_TARGETS_DIR}/${target_id}/alloy_context.sh"
     local buildroot_path
-    local debug_level="${ALLOY_DEBUG:-0}"
+    local buildroot_make_wrapper="${ROOT_DIR}/scripts/buildroot/make_buildroot.sh"
     local -a make_base_args make_cmd
 
     [[ -f "${context_file}" ]] ||
@@ -676,6 +685,8 @@ build_sdk_run_target_legal_info() {
         fail "Buildroot path does not exist for target '${target_id}': ${buildroot_path}"
     [[ -f "${buildroot_path}/Makefile" ]] ||
         fail "Buildroot path is missing Makefile for target '${target_id}': ${buildroot_path}"
+    [[ -x "${buildroot_make_wrapper}" ]] ||
+        fail "Buildroot make wrapper is missing or not executable: ${buildroot_make_wrapper}"
 
     build_sdk_prepare_target_layout "${target_id}"
 
@@ -688,8 +699,11 @@ build_sdk_run_target_legal_info() {
         "ALLOY_CACHE_DIR=${ALLOY_CACHE_DIR}"
         "ALLOY_ARTEFACT_DIR=${ALLOY_ARTEFACT_DIR}"
         "ALLOY_ROOT_DIR=${ALLOY_ROOT_DIR}"
+        "ALLOY_SDK_DIR=${ALLOY_SDK_DIR:-}"
+        "ALLOY_FIRMWARE_WORK_DIR=${ALLOY_FIRMWARE_WORK_DIR:-}"
         "ALLOY_SDK_STAGING_DIR=${ALLOY_SDK_STAGING_DIR}"
         "ALLOY_DEBUG=${ALLOY_DEBUG:-0}"
+        "ALLOY_BUILDROOT_DEBUG=${ALLOY_BUILDROOT_DEBUG:-0}"
         "ALLOY_TRACE=${ALLOY_TRACE:-false}"
     )
     if [[ -n "${ALLOY_PRODUCT:-}" ]]; then
@@ -701,18 +715,7 @@ build_sdk_run_target_legal_info() {
     if [[ -n "${ALLOY_AUXILIARY:-}" ]]; then
         make_base_args+=("ALLOY_AUXILIARY=${ALLOY_AUXILIARY}")
     fi
-    if (( debug_level >= 3 )); then
-        make_base_args+=("V=1")
-    fi
-
-    make_cmd=(make)
-    if (( debug_level == 0 )); then
-        if [[ -x "${buildroot_path}/utils/brmake" ]]; then
-            make_cmd=("${buildroot_path}/utils/brmake")
-        else
-            log_warn "Buildroot brmake not found for target '${target_id}', falling back to make: ${buildroot_path}/utils/brmake"
-        fi
-    fi
+    make_cmd=("${buildroot_make_wrapper}")
 
     log_info "Running Buildroot legal-info for target '${target_id}'."
     if ! "${make_cmd[@]}" "${make_base_args[@]}" legal-info; then
@@ -939,6 +942,7 @@ build_sdk_set_repo_directories
 
 args_init
 args_add h help ARG_SHOW_HELP flag true false
+args_add D '' ARG_BUILDROOT_DEBUG count 0
 args_add n nugget-path ARG_NUGGET_PATHS accum
 args_add '' allow-dirty ARG_ALLOW_DIRTY flag true false
 args_add '' include-sources ARG_INCLUDE_SOURCES flag true false
@@ -963,6 +967,7 @@ fi
 
 ARG_PRODUCT_NUGGET="${POSITIONAL[0]}"
 build_sdk_resolve_allow_dirty
+build_sdk_resolve_buildroot_debug
 build_sdk_split_env_nugget_paths
 require_command make || fail "make is required for Buildroot target execution"
 

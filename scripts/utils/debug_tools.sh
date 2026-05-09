@@ -15,6 +15,10 @@ alloy_debug_level() {
 }
 
 alloy_log_prefix() {
+    if [[ -n "${ALLOY_LOG_PREFIX:-}" ]]; then
+        printf '[%s]' "${ALLOY_LOG_PREFIX}"
+        return 0
+    fi
     local hook_type="${ALLOY_HOOK_TYPE:-hook}"
     local nugget_id="${ALLOY_NUGGET:-global}"
     printf '[%s:%s]' "${hook_type}" "${nugget_id}"

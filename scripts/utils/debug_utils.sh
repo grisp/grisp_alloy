@@ -12,12 +12,19 @@ source "${DEBUG_UTILS_DIR}/console_utils.sh"
 # shellcheck disable=SC2034  # global stack state used by enter_hidden/leave_hidden
 __ALLOY_HIDDEN_TRACE_STACK=()
 
+debug_log_prefix() {
+    local prefix="${ALLOY_LOG_PREFIX:-}"
+    if [[ -n "${prefix}" ]]; then
+        printf '[%s] ' "${prefix}"
+    fi
+}
+
 # log_error MESSAGE...
 # Print an error-prefixed message to stderr.
 # Env/side effects: writes to stderr; no shell state changes.
 # Errors: propagates console_print_to return codes.
 log_error() {
-    console_print_to stderr error "ERROR: $*"
+    console_print_to stderr error "$(debug_log_prefix)ERROR: $*"
 }
 
 # log_warn MESSAGE...
@@ -25,7 +32,7 @@ log_error() {
 # Env/side effects: writes to stderr; no exports.
 # Errors: propagates console_print_to return codes.
 log_warn() {
-    console_print_to stderr warn "WARN: $*"
+    console_print_to stderr warn "$(debug_log_prefix)WARN: $*"
 }
 
 # log_info MESSAGE...
@@ -34,7 +41,7 @@ log_warn() {
 # Errors: returns 0 when suppressed; otherwise propagates console_print_to return codes.
 log_info() {
     if [[ ${ALLOY_DEBUG:-0} -ge 1 ]]; then
-        console_print_to stdout info "INFO: $*"
+        console_print_to stdout info "$(debug_log_prefix)INFO: $*"
     fi
 }
 
@@ -44,7 +51,7 @@ log_info() {
 # Errors: returns 0 when suppressed; otherwise propagates console_print_to return codes.
 log_debug() {
     if [[ ${ALLOY_DEBUG:-0} -ge 2 ]]; then
-        console_print_to stderr debug "DEBUG: $*"
+        console_print_to stderr debug "$(debug_log_prefix)DEBUG: $*"
     fi
 }
 

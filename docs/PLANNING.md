@@ -323,7 +323,7 @@ Cross-repository development note:
   - Design/workflow update requirement: Update `docs/03_ALLOY_DESIGN.md` and `docs/WORKFLOW.md` to document the canonical hook logging API and require new hook scripts to use it instead of direct `echo`/custom logger functions unless explicitly justified.
   - Done when: Hook logging behavior is centralized, existing builtin nugget hooks use the shared API, and path output in hook-controlled logs follows the same relative/absolute ergonomics contract as command summaries/logs.
 
-- [ ] **Task 5.12e: Decouple Buildroot verbosity controls from Alloy debug levels**
+- [x] **Task 5.12e: Decouple Buildroot verbosity controls from Alloy debug levels**
   - Scope: Introduce command-level Buildroot verbosity flags independent from Alloy `-d/--debug`, using `-D` and `-DD` for `alloy build sdk`.
   - Scope: Implement `-D` to force Buildroot execution through `make` (instead of `brmake`) while keeping normal Buildroot output verbosity (no `V=1`).
   - Scope: Implement `-DD` to force `make` and add Buildroot verbose mode (`V=1`).
