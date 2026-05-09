@@ -8,6 +8,12 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Implemented canonical `alloy build project` command parsing in
+  `scripts/commands/build-project.sh` with mode-aware SDK resolution:
+  SDK mode now always uses the current SDK, repository mode resolves explicit
+  `--sdk` refs (directory/archive/prefix) or auto-selects only when
+  unambiguous, and archive-based SDK refs now reinstall automatically when the
+  source archive digest changes (tracked in `.alloy_sdk_install`).
 - Decoupled Buildroot verbosity controls from Alloy debug levels in
   `alloy build sdk`: `-D` now enables full Buildroot console output without
   `V=1`, `-DD` enables full console output plus `V=1`, and `-d/--debug`

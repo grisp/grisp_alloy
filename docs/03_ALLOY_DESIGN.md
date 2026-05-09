@@ -313,7 +313,7 @@ alloy build project PROJECT_SOURCE [OPTIONS]
 |--------|-------------|
 | `--allow-dirty` | Allow the project source (when it is a local directory that is a VCS checkout or when cloned from a VCS URL) to have uncommitted changes. By default, the orchestrator fails if the repository has a dirty working tree. Use for local development when you have uncommitted edits. Can also be enabled by setting `ALLOY_ALLOW_DIRTY=true`; the command-line flag takes precedence. |
 | `--profile PROFILE` | Build profile name. Repeatable for multi-profile builds (e.g. `--profile prod --profile debug`). Default: `default`. |
-| `--sdk SDK_REF` | SDK reference: name prefix, path to `.tar.gz`, or directory. Resolved via [artefact resolution](#artefact-resolution) (repository mode only; required if no SDK installed). |
+| `--sdk SDK_REF` | SDK reference: name prefix, path to `.tar.gz`, or directory. Resolved via [artefact resolution](#artefact-resolution) (repository mode only). In SDK mode this option is invalid because the current SDK is always used. |
 
 **Examples:**
 
@@ -1921,7 +1921,23 @@ The host-side artefact path depends on mode:
 
 **Steps:**
 
-1. **Resolve SDK** - If in SDK mode, use current directory. If repository mode with `--sdk`, choose an extraction directory then extract the SDK (overwriting any existing content there): if `/opt/grisp_alloy` exists and is writable, use it and always overwrite any existing SDK there; if it does not exist, try to create it and use it if creation succeeds and the directory is writable; if creation fails (e.g. insufficient permissions) or the directory is not writable, use a temporary directory instead. When a temporary directory is used, the orchestrator must clean it in step 14; no cleanup is required when using `/opt/grisp_alloy`. Set `ALLOY_SDK_DIR` to the SDK root.
+1. **Resolve SDK** - SDK selection is mode-aware and deterministic:
+   - **SDK mode:** Use the current SDK (the directory containing `alloy`), ignore external SDK discovery, and reject `--sdk`.
+   - **Repository mode install bases:** Use `ALLOY_SDK_INSTALL_ROOT` when set; otherwise prefer `/opt/grisp_alloy`, and if it is unavailable/unwritable fall back to `~/.grisp_alloy/sdk`.
+     - When `ALLOY_SDK_INSTALL_ROOT` is explicitly set, it is treated as an intentional override and must be usable. If it does not exist and cannot be created, or exists but is not writable, the command fails (no fallback to `~/.grisp_alloy/sdk`).
+   - **Repository mode install layout:** Archive-based installs are always unpacked into a **subdirectory** under the chosen install base (for example `<INSTALL_BASE>/sdk-smoke_product-0.1.0-x86_64`). The install base root itself is not a valid installed SDK root.
+   - **Installed-SDK discovery:** Installed SDK candidates are discovered only as subdirectories containing `ALLOY_SDK_MANIFEST` (for example `/opt/grisp_alloy/*/ALLOY_SDK_MANIFEST`, `~/.grisp_alloy/sdk/*/ALLOY_SDK_MANIFEST`, or `${ALLOY_SDK_INSTALL_ROOT}/*/ALLOY_SDK_MANIFEST`).
+   - **Repository mode with `--sdk SDK_REF`:**
+     - Resolve `SDK_REF` as: directory path, archive path (`.tar.gz`), or archive name prefix under `artefacts/sdk/`.
+     - If directory: use directly.
+     - If archive (path or prefix): install/reinstall into the archive-derived install subdirectory using metadata file `.alloy_sdk_install` (recorded source archive path + SHA-256 digest). Reinstall when source path or digest differs from recorded metadata.
+   - **Repository mode without `--sdk`:**
+     - If exactly one installed SDK candidate exists, select it.
+     - Else, if zero installed candidates and exactly one archive exists in `artefacts/sdk/`, install/select that archive.
+     - Else fail with a clear ambiguity message listing installed SDK candidates and available `artefacts/sdk/` archives.
+     - When a selected installed SDK has `.alloy_sdk_install` metadata that points to an existing source archive, compare the current archive SHA-256 to recorded metadata and auto-reinstall if it changed.
+   Set `ALLOY_SDK_DIR` to the selected SDK root.
+   In repository mode, `alloy build project` delegates execution to the selected SDK's own `alloy build project` command so project-build semantics remain SDK-owned.
 2. **Ensure SDK is relocated** - Source `scripts/utils/sdk_utils.sh` and call `ensure_sdk_relocated "${ALLOY_SDK_DIR}"`. No-op if the SDK is already at the recorded path; otherwise relocates (if writable) or aborts with instructions to run `alloy prepare sdk`. See [§8.6.6 sdk_utils.sh](#866-sdkutilssh).
 3. **Source alloy_context.sh** - Set `ALLOY_MOTHERLODE="${ALLOY_SDK_DIR}/motherlode"`. Source `${ALLOY_SDK_DIR}/scripts/alloy_context.sh` to load `ALLOY_CONFIG_*` and `ALLOY_EXPORT_*` for use by `setup_cross_env` and plugins.
 4. **Validate SDK directory** - Source `scripts/utils/env_utils.sh` and call `validate_sdk_dir "${ALLOY_SDK_DIR}"` to ensure `host/` and `images/` exist. Exit non-zero with a clear error if not.

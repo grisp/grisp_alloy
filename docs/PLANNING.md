@@ -335,7 +335,16 @@ Cross-repository development note:
 
 ## Phase 6: `alloy build project`
 
-- [ ] **Task 6.1: build-project command parser and SDK resolution**
+- [ ] **Task 5.13: `smoke_product` language-runtime nugget chain for project builds**
+  - Scope: Implement and wire builtin nuggets so `smoke_product` SDKs include the language/runtime/tooling required by project builds:
+    - `feature_erlang` (host Erlang/OTP + rebar3 availability in SDK host tools, required exports for `env_utils.sh`, target Erlang/OTP availability via staging contract).
+    - `feature_elixir` (host Elixir/mix availability in SDK host tools) with explicit dependency on `feature_erlang`.
+  - Scope: Update the `smoke_product` nugget dependency chain so generated smoke SDKs are intentionally project-build-capable for both Erlang and Elixir sample projects.
+  - Tests: Nugget metadata/dependency tests plus SDK integration coverage proving `alloy build sdk smoke_product` produces an SDK where `setup_cross_env` resolves `HOST_REBAR3` and `mix` from SDK-provided host tools.
+  - Design alignment: Keep ownership boundaries intact (`alloy` orchestrates, nugget metadata declares capability/tooling contracts, Buildroot executes backend packaging).
+  - Done when: A freshly built `smoke_product` SDK can serve as the tool source for both Erlang and Elixir project plugin builds without relying on host-installed Erlang/Elixir toolchains.
+
+- [x] **Task 6.1: build-project command parser and SDK resolution**
   - Scope: Parse options, resolve SDK mode/repository mode behavior.
   - Tests: Command tests for `--sdk` and mode combinations.
   - Refinement note (from Task 1.1): Command help/usage output should present canonical `alloy build project ...` UX (not legacy script filename forms).
@@ -349,12 +358,14 @@ Cross-repository development note:
   - Scope: Detect project type and call plugin build/info hooks.
   - Tests: Unit tests with mock plugin fixtures.
   - Refinement note (from Task 1.9): Rebuild the project loader on top of `plugin_utils.sh` (`plugin_load`, `plugin_has`, `plugin_call`, `plugin_read`) instead of extending the older hard-coded dispatch pattern in `scripts/plugins/project.sh`.
+  - Refinement note (from Task 5.13): Validate both `project_erlang_*` and `project_elixir_*` plugin selection paths against SDKs produced from the `smoke_product` nugget chain so dispatch coverage proves both runtimes are reachable from one canonical smoke SDK.
   - Done when: Plugin selection and dispatch are deterministic.
 
 - [ ] **Task 6.3: Cross-compilation environment setup**
   - Scope: Use SDK host/staging toolchains and environment exports.
   - Tests: Unit/integration tests validating exported toolchain vars.
   - Refinement note (from Task 1.6): Reuse `scripts/utils/env_utils.sh` as the single source for SDK validation, triplet discovery, toolchain exports, and target-architecture probing; keep `scripts/grisp-env.sh` as a compatibility wrapper only until legacy callers are removed.
+  - Refinement note (from Task 5.13): Include smoke-SDK assertions for `HOST_REBAR3`, `TARGET_ERLANG`, and optional `host mix` availability, proving environment exports are sourced from SDK-embedded tools rather than host-global installations.
   - Done when: Plugin builds consume consistent cross env.
 
 - [ ] **Task 6.4: Release scrubbing and architecture validation**
