@@ -1,0 +1,3 @@
+# Root package Config.in intentionally left minimal.
+# Per-package Config.in files under package/*/ are discovered by smelterl
+# and included in generated BR2_EXTERNAL Config.in.

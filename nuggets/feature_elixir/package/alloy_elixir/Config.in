@@ -1,0 +1,25 @@
+config BR2_PACKAGE_HOST_ALLOY_ELIXIR
+	bool "host alloy_elixir"
+	depends on BR2_PACKAGE_ALLOY_ERLANG
+	help
+	  Host Elixir tooling (mix, elixir, iex) used by SDK project builds.
+
+config BR2_PACKAGE_ALLOY_ELIXIR
+	bool "alloy_elixir"
+	depends on BR2_PACKAGE_ALLOY_ERLANG
+	depends on BR2_PACKAGE_HOST_ALLOY_ELIXIR
+	help
+	  Alloy-managed Elixir package layered on top of alloy_erlang.
+
+if BR2_PACKAGE_ALLOY_ELIXIR
+
+config BR2_PACKAGE_ALLOY_ELIXIR_GLOBAL_RUNTIME
+	bool "install target Elixir runtime globally in rootfs"
+	default n
+	depends on BR2_PACKAGE_ALLOY_ERLANG_GLOBAL_RUNTIME
+	help
+	  When enabled, target Elixir runtime files are installed in rootfs.
+	  When disabled, Elixir host tooling remains available for project builds,
+	  but the target Elixir runtime is not globally installed in rootfs.
+
+endif

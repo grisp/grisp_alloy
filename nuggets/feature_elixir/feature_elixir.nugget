@@ -1,0 +1,23 @@
+%% coding: utf-8
+{nugget, <<"1.0">>, [
+    {id, feature_elixir},
+    {category, feature},
+    {name, <<"Elixir Runtime Feature">>},
+    {description, <<"Provides Alloy-managed Elixir host tooling and optional target runtime on top of feature_erlang.">>},
+    {version, <<"0.1.0">>},
+    {depends_on, [
+        {required, nugget, feature_erlang}
+    ]},
+    {config, [
+        {elixir_global_runtime, <<"n">>}
+    ]},
+    {exports, [
+        {host_mix, {computed, <<"[[ALLOY_SDK_DIR]]/host/usr/bin/mix">>}},
+        {host_elixir_root, {computed, <<"[[ALLOY_SDK_DIR]]/host/usr/lib/elixir">>}},
+        {target_elixir_root, {computed, <<"[[ALLOY_SDK_DIR]]/staging/usr/lib/elixir">>}}
+    ]},
+    {buildroot, [
+        {packages, <<"package">>},
+        {defconfig_fragment, <<"buildroot.defconfig.fragment">>}
+    ]}
+]}.

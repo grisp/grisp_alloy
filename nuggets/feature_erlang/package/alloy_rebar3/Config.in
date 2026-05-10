@@ -1,0 +1,5 @@
+config BR2_PACKAGE_HOST_ALLOY_REBAR3
+	bool "host alloy_rebar3"
+	depends on BR2_PACKAGE_ALLOY_ERLANG
+	help
+	  Rebar3 build tool for host, used to build Erlang releases.

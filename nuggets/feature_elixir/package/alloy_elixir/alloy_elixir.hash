@@ -1,0 +1,6 @@
+# Locally computed for the package tarball:
+# https://github.com/elixir-lang/elixir/archive/refs/tags/v1.18.4.tar.gz
+sha256  8e136c0a92160cdad8daa74560e0e9c6810486bd232fbce1709d40fcc426b5e0  alloy_elixir-1.18.4.tar.gz
+
+# License files, locally calculated
+sha256  a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9  LICENSE

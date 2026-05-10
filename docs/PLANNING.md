@@ -335,9 +335,31 @@ Cross-repository development note:
 
 ## Phase 6: `alloy build project`
 
-- [ ] **Task 5.13: `smoke_product` language-runtime nugget chain for project builds**
+- [x] **Task 5.13: `smoke_product` language-runtime nugget chain for project builds**
   - Scope: Implement and wire builtin nuggets so `smoke_product` SDKs include the language/runtime/tooling required by project builds:
     - `feature_erlang` (host Erlang/OTP + rebar3 availability in SDK host tools, required exports for `env_utils.sh`, target Erlang/OTP availability via staging contract).
+
+- [ ] **Task 5.14: Buildroot progress spinner and less-aggressive SDK console formatting**
+  - Scope: Update SDK Buildroot log streaming (`make_buildroot.sh` path) to
+    show event-driven activity feedback for filtered-out lines:
+    advance an in-place ASCII spinner frame when a Buildroot line is received
+    but not emitted to console, while still writing every line to `br.log`.
+  - Scope: Keep spinner behavior terminal-safe and deterministic:
+    only in TTY mode, clean line handling around emitted log lines, and clean
+    teardown on process exit/failure.
+  - Scope: Reduce console noise by stripping the raw Buildroot `>>>` prefix
+    from emitted console lines while preserving clear origin context (for
+    example keep/adjust a colored `[buildroot]` prefix instead of coloring full
+    lines aggressively).
+  - Scope: Improve `br.log` readability by making per-line boundaries clearer
+    (timestamp emphasis/formatting suitable for `less -R`) without corrupting
+    plain-text log usability.
+  - Tests: Focused shell tests for spinner/event behavior and output
+    normalization, plus integration coverage that validates `br.log` still
+    captures complete unfiltered Buildroot output.
+  - Done when: Console shows real work progress during filtered output
+    intervals, visible Buildroot lines are easier on the eyes, and full logs
+    remain complete and easy to inspect.
     - `feature_elixir` (host Elixir/mix availability in SDK host tools) with explicit dependency on `feature_erlang`.
   - Scope: Update the `smoke_product` nugget dependency chain so generated smoke SDKs are intentionally project-build-capable for both Erlang and Elixir sample projects.
   - Tests: Nugget metadata/dependency tests plus SDK integration coverage proving `alloy build sdk smoke_product` produces an SDK where `setup_cross_env` resolves `HOST_REBAR3` and `mix` from SDK-provided host tools.

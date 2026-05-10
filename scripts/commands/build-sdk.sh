@@ -24,10 +24,13 @@ Initialize the repository-mode SDK build workspace for PRODUCT_NUGGET.
 
 Options:
   -n, --nugget-path PATH   Additional nugget source path or VCS URL. Repeatable.
-  -D, -DD                  Buildroot console verbosity (`-D`: full, `-DD`: full + V=1).
+  -D, -DD, -D<N>           Buildroot console verbosity (`-D`: full, `-DD`/`-D2`: full + V=1).
+      --buildroot-debug[=N]
+                           Buildroot console verbosity level (default 0, bare flag implies 1).
       --allow-dirty        Allow dirty VCS checkouts for staged nugget sources.
       --include-sources    Request redistributable source export in legal-info.
   -c, --clean             Remove the existing SDK build directory before setup.
+      --reinstall          Recreate target workspaces host/staging/target trees without full clean.
       --clean-package PKG Queue a package-clean request for later Buildroot stages.
   -h, --help              Show this help.
 
@@ -401,6 +404,7 @@ build_sdk_run_plan() {
     ALLOY_SDK_PLAN_FILE="${ALLOY_SDK_PLAN_DIR}/build_plan.term"
     ALLOY_SDK_PLAN_ENV_FILE="${ALLOY_SDK_PLAN_DIR}/build_plan.env"
     export ALLOY_SDK_PLAN_FILE ALLOY_SDK_PLAN_ENV_FILE
+    rm -f "${ALLOY_SDK_PLAN_FILE}" "${ALLOY_SDK_PLAN_ENV_FILE}"
 
     local -a plan_args=(
         plan
@@ -599,6 +603,7 @@ build_sdk_build_target() {
     local target_defconfig="${target_id}_defconfig"
     local buildroot_path
     local buildroot_make_wrapper="${ROOT_DIR}/scripts/buildroot/make_buildroot.sh"
+    local buildroot_log_file buildroot_log_display
     local -a make_base_args make_cmd
 
     [[ -f "${context_file}" ]] ||
@@ -621,6 +626,8 @@ build_sdk_build_target() {
     build_sdk_prepare_target_layout "${target_id}"
     [[ -s "${BUILD_SDK_TARGET_DEFCONFIG_FILE}" ]] ||
         fail "Missing generated defconfig for target '${target_id}': ${BUILD_SDK_TARGET_DEFCONFIG_FILE}"
+    buildroot_log_file="${BUILD_SDK_TARGET_WORKSPACE_DIR}/br.log"
+    buildroot_log_display="$(build_sdk_display_path "${buildroot_log_file}")"
 
     build_sdk_write_make_alloy_helper "${target_id}" "${buildroot_path}"
 
@@ -653,15 +660,86 @@ build_sdk_build_target() {
 
     log_info "Running Buildroot defconfig for target '${target_id}'."
     if ! "${make_cmd[@]}" "${make_base_args[@]}" "${target_defconfig}"; then
-        fail "Buildroot defconfig failed for target '${target_id}'"
+        fail "Buildroot defconfig failed for target '${target_id}' (log: ${buildroot_log_display})"
     fi
+
+    build_sdk_run_target_clean_packages "${target_id}" "${buildroot_log_display}" "${make_cmd[@]}" "${make_base_args[@]}"
 
     log_info "Running Buildroot build for target '${target_id}'."
     if ! "${make_cmd[@]}" "${make_base_args[@]}"; then
-        fail "Buildroot build failed for target '${target_id}'"
+        fail "Buildroot build failed for target '${target_id}' (log: ${buildroot_log_display})"
     fi
 
     BUILD_SDK_BUILT_TARGETS+=("${target_id}")
+}
+
+build_sdk_run_target_clean_packages() {
+    local target_id="$1"
+    local buildroot_log_display="$2"
+    shift 2
+    local -a make_cmd_and_args=("$@")
+    local pkg
+
+    [[ ${#ARG_CLEAN_PACKAGES[@]} -gt 0 ]] || return 0
+
+    for pkg in "${ARG_CLEAN_PACKAGES[@]}"; do
+        log_info "Cleaning Buildroot package '${pkg}' for target '${target_id}'."
+        log_debug "Running Buildroot clean goal for target '${target_id}': ${pkg}-dirclean"
+        if ! "${make_cmd_and_args[@]}" "${pkg}-dirclean"; then
+            fail "Buildroot package clean failed for target '${target_id}' goal '${pkg}-dirclean' (log: ${buildroot_log_display})"
+        fi
+    done
+}
+
+build_sdk_reinstall_target_workspace() {
+    local target_id="$1"
+    local workspace_dir="${ALLOY_SDK_TARGETS_DIR}/${target_id}/workspace"
+    local build_dir="${workspace_dir}/build"
+    local host_dir="${workspace_dir}/host"
+    local staging_dir="${workspace_dir}/staging"
+    local target_dir="${workspace_dir}/target"
+    local -a reinstall_dirs=(
+        "${host_dir}"
+        "${staging_dir}"
+        "${target_dir}"
+    )
+    local removed_install_stamps=0
+    local reinstall_dir
+
+    [[ -d "${workspace_dir}" ]] || return 0
+
+    for reinstall_dir in "${reinstall_dirs[@]}"; do
+        if [[ -e "${reinstall_dir}" ]]; then
+            log_debug "Removing target '${target_id}' reinstall path: $(build_sdk_display_path "${reinstall_dir}")"
+            rm -rf "${reinstall_dir}"
+        fi
+    done
+
+    if [[ -d "${build_dir}" ]]; then
+        while IFS= read -r install_stamp; do
+            [[ -n "${install_stamp}" ]] || continue
+            rm -f "${install_stamp}"
+            removed_install_stamps=$((removed_install_stamps + 1))
+        done < <(find "${build_dir}" -type f \
+            \( -name '.stamp_host_installed' -o -name '.stamp_staging_installed' -o -name '.stamp_target_installed' \))
+    fi
+
+    # Buildroot host-skeleton install expects host/ to exist, and then creates
+    # host/usr as a symlink itself.
+    mkdir -p "${host_dir}"
+    [[ -e "${staging_dir}" || -L "${staging_dir}" ]] || mkdir -p "${staging_dir}"
+    [[ -e "${target_dir}" || -L "${target_dir}" ]] || mkdir -p "${target_dir}"
+
+    log_info "Reinstall refresh for target '${target_id}': removed host/staging/target and ${removed_install_stamps} install stamp(s)."
+}
+
+build_sdk_reinstall_targets_if_requested() {
+    [[ "${ARG_REINSTALL}" == "true" ]] || return 0
+    log_info "Refreshing Buildroot install trees for all planned targets (--reinstall)."
+    local target_id
+    for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        build_sdk_reinstall_target_workspace "${target_id}"
+    done
 }
 
 build_sdk_run_target_legal_info() {
@@ -669,6 +747,7 @@ build_sdk_run_target_legal_info() {
     local context_file="${ALLOY_SDK_TARGETS_DIR}/${target_id}/alloy_context.sh"
     local buildroot_path
     local buildroot_make_wrapper="${ROOT_DIR}/scripts/buildroot/make_buildroot.sh"
+    local buildroot_log_file buildroot_log_display
     local -a make_base_args make_cmd
 
     [[ -f "${context_file}" ]] ||
@@ -689,6 +768,8 @@ build_sdk_run_target_legal_info() {
         fail "Buildroot make wrapper is missing or not executable: ${buildroot_make_wrapper}"
 
     build_sdk_prepare_target_layout "${target_id}"
+    buildroot_log_file="${BUILD_SDK_TARGET_WORKSPACE_DIR}/br.log"
+    buildroot_log_display="$(build_sdk_display_path "${buildroot_log_file}")"
 
     make_base_args=(
         -C "${buildroot_path}"
@@ -719,7 +800,7 @@ build_sdk_run_target_legal_info() {
 
     log_info "Running Buildroot legal-info for target '${target_id}'."
     if ! "${make_cmd[@]}" "${make_base_args[@]}" legal-info; then
-        fail "Buildroot legal-info failed for target '${target_id}'"
+        fail "Buildroot legal-info failed for target '${target_id}' (log: ${buildroot_log_display})"
     fi
 }
 
@@ -846,14 +927,19 @@ build_sdk_generate_targets() {
     BUILD_SDK_GENERATED_TARGETS=()
     BUILD_SDK_BUILT_TARGETS=()
     build_sdk_load_plan_metadata
+    build_sdk_reinstall_targets_if_requested
 
     local target_id
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
         build_sdk_generate_target "${target_id}"
+    done
+    for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
         build_sdk_run_target_pre_build_hooks "${target_id}"
-        build_sdk_build_target "${target_id}"
     done
     log_debug "pre_build summary: ran=${BUILD_SDK_PRE_BUILD_RAN}, skipped=${BUILD_SDK_PRE_BUILD_SKIPPED}, missing=${BUILD_SDK_PRE_BUILD_MISSING}"
+    for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        build_sdk_build_target "${target_id}"
+    done
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
         build_sdk_run_target_legal_info "${target_id}"
     done
@@ -885,7 +971,7 @@ build_sdk_print_summary() {
     motherlode_display="$(display_path_for_root "${cwd}" "${ALLOY_MOTHERLODE}")" || fail "Failed to format summary path: ${ALLOY_MOTHERLODE}"
     archive_display="$(display_path_for_root "${cwd}" "${BUILD_SDK_ARCHIVE_PATH}")" || fail "Failed to format summary path: ${BUILD_SDK_ARCHIVE_PATH}"
 
-    print_result "Initialized SDK build workspace for ${ARG_PRODUCT_NUGGET}."
+    print_result "Completed SDK build for ${ARG_PRODUCT_NUGGET}."
     print_note "Smelterl executable: ${smelterl_display}"
     print_note "Build directory: ${build_dir_display}"
     print_note "Plan directory: ${plan_dir_display}"
@@ -914,8 +1000,11 @@ build_sdk_print_summary() {
     if [[ "${ARG_INCLUDE_SOURCES}" == "true" ]]; then
         print_note "Legal-info source export was requested."
     fi
+    if [[ "${ARG_REINSTALL}" == "true" ]]; then
+        print_note "Buildroot install trees were refreshed before build (--reinstall)."
+    fi
     if [[ ${#ARG_CLEAN_PACKAGES[@]} -gt 0 ]]; then
-        print_note "Queued clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
+        print_note "Executed clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
     fi
 
     print_hint "SDK packing completed with relocation metadata markers for first-use relocation."
@@ -942,11 +1031,12 @@ build_sdk_set_repo_directories
 
 args_init
 args_add h help ARG_SHOW_HELP flag true false
-args_add D '' ARG_BUILDROOT_DEBUG count 0
+args_add D buildroot-debug ARG_BUILDROOT_DEBUG count 0
 args_add n nugget-path ARG_NUGGET_PATHS accum
 args_add '' allow-dirty ARG_ALLOW_DIRTY flag true false
 args_add '' include-sources ARG_INCLUDE_SOURCES flag true false
 args_add c clean ARG_CLEAN flag true false
+args_add '' reinstall ARG_REINSTALL flag true false
 args_add '' clean-package ARG_CLEAN_PACKAGES accum
 
 args_parse "$@"
@@ -971,6 +1061,10 @@ build_sdk_resolve_buildroot_debug
 build_sdk_split_env_nugget_paths
 require_command make || fail "make is required for Buildroot target execution"
 
+if [[ "${ARG_CLEAN}" == "true" && "${ARG_REINSTALL}" == "true" ]]; then
+    fail "--clean and --reinstall are mutually exclusive"
+fi
+
 build_dir="${ALLOY_BUILD_DIR}/sdk/${ARG_PRODUCT_NUGGET}"
 
 if [[ "${ARG_CLEAN}" == "true" ]]; then
@@ -987,6 +1081,7 @@ export ALLOY_SDK_BUILD_DIR="${build_dir}"
 export ALLOY_SDK_PLAN_DIR="${build_dir}/plan"
 export ALLOY_SDK_TARGETS_DIR="${build_dir}/targets"
 export ALLOY_SDK_STAGING_DIR="${build_dir}/staging"
+export ALLOY_SDK_DIR="${ALLOY_SDK_STAGING_DIR}"
 export ALLOY_MOTHERLODE="${build_dir}/motherlode"
 export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 

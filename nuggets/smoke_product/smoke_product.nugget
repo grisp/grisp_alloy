@@ -7,6 +7,8 @@
     {version, <<"0.1.0">>},
     {depends_on, [
         {required, nugget, builder_buildroot},
+        {required, nugget, feature_erlang},
+        {required, nugget, feature_elixir},
         {required, nugget, system_smoke}
     ]}
 ]}.

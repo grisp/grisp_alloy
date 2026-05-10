@@ -655,7 +655,7 @@ pack_sdk() {
         tar_entries+=(auxiliary)
     fi
     tar -czf "${archive_path}" -C "${sdk_dir}" \
-        --transform "s,^,${bundle_root}/," \
+        --transform "flags=r;s,^,${bundle_root}/," \
         "${tar_entries[@]}"
     printf '%s\n' "${archive_path}"
 }

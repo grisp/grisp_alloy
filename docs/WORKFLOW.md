@@ -66,6 +66,16 @@ Goals:
   - in a multi-repository checkout, work is tracked per repository, even when
     development starts from one superproject root.
 
+## Expensive Build Rules
+
+- Treat SDK builds as high-cost operations; default to non-clean rebuilds.
+- Do not use `-D` or `-DD` for agent-run SDK builds. Prefer standard command
+  output plus targeted inspection of Buildroot logs (for example `tail -n`,
+  `rg`, `grep` on `br.log`).
+- Ask the human for explicit confirmation before running long SDK builds.
+- Prefer instructing the human to run long/expensive SDK builds locally and
+  share the relevant log tail/error block for agent analysis.
+
 ## Multi-Repository Development Model
 
 Development starts from the `grisp_alloy` repository root. That checkout is

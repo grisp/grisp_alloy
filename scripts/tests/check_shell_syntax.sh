@@ -23,5 +23,6 @@ if [[ ${#shell_files[@]} -eq 0 ]]; then
 fi
 
 for shell_file in "${shell_files[@]}"; do
+    [[ -f "${shell_file}" ]] || continue
     bash -n "${shell_file}"
 done

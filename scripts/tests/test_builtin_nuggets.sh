@@ -17,6 +17,8 @@ test_builtin_nuggets_registry_lists_bootstrap_chain() {
     assert_matches "platform_smoke/platform_smoke.nugget" "${registry_contents}"
     assert_matches "system_smoke/system_smoke.nugget" "${registry_contents}"
     assert_matches "bootflow_smoke/bootflow_smoke.nugget" "${registry_contents}"
+    assert_matches "feature_erlang/feature_erlang.nugget" "${registry_contents}"
+    assert_matches "feature_elixir/feature_elixir.nugget" "${registry_contents}"
     assert_matches "smoke_product/smoke_product.nugget" "${registry_contents}"
 }
 
@@ -28,10 +30,41 @@ test_builtin_nuggets_sample_product_depends_on_bootstrap_backbone() {
     assert_status_code 0 "[[ -f '${system_file}' ]]"
     assert_status_code 0 "grep -Fq '{id, smoke_product}' '${product_file}'"
     assert_status_code 0 "grep -Fq '{required, nugget, builder_buildroot}' '${product_file}'"
+    assert_status_code 0 "grep -Fq '{required, nugget, feature_erlang}' '${product_file}'"
+    assert_status_code 0 "grep -Fq '{required, nugget, feature_elixir}' '${product_file}'"
     assert_status_code 0 "grep -Fq '{required, nugget, system_smoke}' '${product_file}'"
     assert_status_code 0 "grep -Fq '{required, nugget, toolchain_smoke}' '${system_file}'"
     assert_status_code 0 "grep -Fq '{required, nugget, platform_smoke}' '${system_file}'"
     assert_status_code 0 "grep -Fq '{required, nugget, bootflow_smoke}' '${system_file}'"
+}
+
+test_builtin_nuggets_runtime_features_define_policy_and_package_contracts() {
+    local erlang_file="${NUGGETS_DIR}/feature_erlang/feature_erlang.nugget"
+    local elixir_file="${NUGGETS_DIR}/feature_elixir/feature_elixir.nugget"
+
+    assert_status_code 0 "[[ -f '${erlang_file}' ]]"
+    assert_status_code 0 "[[ -f '${elixir_file}' ]]"
+
+    assert_status_code 0 "grep -Fq '{erlang_global_runtime, <<\"n\">>}' '${erlang_file}'"
+    assert_status_code 0 "grep -Fq '{host_rebar3, {computed, <<\"[[ALLOY_SDK_DIR]]/host/usr/bin/rebar3\">>}}' '${erlang_file}'"
+    assert_status_code 0 "grep -Fq '{target_erlang_root, {computed, <<\"[[ALLOY_SDK_DIR]]/staging/usr/lib/erlang\">>}}' '${erlang_file}'"
+    assert_status_code 0 "grep -Fq '{packages, <<\"package\">>}' '${erlang_file}'"
+    assert_status_code 0 "grep -Fq 'BR2_PACKAGE_ALLOY_ERLANG_GLOBAL_RUNTIME=[[ALLOY_CONFIG_ERLANG_GLOBAL_RUNTIME]]' '${NUGGETS_DIR}/feature_erlang/buildroot.defconfig.fragment'"
+    assert_status_code 0 "grep -Fq 'BR2_PACKAGE_HOST_ALLOY_REBAR3=y' '${NUGGETS_DIR}/feature_erlang/buildroot.defconfig.fragment'"
+    assert_status_code 0 "[[ -f '${NUGGETS_DIR}/feature_erlang/package/Config.in' ]]"
+
+    assert_status_code 0 "grep -Fq '{required, nugget, feature_erlang}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq '{elixir_global_runtime, <<\"n\">>}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq '{host_mix, {computed, <<\"[[ALLOY_SDK_DIR]]/host/usr/bin/mix\">>}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq '{host_elixir_root, {computed, <<\"[[ALLOY_SDK_DIR]]/host/usr/lib/elixir\">>}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq '{target_elixir_root, {computed, <<\"[[ALLOY_SDK_DIR]]/staging/usr/lib/elixir\">>}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq '{packages, <<\"package\">>}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq 'BR2_PACKAGE_HOST_ALLOY_ELIXIR=y' '${NUGGETS_DIR}/feature_elixir/buildroot.defconfig.fragment'"
+    assert_status_code 0 "grep -Fq 'BR2_PACKAGE_ALLOY_ELIXIR_GLOBAL_RUNTIME=[[ALLOY_CONFIG_ELIXIR_GLOBAL_RUNTIME]]' '${NUGGETS_DIR}/feature_elixir/buildroot.defconfig.fragment'"
+    assert_status_code 0 "[[ -f '${NUGGETS_DIR}/feature_elixir/package/Config.in' ]]"
+    assert_status_code 0 "grep -Fq 'config BR2_PACKAGE_HOST_ALLOY_ELIXIR' '${NUGGETS_DIR}/feature_elixir/package/alloy_elixir/Config.in'"
+    assert_status_code 0 "grep -Fq 'depends on BR2_PACKAGE_HOST_ALLOY_ELIXIR' '${NUGGETS_DIR}/feature_elixir/package/alloy_elixir/Config.in'"
+    assert_status_code 0 "grep -Fq 'depends on BR2_PACKAGE_ALLOY_ERLANG_GLOBAL_RUNTIME' '${NUGGETS_DIR}/feature_elixir/package/alloy_elixir/Config.in'"
 }
 
 test_builtin_nuggets_bootstrap_platform_toolchain_and_bootflow_metadata_exist() {

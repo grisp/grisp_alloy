@@ -147,6 +147,19 @@ Useful targeted tests:
 
 If a `smelterl/` checkout is present, use the Smelterl test path documented in `scripts/tests/README.md`.
 
+## Expensive Build Execution Policy
+
+- Treat `alloy build sdk ...` as expensive by default.
+- Prefer incremental runs (no `--clean`) unless the human explicitly asks for
+  a clean rebuild or the investigation strictly requires one.
+- Never run SDK builds with `-D` or `-DD` from the agent. Use normal log level
+  and inspect Buildroot logs (`br.log`) with focused tools (`tail`, `rg`,
+  `grep`) when needed.
+- Before starting a potentially long SDK build, ask for human confirmation.
+- Prefer giving the human the exact command(s) to run locally and then analyze
+  their reported output, instead of running long builds automatically from the
+  agent.
+
 ## Mandatory Workflow
 
 Follow `docs/WORKFLOW.md` exactly:

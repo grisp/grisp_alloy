@@ -6,6 +6,8 @@
         <<"platform_smoke/platform_smoke.nugget">>,
         <<"system_smoke/system_smoke.nugget">>,
         <<"bootflow_smoke/bootflow_smoke.nugget">>,
+        <<"feature_erlang/feature_erlang.nugget">>,
+        <<"feature_elixir/feature_elixir.nugget">>,
         <<"smoke_product/smoke_product.nugget">>
     ]}
 ]}.

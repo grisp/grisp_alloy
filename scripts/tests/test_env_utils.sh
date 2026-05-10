@@ -93,6 +93,7 @@ EOF
 
     env_utils_test_make_exec "${host_bin}/pkg-config" 'exit 0'
     env_utils_test_make_exec "${host_usr_bin}/rebar3" 'exit 0'
+    env_utils_test_make_exec "${host_usr_bin}/mix" 'exit 0'
 
     printf '%s\n' "${sdk_dir}"
 }
@@ -131,6 +132,7 @@ test_env_utils_setup_cross_env_exports_expected_variables() {
     assert_equals "${sdk_dir}/staging/usr/lib/erlang" "${TARGET_ERLANG}"
     assert_equals "26.2" "${OTP_VERSION}"
     assert_matches "${sdk_dir}/host/usr/bin:${sdk_dir}/host/bin" "${PATH}"
+    assert_equals "${sdk_dir}/host/usr/bin/mix" "$(command -v mix)"
 }
 
 test_env_utils_setup_cross_env_falls_back_to_scanning_host_bin_for_triplet() {

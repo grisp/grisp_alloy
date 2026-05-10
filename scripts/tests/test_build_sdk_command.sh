@@ -777,7 +777,9 @@ test_build_sdk_command_help_shows_canonical_usage() {
     assert_matches "Global options accepted anywhere" "${output}"
     assert_matches "-d, -dd, -ddd" "${output}"
     assert_matches "--debug\\[=N\\]" "${output}"
-    assert_matches "-D, -DD" "${output}"
+    assert_matches "-D, -DD, -D<N>" "${output}"
+    assert_matches "--buildroot-debug\\[=N\\]" "${output}"
+    assert_matches "--reinstall" "${output}"
     assert_matches "--clean-package PKG" "${output}"
     assert_status_code 1 "printf '%s\n' '${output}' | grep -F -- '-c PKG'"
 }
@@ -866,15 +868,15 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/env_one/.nuggets' ]]"
     assert_status_code 0 "[[ -f '${build_root}/sdk/demo_product/motherlode/local_one/.nuggets' ]]"
     assert_status_code 0 "[[ \"\$(readlink '${artefact_dir}/tools/smelterl')\" == smelterl-* ]]"
-    assert_matches "Initialized SDK build workspace for demo_product" "${output}"
+    assert_matches "SDK build.*demo_product" "${output}"
     assert_matches "Smelterl executable: ${artefact_dir}/tools/smelterl-" "${output}"
-    assert_matches "Additional command-line nugget sources: 1" "${output}"
-    assert_matches "Additional environment nugget sources: 1" "${output}"
+    assert_matches "command-line nugget sources: 1" "${output}"
+    assert_matches "environment nugget sources: 1" "${output}"
     assert_matches "Plan file: ${build_root}/sdk/demo_product/plan/build_plan.term" "${output}"
     assert_matches "Plan environment file: ${build_root}/sdk/demo_product/plan/build_plan.env" "${output}"
-    assert_matches "Generated targets: main" "${output}"
+    assert_matches "Generated targets: .*main" "${output}"
     assert_matches "Generated SDK artefact: ${artefact_dir}/sdk/sdk-demo_product-" "${output}"
-    assert_matches "Staged nugget repositories: 3" "${output}"
+    assert_matches "Staged nugget repositories: .*3" "${output}"
     assert_matches "Dirty VCS checkouts are allowed" "${output}"
     assert_matches "Legal-info source export was requested" "${output}"
     assert_status_code 0 "grep -Fq -- '--output-manifest ${build_root}/sdk/demo_product/staging/ALLOY_SDK_MANIFEST --export-legal legal-info --buildroot-legal ${build_root}/sdk/demo_product/targets/main/workspace/legal-info --include-sources' '${smelterl_log}'"
@@ -956,7 +958,7 @@ test_build_sdk_command_invokes_smelterl_plan_with_expected_artifacts() {
     assert_status_code 0 "grep -Fq -- 'ALLOY_SDK_DIR=\${ALLOY_SDK_DIR}' '${smelterl_log}'"
     assert_status_code 0 "grep -Fq -- 'ALLOY_FIRMWARE_WORK_DIR=\${ALLOY_FIRMWARE_WORK_DIR}' '${smelterl_log}'"
     assert_status_code 1 "grep -Fq -- 'ALLOY_MOTHERLODE=' '${smelterl_log}'"
-    assert_matches "Initialized SDK build workspace for demo_product" "${output}"
+    assert_matches "SDK build.*demo_product" "${output}"
 }
 
 test_build_sdk_command_generates_auxiliaries_before_main_from_shared_plan() {
@@ -986,7 +988,7 @@ test_build_sdk_command_generates_auxiliaries_before_main_from_shared_plan() {
     assert_status_code 0 "[[ -L '${build_root}/sdk/demo_product/targets/aux_alpha/br2_external/board/aux_alpha/scripts/post-image.sh' ]]"
     assert_status_code 0 "[[ \"\$(readlink '${build_root}/sdk/demo_product/targets/aux_beta/br2_external/board/aux_beta/scripts/alloy_context.sh')\" == '../../../../alloy_context.sh' ]]"
     assert_status_code 0 "[[ \"\$(readlink '${build_root}/sdk/demo_product/targets/aux_alpha/br2_external/board/aux_alpha/scripts/post-fakeroot.sh')\" == '$(harness_repo_root)/scripts/buildroot/script_hook.sh' ]]"
-    assert_matches "Generated targets: aux_beta aux_alpha main" "${output}"
+    assert_matches "Generated targets: .*aux_beta.*aux_alpha.*main" "${output}"
 
     aux_beta_line="$(grep -nF -- "generate --plan ${plan_path} --auxiliary aux_beta" "${smelterl_log}" | cut -d: -f1)"
     aux_alpha_line="$(grep -nF -- "generate --plan ${plan_path} --auxiliary aux_alpha" "${smelterl_log}" | cut -d: -f1)"
@@ -1034,7 +1036,7 @@ test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
     assert_status_code 0 "[[ ${shared_line} -lt ${aux_beta_target_line} ]]"
     assert_status_code 0 "[[ ${aux_beta_target_line} -lt ${aux_alpha_target_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_target_line} -lt ${main_target_line} ]]"
-    assert_matches "Generated targets: aux_beta aux_alpha main" "${output}"
+    assert_matches "Generated targets: .*aux_beta.*aux_alpha.*main" "${output}"
 }
 
 test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolated_context() {
@@ -1094,7 +1096,7 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     assert_status_code 0 "[[ ${aux_beta_legal_line} -lt ${aux_alpha_legal_line} ]]"
     assert_status_code 0 "[[ ${aux_alpha_legal_line} -lt ${main_legal_line} ]]"
     assert_status_code 0 "[[ -n '${consolidation_line}' ]]"
-    assert_matches "Built targets: aux_beta aux_alpha main" "${output}"
+    assert_matches "Built targets: .*aux_beta.*aux_alpha.*main" "${output}"
 }
 
 test_build_sdk_command_removes_stale_staging_legal_info_before_main_consolidation() {
@@ -1219,6 +1221,7 @@ test_build_sdk_command_make_alloy_helper_reuses_target_context() {
 
 test_build_sdk_command_packs_with_absolute_staging_symlink_target() {
     local temp_dir build_root artefact_dir output status packed_sdk
+    local archive_path extract_dir extracted_root extracted_staging_target
     temp_dir="$(harness_make_temp_dir "build-sdk-pack-staging-symlink")"
     build_root="${temp_dir}/build"
     artefact_dir="${temp_dir}/artefacts"
@@ -1234,6 +1237,17 @@ test_build_sdk_command_packs_with_absolute_staging_symlink_target() {
     packed_sdk="${build_root}/sdk/demo_product/staging"
     assert_status_code 0 "[[ -L '${packed_sdk}/staging' ]]"
     assert_status_code 0 "[[ -d '${packed_sdk}/host' ]]"
+    assert_equals "host/x86_64-buildroot-linux-gnu/sysroot" "$(readlink "${packed_sdk}/staging")"
+
+    archive_path="$(find "${artefact_dir}/sdk" -maxdepth 1 -name 'sdk-demo_product-*.tar.gz' | head -n1)"
+    assert_status_code 0 "[[ -f '${archive_path}' ]]"
+    extract_dir="${temp_dir}/extract"
+    mkdir -p "${extract_dir}"
+    tar -xzf "${archive_path}" -C "${extract_dir}"
+    extracted_root="$(find "${extract_dir}" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+    assert_status_code 0 "[[ -n '${extracted_root}' ]]"
+    extracted_staging_target="$(readlink "${extracted_root}/staging")"
+    assert_equals "host/x86_64-buildroot-linux-gnu/sysroot" "${extracted_staging_target}"
 }
 
 test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
@@ -1285,12 +1299,12 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
     status=$?
 
     assert_equals "0" "${status}"
-    assert_matches "INFO: Staging nugget repositories into" "${output}"
-    assert_matches "INFO: Staging builtin nugget repository as 'builtin'" "${output}"
-    assert_matches "INFO: Staging local nugget repository .* as 'local_nuggets'" "${output}"
-    assert_matches "INFO: Staging VCS nugget repository as 'remote_nuggets' \\(ref 'main'\\)" "${output}"
-    assert_matches "INFO: Nugget staging complete: 3 repositories staged" "${output}"
-    assert_matches "INFO: Using cached smelterl executable ${artefact_dir}/tools/smelterl-" "${output}"
+    assert_matches "Staging nugget repositories" "${output}"
+    assert_matches "builtin nugget repository.*builtin" "${output}"
+    assert_matches "local nugget repository.*local_nuggets" "${output}"
+    assert_matches "VCS nugget repository.*remote_nuggets.*main" "${output}"
+    assert_matches "Nugget staging complete: .*3 repositories staged" "${output}"
+    assert_matches "Using cached smelterl executable.*smelterl-" "${output}"
     assert_status_code 1 "printf '%s\n' '${output}' | grep -Fq 'pre_build summary:'"
 }
 
@@ -1348,7 +1362,35 @@ test_build_sdk_command_buildroot_debug_flags_control_v_and_console_noise() {
     output="$(ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product --buildroot-debug 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 1 "grep -Fq ' V=1' '${make_log}'"
+    assert_matches "\\[buildroot\\] make: Entering directory" "${output}"
+
+    : > "${make_log}"
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
         "${BUILD_SDK_COMMAND}" demo_product -DD 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 0 "grep -Fq ' V=1' '${make_log}'"
+
+    : > "${make_log}"
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product -D2 2>&1)"
+    status=$?
+    assert_equals "0" "${status}"
+    assert_status_code 0 "grep -Fq ' V=1' '${make_log}'"
+
+    : > "${make_log}"
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product --buildroot-debug=2 2>&1)"
     status=$?
     assert_equals "0" "${status}"
     assert_status_code 0 "grep -Fq ' V=1' '${make_log}'"
@@ -1448,7 +1490,46 @@ test_build_sdk_command_clean_removes_existing_workspace() {
     assert_equals "0" "${status}"
     assert_status_code 1 "[[ -e '${workspace}/stale.txt' ]]"
     assert_status_code 0 "[[ -d '${workspace}/plan' ]]"
-    assert_matches "Initialized SDK build workspace for demo_product" "${output}"
+    assert_matches "SDK build.*demo_product" "${output}"
+}
+
+test_build_sdk_command_reinstall_conflicts_with_clean() {
+    local output status
+
+    output="$("${BUILD_SDK_COMMAND}" demo_product --clean --reinstall 2>&1)"
+    status=$?
+
+    assert_equals "2" "${status}"
+    assert_matches "--clean and --reinstall are mutually exclusive" "${output}"
+}
+
+test_build_sdk_command_reinstall_refreshes_install_trees_and_stamps() {
+    local temp_dir build_root artefact_dir workspace output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-reinstall")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    workspace="${build_root}/sdk/demo_product/targets/main/workspace"
+    mkdir -p "${workspace}/host" "${workspace}/staging" "${workspace}/target" "${workspace}/build/pkg-a"
+    printf 'stale\n' > "${workspace}/host/stale.txt"
+    printf 'stale\n' > "${workspace}/staging/stale.txt"
+    printf 'stale\n' > "${workspace}/target/stale.txt"
+    : > "${workspace}/build/pkg-a/.stamp_host_installed"
+    : > "${workspace}/build/pkg-a/.stamp_staging_installed"
+    : > "${workspace}/build/pkg-a/.stamp_target_installed"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        "${BUILD_SDK_COMMAND}" demo_product --reinstall 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 1 "[[ -e '${workspace}/host/stale.txt' ]]"
+    assert_status_code 1 "[[ -e '${workspace}/staging/stale.txt' ]]"
+    assert_status_code 1 "[[ -e '${workspace}/target/stale.txt' ]]"
+    assert_status_code 1 "find '${workspace}/build' -name '.stamp_host_installed' -o -name '.stamp_staging_installed' -o -name '.stamp_target_installed' | grep -q ."
+    assert_matches "Buildroot install trees were refreshed before build \\(--reinstall\\)." "${output}"
 }
 
 test_build_sdk_command_short_c_with_value_is_rejected_as_extra_positional() {
@@ -1481,7 +1562,51 @@ test_build_sdk_command_long_clean_package_is_supported() {
     status=$?
 
     assert_equals "0" "${status}"
-    assert_matches "Queued clean-package requests: busybox" "${output}"
+    assert_matches "clean-package requests: .*busybox" "${output}"
+}
+
+test_build_sdk_command_clean_package_executes_explicit_dirclean_goals_only() {
+    local temp_dir build_root artefact_dir make_log output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-clean-package-goals")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    make_log="${temp_dir}/make.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product \
+        --clean-package alloy_erlang \
+        --clean-package alloy_elixir 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "grep -Fq 'custom goal=alloy_erlang-dirclean' '${make_log}'"
+    assert_status_code 0 "grep -Fq 'custom goal=alloy_elixir-dirclean' '${make_log}'"
+    assert_status_code 1 "grep -Fq 'custom goal=host-alloy_erlang-dirclean' '${make_log}'"
+    assert_status_code 1 "grep -Fq 'custom goal=host-alloy_elixir-dirclean' '${make_log}'"
+}
+
+test_build_sdk_command_clean_package_supports_explicit_host_goal() {
+    local temp_dir build_root artefact_dir make_log output status
+    temp_dir="$(harness_make_temp_dir "build-sdk-clean-package-host-goal")"
+    build_root="${temp_dir}/build"
+    artefact_dir="${temp_dir}/artefacts"
+    make_log="${temp_dir}/make.log"
+    build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
+
+    output="$(ALLOY_BUILD_DIR="${build_root}" \
+        ALLOY_ARTEFACT_DIR="${artefact_dir}" \
+        FAKE_MAKE_LOG="${make_log}" \
+        "${BUILD_SDK_COMMAND}" demo_product \
+        --clean-package host-alloy_erlang 2>&1)"
+    status=$?
+
+    assert_equals "0" "${status}"
+    assert_status_code 0 "grep -Fq 'custom goal=host-alloy_erlang-dirclean' '${make_log}'"
+    assert_status_code 1 "grep -Fq 'custom goal=host-alloy_elixir-dirclean' '${make_log}'"
+    assert_matches "clean-package requests: .*host-alloy_erlang" "${output}"
 }
 
 test_build_sdk_command_uses_cached_smelterl_without_rebar3() {
