@@ -599,19 +599,19 @@ pack_sdk() {
 
     mkdir -p "${sdk_dir}/scripts"
     cp "${alloy_root}/scripts/argparse.sh" "${sdk_dir}/scripts/argparse.sh"
-    copy_with_exclusions "${alloy_root}/scripts/commands" "${sdk_dir}/scripts/commands"
-    copy_with_exclusions "${alloy_root}/scripts/utils" "${sdk_dir}/scripts/utils"
-    copy_with_exclusions "${alloy_root}/scripts/tools" "${sdk_dir}/scripts/tools"
-    copy_with_exclusions "${alloy_root}/scripts/plugins" "${sdk_dir}/scripts/plugins"
-    copy_with_exclusions "${alloy_root}/scripts/buildroot" "${sdk_dir}/scripts/buildroot"
+    progress_copy_with_exclusions "copying sdk scripts/commands" "${alloy_root}/scripts/commands" "${sdk_dir}/scripts/commands"
+    progress_copy_with_exclusions "copying sdk scripts/utils" "${alloy_root}/scripts/utils" "${sdk_dir}/scripts/utils"
+    progress_copy_with_exclusions "copying sdk scripts/tools" "${alloy_root}/scripts/tools" "${sdk_dir}/scripts/tools"
+    progress_copy_with_exclusions "copying sdk scripts/plugins" "${alloy_root}/scripts/plugins" "${sdk_dir}/scripts/plugins"
+    progress_copy_with_exclusions "copying sdk scripts/buildroot" "${alloy_root}/scripts/buildroot" "${sdk_dir}/scripts/buildroot"
     cp "${main_context}" "${sdk_dir}/scripts/alloy_context.sh"
     # ALLOY_SDK_MANIFEST and legal-info are already generated in staging by the
     # main consolidation pass and serve as authoritative pack inputs.
     [[ -s "${sdk_dir}/ALLOY_SDK_MANIFEST" ]] || fail "Missing staged SDK manifest for packing: ${sdk_dir}/ALLOY_SDK_MANIFEST"
     [[ -d "${sdk_dir}/legal-info" ]] || fail "Missing staged legal-info for packing: ${sdk_dir}/legal-info"
-    copy_with_exclusions "${source_images}" "${sdk_dir}/images"
-    copy_with_exclusions "${source_host}" "${sdk_dir}/host"
-    copy_with_exclusions "${source_motherlode}" "${sdk_dir}/motherlode"
+    progress_copy_with_exclusions "copying sdk images" "${source_images}" "${sdk_dir}/images"
+    progress_copy_with_exclusions "copying sdk host tools" "${source_host}" "${sdk_dir}/host"
+    progress_copy_with_exclusions "copying sdk motherlode" "${source_motherlode}" "${sdk_dir}/motherlode"
 
     if [[ -L "${source_staging}" ]]; then
         local staging_link_target staging_real staging_rel
@@ -623,10 +623,10 @@ pack_sdk() {
         fi
         [[ -d "${staging_real}" ]] || fail "Main target staging symlink target does not exist: ${staging_real}"
         staging_rel="$(relative_path "${main_workspace}" "${staging_real}")"
-        copy_with_exclusions "${staging_real}" "${sdk_dir}/${staging_rel}"
+        progress_copy_with_exclusions "copying sdk staging tree" "${staging_real}" "${sdk_dir}/${staging_rel}"
         ln -sfn "${staging_rel}" "${sdk_dir}/staging"
     else
-        copy_with_exclusions "${source_staging}" "${sdk_dir}/staging"
+        progress_copy_with_exclusions "copying sdk staging tree" "${source_staging}" "${sdk_dir}/staging"
     fi
 
     verify_elf_rpaths "${sdk_dir}"

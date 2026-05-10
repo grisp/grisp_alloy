@@ -166,6 +166,7 @@ alloy [GLOBAL_OPTIONS] verb [noun] [COMMAND_OPTIONS] [ARGUMENTS]
 |--------|-------------|
 | `--debug[=N]` / `-d[N]` / `-ddd` | Set Alloy log verbosity level only. `--debug` or `-d` alone implies level 1 (informational progress). `--debug=2` or `-dd` shows developer debug messages. `--debug=3`, `-d3`, or `-ddd` increases Alloy debug detail only. Sets `ALLOY_DEBUG=N`. See [§4.9](#49-logging-and-debugging). |
 | `--trace` | Enable bash `set -x` execution tracing in the orchestrator and all hook wrappers. Sets `ALLOY_TRACE=true`. Independent of `--debug` - can be combined freely with any debug level. Intended for debugging the bash scripts themselves. See [§4.9](#49-logging-and-debugging). |
+| `--no-color` | Disable ANSI colors in console output for orchestrator, Buildroot wrapper, and hook logs by exporting `NO_COLOR=1`. |
 | `--dev` | Development mode; sets `ALLOY_DEV_MODE=true`. Enables behaviours useful during alloy/smelterl development (e.g. force rebuild of smelterl from source). |
 | `--force-vagrant` / `-F` | Force Vagrant VM usage even on Linux. |
 | `--keep-vagrant` / `-K` | Keep Vagrant VM running after command completes. |
@@ -1546,7 +1547,7 @@ See [§8.6.13 plugin_utils.sh](#8613-pluginutilssh) for the framework implementa
 
 **Steps:**
 
-1. **Parse global options** - Scan the entire argument list and extract all recognized global options (`--debug`, `--dev`, `--force-vagrant`, `--keep-vagrant`, `--provision`, `--init-deps`, `--forward-env`, `--help`, `--version`) regardless of their position. Global options are consumed and removed from the token stream; the remaining tokens are passed to subsequent steps. This allows users to place global options before, between, or after the verb and command arguments (e.g. `alloy -d build firmware my_app` and `alloy build firmware -d my_app` are equivalent).
+1. **Parse global options** - Scan the entire argument list and extract all recognized global options (`--debug`, `--trace`, `--no-color`, `--dev`, `--force-vagrant`, `--keep-vagrant`, `--provision`, `--init-deps`, `--forward-env`, `--help`, `--version`) regardless of their position. Global options are consumed and removed from the token stream; the remaining tokens are passed to subsequent steps. This allows users to place global options before, between, or after the verb and command arguments (e.g. `alloy -d build firmware my_app` and `alloy build firmware -d my_app` are equivalent).
 2. **Extract command** - Identify the verb (and optional noun) from the remaining arguments. Examples: `build sdk`, `build firmware`, `serve artefacts`, `grispio`.
 3. **Source common utilities** - Load `scripts/utils/common.sh` (error handling, logging). Set up `ALLOY_*` environment variables.
 4. **Detect mode** - See [§5.2](#52-mode-detection). Determine repository or SDK mode.
@@ -3712,7 +3713,7 @@ The wrapper must export `ALLOY_ROOT_DIR`, `ALLOY_HOOK_TYPE`, `ALLOY_TRACE`, `ALL
 
 | Function | Purpose |
 |----------|---------|
-| `console_supports_color [stdout|stderr]` | Return success when ANSI colors are allowed for the selected stream (interactive terminal and `NO_COLOR` unset). |
+| `console_supports_color [stdout|stderr]` | Return success when ANSI colors are allowed for the selected stream (interactive terminal, `TERM` not `dumb`, `NO_COLOR` unset, and terminal capability supports at least basic colors when detectable). |
 | `console_format_text STREAM STYLE MESSAGE` | Apply style-based ANSI formatting when enabled, otherwise return plain text. |
 | `console_print_to STREAM STYLE MESSAGE` | Print formatted text to stdout/stderr with newline. |
 | `print_result MESSAGE` | User-facing result/success output helper. |

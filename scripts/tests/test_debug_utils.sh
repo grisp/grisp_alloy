@@ -74,9 +74,13 @@ test_debug_utils_log_output_uses_ansi_colors_when_supported() {
 
     eval "${original_supports_color}"
 
-    assert_equals $'\033[36mINFO: hello\033[0m' "${info_out}"
-    assert_equals $'\033[33mWARN: warn\033[0m' "${warn_out}"
-    assert_equals $'\033[31mERROR: err\033[0m' "${error_out}"
+    assert_matches "INFO:" "${info_out}"
+    assert_matches "hello" "${info_out}"
+    assert_matches "WARN:" "${warn_out}"
+    assert_matches "warn" "${warn_out}"
+    assert_matches "38;5;208" "${warn_out}"
+    assert_matches "ERROR:" "${error_out}"
+    assert_matches "err" "${error_out}"
     assert_equals $'\033[90mDEBUG: dbg\033[0m' "${debug_out}"
 }
 

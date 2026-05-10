@@ -833,7 +833,7 @@ test_build_sdk_command_creates_expected_layout_and_reports_sources() {
     build_sdk_test_write_registry "${env_source}" env_one_feature
     build_sdk_test_write_registry "${cli_source}" local_one_feature
 
-    output="$(FAKE_SMELTERL_LOG="${smelterl_log}" \
+    output="$(ALLOY_DEBUG=1 FAKE_SMELTERL_LOG="${smelterl_log}" \
         ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         ALLOY_NUGGET_PATH="${env_source}" \
@@ -893,6 +893,7 @@ test_build_sdk_command_summary_paths_are_relative_only_within_cwd() {
 
     output="$(
         cd "${workspace}" &&
+            ALLOY_DEBUG=1 \
             ALLOY_BUILD_DIR="${build_root}" \
             ALLOY_ARTEFACT_DIR="${artefact_dir}" \
             "${BUILD_SDK_COMMAND}" demo_product 2>&1
@@ -927,7 +928,7 @@ test_build_sdk_command_debug_logs_use_relative_paths_within_cwd() {
 
     assert_equals "0" "${status}"
     assert_matches "DEBUG: SDK build workspace root: build/sdk/demo_product" "${output}"
-    assert_matches "INFO: Staging nugget repositories into build/sdk/demo_product/motherlode\\." "${output}"
+    assert_matches "Staging nuggets into motherlode\\." "${output}"
     assert_matches "DEBUG: Stage target for builtin: build/sdk/demo_product/motherlode/builtin" "${output}"
     assert_matches "DEBUG: Smelterl executable path: artefacts/tools/smelterl-" "${output}"
     assert_matches "DEBUG: Plan term output: build/sdk/demo_product/plan/build_plan.term" "${output}"
@@ -971,7 +972,7 @@ test_build_sdk_command_generates_auxiliaries_before_main_from_shared_plan() {
     plan_path="${build_root}/sdk/demo_product/plan/build_plan.term"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
-    output="$(FAKE_SMELTERL_LOG="${smelterl_log}" \
+    output="$(ALLOY_DEBUG=1 FAKE_SMELTERL_LOG="${smelterl_log}" \
         FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
         ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
@@ -1010,7 +1011,7 @@ test_build_sdk_command_runs_pre_build_hooks_once_per_nugget_across_targets() {
     pre_build_log="${temp_dir}/pre-build.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
-    output="$(FAKE_SMELTERL_EMIT_PRE_BUILD=true \
+    output="$(ALLOY_DEBUG=1 FAKE_SMELTERL_EMIT_PRE_BUILD=true \
         FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
         FAKE_PRE_BUILD_LOG="${pre_build_log}" \
         ALLOY_BUILD_DIR="${build_root}" \
@@ -1050,7 +1051,7 @@ test_build_sdk_command_runs_buildroot_make_and_legal_info_per_target_with_isolat
     smelterl_log="${temp_dir}/smelterl.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
         FAKE_SMELTERL_LOG="${smelterl_log}" \
@@ -1132,7 +1133,7 @@ test_build_sdk_command_collects_and_stages_auxiliary_sdk_outputs() {
     artefact_dir="${temp_dir}/artefacts"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         FAKE_SMELTERL_AUXILIARY_IDS="aux_beta aux_alpha" \
         FAKE_SMELTERL_AUX_OUTPUTS="aux_beta:initramfs,bundle;aux_alpha:debug" \
@@ -1264,7 +1265,7 @@ test_build_sdk_command_stages_mixed_sources_with_conflict_safe_names() {
     printf 'cli\n' > "${cli_source}/source-marker.txt"
     build_sdk_test_make_remote_nugget_repo "${temp_dir}" remote_nuggets remote_repo
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         ALLOY_NUGGET_PATH="${env_source}" \
         "${BUILD_SDK_COMMAND}" demo_product \
@@ -1299,7 +1300,7 @@ test_build_sdk_command_debug_level_one_reports_staging_progress() {
     status=$?
 
     assert_equals "0" "${status}"
-    assert_matches "Staging nugget repositories" "${output}"
+    assert_matches "Staging nuggets into motherlode\\." "${output}"
     assert_matches "builtin nugget repository.*builtin" "${output}"
     assert_matches "local nugget repository.*local_nuggets" "${output}"
     assert_matches "VCS nugget repository.*remote_nuggets.*main" "${output}"
@@ -1344,9 +1345,14 @@ test_build_sdk_command_buildroot_debug_flags_control_v_and_console_noise() {
         "${BUILD_SDK_COMMAND}" demo_product 2>&1)"
     status=$?
     assert_equals "0" "${status}"
+    assert_matches "\\[alloy\\] Starting SDK build for demo_product\\." "${output}"
     assert_status_code 1 "grep -Fq ' V=1' '${make_log}'"
-    assert_matches "\\[buildroot\\] >>> defconfig" "${output}"
-    assert_status_code 0 "grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' '${build_root}/sdk/demo_product/targets/main/workspace/br.log'"
+    assert_matches "\\[buildroot\\] defconfig" "${output}"
+    if printf '%s\n' "${output}" | grep -Eq "\\[buildroot\\] >>> "; then
+        echo "Buildroot console output should not expose raw >>> prefix" >&2
+        return 1
+    fi
+    assert_status_code 0 "grep -Eq '[0-9]{4}-[0-9]{2}-[0-9]{2}T' '${build_root}/sdk/demo_product/targets/main/workspace/br.log'"
 
     : > "${make_log}"
     output="$(ALLOY_BUILD_DIR="${build_root}" \
@@ -1463,7 +1469,7 @@ test_build_sdk_command_allows_dirty_existing_vcs_stage_only_when_requested() {
     assert_equals "2" "${status}"
     assert_matches "Git checkout is dirty" "${output}"
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product --allow-dirty \
         -n "git+file://${remote_repo}#main" 2>&1)"
@@ -1519,7 +1525,7 @@ test_build_sdk_command_reinstall_refreshes_install_trees_and_stamps() {
     : > "${workspace}/build/pkg-a/.stamp_staging_installed"
     : > "${workspace}/build/pkg-a/.stamp_target_installed"
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product --reinstall 2>&1)"
     status=$?
@@ -1556,7 +1562,7 @@ test_build_sdk_command_long_clean_package_is_supported() {
     artefact_dir="${temp_dir}/artefacts"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${BUILD_SDK_COMMAND}" demo_product --clean-package busybox 2>&1)"
     status=$?
@@ -1596,7 +1602,7 @@ test_build_sdk_command_clean_package_supports_explicit_host_goal() {
     make_log="${temp_dir}/make.log"
     build_sdk_test_prepare_cached_smelterl "${artefact_dir}"
 
-    output="$(ALLOY_BUILD_DIR="${build_root}" \
+    output="$(ALLOY_DEBUG=1 ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         FAKE_MAKE_LOG="${make_log}" \
         "${BUILD_SDK_COMMAND}" demo_product \
@@ -1623,6 +1629,7 @@ test_build_sdk_command_uses_cached_smelterl_without_rebar3() {
     chmod +x "${fake_bin}/rebar3"
 
     output="$(env -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        ALLOY_DEBUG=1 \
         PATH="${fake_bin}:${PATH}" ALLOY_BUILD_DIR="${build_root}" \
         ALLOY_ARTEFACT_DIR="${artefact_dir}" \
         "${command_path}" demo_product 2>&1)"
@@ -1645,6 +1652,7 @@ test_build_sdk_command_builds_missing_smelterl_artifact() {
     build_sdk_test_write_fake_rebar3 "${fake_bin}"
 
     output="$(env -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        ALLOY_DEBUG=1 \
         PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
         FAKE_REBAR3_OUTPUT="built smelterl" \
         ALLOY_BUILD_DIR="${build_root}" ALLOY_ARTEFACT_DIR="${artefact_dir}" \
@@ -1672,6 +1680,7 @@ test_build_sdk_command_dev_mode_rebuilds_smelterl_artifact() {
     build_sdk_test_write_fake_rebar3 "${fake_bin}"
 
     output="$(env -u ALLOY_ROOT -u ALLOY_ROOT_DIR \
+        ALLOY_DEBUG=1 \
         PATH="${fake_bin}:${PATH}" FAKE_REBAR3_LOG="${rebar_log}" \
         FAKE_REBAR3_OUTPUT="rebuilt smelterl" \
         ALLOY_DEV_MODE=true ALLOY_BUILD_DIR="${build_root}" ALLOY_ARTEFACT_DIR="${artefact_dir}" \

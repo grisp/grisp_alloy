@@ -228,6 +228,64 @@ copy_with_exclusions() {
     rsync "${rsync_args[@]}" "${src%/}/" "${dest%/}/"
 }
 
+# progress_copy_with_exclusions LABEL SRC DEST [EXCLUDE_PATTERN...]
+# Run copy_with_exclusions with progress feedback when available.
+# Env/side effects: same filesystem effects as copy_with_exclusions; may animate spinner output in interactive terminals.
+# Errors: propagates copy_with_exclusions failures.
+progress_copy_with_exclusions() {
+    local label="${1:-copying files}"
+    local src="${2:-}"
+    local dest="${3:-}"
+    shift 3 || true
+    local excludes=("$@")
+
+    if [[ -z "${src}" ]] || [[ -z "${dest}" ]]; then
+        log_error "progress_copy_with_exclusions requires LABEL, SRC and DEST arguments"
+        return 2
+    fi
+
+    if [[ -d "${src}" ]] &&
+        declare -F progress_tick >/dev/null 2>&1 &&
+        declare -F progress_supported >/dev/null 2>&1 &&
+        progress_supported &&
+        [[ "${ALLOY_TRACE:-false}" == "false" ]] &&
+        [[ -z "${NO_COLOR:-}" ]] &&
+        [[ ${ALLOY_DEBUG:-0} -eq 0 ]]; then
+        require_command rsync || return $?
+        mkdir -p "${dest}" || return $?
+
+        local -a rsync_args=(-a --checksum --info=progress2,name0,stats0)
+        local pattern
+        for pattern in "${excludes[@]}"; do
+            [[ -n "${pattern}" ]] || continue
+            rsync_args+=(--exclude "${pattern}")
+        done
+
+        local status_file status
+        status_file="$(mktemp)" || return 1
+        while IFS= read -r _line; do
+            progress_tick "${label}"
+        done < <(
+            set +e
+            rsync "${rsync_args[@]}" "${src%/}/" "${dest%/}/" 2>&1 | tr '\r' '\n'
+            printf '%s\n' "$?" > "${status_file}"
+        )
+        status=0
+        if [[ -s "${status_file}" ]]; then
+            status="$(cat "${status_file}")"
+        fi
+        rm -f "${status_file}"
+        return "${status}"
+    fi
+
+    if declare -F progress_run >/dev/null 2>&1; then
+        progress_run "${label}" copy_with_exclusions "${src}" "${dest}" "${excludes[@]}"
+        return $?
+    fi
+
+    copy_with_exclusions "${src}" "${dest}" "${excludes[@]}"
+}
+
 # merge_directories SRC DEST
 # Overlay the contents of SRC onto DEST using copy_with_exclusions semantics without exclusion patterns.
 # Env/side effects: creates or updates files under DEST.

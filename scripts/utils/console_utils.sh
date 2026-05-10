@@ -12,8 +12,19 @@ console_log_prefix() {
     fi
 }
 
+console_log_prefix_style() {
+    local prefix="${ALLOY_LOG_PREFIX:-}"
+    if [[ "${prefix}" == alloy:* ]]; then
+        printf 'hook_prefix\n'
+        return 0
+    fi
+    printf 'alloy_prefix\n'
+}
+
 # console_supports_color [stdout|stderr|1|2]
-# Return 0 when the selected stream is a TTY and NO_COLOR is not set.
+# Return 0 when ANSI color should be used for the selected stream.
+# stdout fallback: when stdout is piped but stderr is an interactive TTY, allow
+# color on stdout too (common in wrapper/capture setups that still render to a terminal).
 # Env/side effects: reads NO_COLOR and TTY state; no stdout output, no exports.
 # Errors: returns 1 for unsupported stream names or when color should not be used.
 console_supports_color() {
@@ -26,7 +37,15 @@ console_supports_color() {
     esac
 
     [[ -z "${NO_COLOR:-}" ]] || return 1
-    [[ -t "${fd}" ]]
+    [[ "${ALLOY_FORCE_COLOR:-0}" == "1" ]] && return 0
+    if [[ "${stream}" == "stdout" ]] || [[ "${stream}" == "1" ]]; then
+        [[ -t 1 ]] || [[ -t 2 ]] || return 1
+    else
+        [[ -t "${fd}" ]] || return 1
+    fi
+    [[ "${TERM:-}" != "dumb" ]] || return 1
+
+    return 0
 }
 
 # console_style_color_code STYLE
@@ -40,6 +59,10 @@ console_style_color_code() {
         hint|warn) echo "33" ;;
         error) echo "31" ;;
         debug) echo "90" ;;
+        buildroot_prefix) echo "34" ;;
+        hook_prefix) echo "94" ;;
+        alloy_prefix) echo "92" ;;
+        warn_label) echo "38;5;208" ;;
         *) return 1 ;;
     esac
 }
@@ -72,6 +95,10 @@ console_print_to() {
     local style="${2:-}"
     shift 2 || true
 
+    if declare -F progress_clear >/dev/null 2>&1; then
+        progress_clear
+    fi
+
     local formatted
     formatted="$(console_format_text "${stream}" "${style}" "$*")"
 
@@ -87,7 +114,7 @@ console_print_to() {
 # Env/side effects: writes to stdout; style selection is delegated to console_print_to.
 # Errors: propagates console_print_to return codes.
 print_result() {
-    console_print_to stdout result "$(console_log_prefix)$*"
+    console_print_with_prefix stdout result "$*"
 }
 
 # print_note TEXT...
@@ -95,7 +122,7 @@ print_result() {
 # Env/side effects: writes to stdout; no exports.
 # Errors: propagates console_print_to return codes.
 print_note() {
-    console_print_to stdout note "$(console_log_prefix)$*"
+    console_print_with_prefix stdout note "$*"
 }
 
 # print_hint TEXT...
@@ -103,5 +130,29 @@ print_note() {
 # Env/side effects: writes to stdout; no exports.
 # Errors: propagates console_print_to return codes.
 print_hint() {
-    console_print_to stdout hint "$(console_log_prefix)$*"
+    console_print_with_prefix stdout hint "$*"
+}
+
+console_print_with_prefix() {
+    local stream="${1:-stdout}"
+    local style="${2:-note}"
+    shift 2 || true
+    local message="$*"
+    local prefix rendered_prefix rendered_message
+
+    if declare -F progress_clear >/dev/null 2>&1; then
+        progress_clear
+    fi
+
+    prefix="$(console_log_prefix)"
+    if [[ -n "${prefix}" ]]; then
+        rendered_prefix="$(console_format_text "${stream}" "$(console_log_prefix_style)" "${prefix}")"
+        rendered_message="$(console_format_text "${stream}" "${style}" "${message}")"
+        case "${stream}" in
+            stderr|2) printf '%s%s\n' "${rendered_prefix}" "${rendered_message}" >&2 ;;
+            *) printf '%s%s\n' "${rendered_prefix}" "${rendered_message}" ;;
+        esac
+        return 0
+    fi
+    console_print_to "${stream}" "${style}" "${message}"
 }

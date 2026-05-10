@@ -132,10 +132,26 @@ test_common_utils_require_commands_requires_non_empty_argument_list() {
 }
 
 test_common_utils_print_helpers_emit_plain_output_by_default() {
+    local prior_no_color="${NO_COLOR-__unset__}"
+    local prior_force_color="${ALLOY_FORCE_COLOR-__unset__}"
+    export NO_COLOR=1
+    unset ALLOY_FORCE_COLOR || true
+
     local result_out note_out hint_out
     result_out="$(print_result "build complete")"
     note_out="$(print_note "remember this")"
     hint_out="$(print_hint "try --help")"
+
+    if [[ "${prior_no_color}" == "__unset__" ]]; then
+        unset NO_COLOR || true
+    else
+        export NO_COLOR="${prior_no_color}"
+    fi
+    if [[ "${prior_force_color}" == "__unset__" ]]; then
+        unset ALLOY_FORCE_COLOR || true
+    else
+        export ALLOY_FORCE_COLOR="${prior_force_color}"
+    fi
 
     assert_equals "[alloy] build complete" "${result_out}"
     assert_equals "[alloy] remember this" "${note_out}"

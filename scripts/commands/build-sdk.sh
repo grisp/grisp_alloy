@@ -299,7 +299,7 @@ build_sdk_stage_nuggets() {
         fail "Builtin nugget repository is missing: ${builtin_source}"
     fi
 
-    log_info "Staging nugget repositories into $(build_sdk_display_path "${ALLOY_MOTHERLODE}")."
+    print_note "Staging nuggets into motherlode."
     mkdir -p "${ALLOY_MOTHERLODE}"
     BUILD_SDK_STAGE_NAMES+=("builtin")
     log_info "Staging builtin nugget repository as 'builtin'."
@@ -309,9 +309,11 @@ build_sdk_stage_nuggets() {
 
     local source_spec
     for source_spec in "${BUILD_SDK_ENV_NUGGET_PATHS[@]}"; do
+        progress_tick "staging nugget repositories"
         build_sdk_stage_extra_source "${source_spec}"
     done
     for source_spec in "${ARG_NUGGET_PATHS[@]}"; do
+        progress_tick "staging nugget repositories"
         build_sdk_stage_extra_source "${source_spec}"
     done
     log_info "Nugget staging complete: ${#BUILD_SDK_STAGED_REPOS[@]} repositories staged."
@@ -422,6 +424,7 @@ build_sdk_run_plan() {
         --output-plan-env "${ALLOY_SDK_PLAN_ENV_FILE}"
     )
 
+    print_note "Planning SDK targets with smelterl."
     log_info "Running smelterl plan for ${ARG_PRODUCT_NUGGET}."
     log_debug "Plan term output: $(build_sdk_display_path "${ALLOY_SDK_PLAN_FILE}")"
     log_debug "Plan environment output: $(build_sdk_display_path "${ALLOY_SDK_PLAN_ENV_FILE}")"
@@ -683,6 +686,7 @@ build_sdk_run_target_clean_packages() {
     [[ ${#ARG_CLEAN_PACKAGES[@]} -gt 0 ]] || return 0
 
     for pkg in "${ARG_CLEAN_PACKAGES[@]}"; do
+        progress_tick "cleaning requested Buildroot packages"
         log_info "Cleaning Buildroot package '${pkg}' for target '${target_id}'."
         log_debug "Running Buildroot clean goal for target '${target_id}': ${pkg}-dirclean"
         if ! "${make_cmd_and_args[@]}" "${pkg}-dirclean"; then
@@ -709,6 +713,7 @@ build_sdk_reinstall_target_workspace() {
     [[ -d "${workspace_dir}" ]] || return 0
 
     for reinstall_dir in "${reinstall_dirs[@]}"; do
+        progress_tick "refreshing Buildroot install trees"
         if [[ -e "${reinstall_dir}" ]]; then
             log_debug "Removing target '${target_id}' reinstall path: $(build_sdk_display_path "${reinstall_dir}")"
             rm -rf "${reinstall_dir}"
@@ -735,9 +740,11 @@ build_sdk_reinstall_target_workspace() {
 
 build_sdk_reinstall_targets_if_requested() {
     [[ "${ARG_REINSTALL}" == "true" ]] || return 0
+    print_note "Refreshing Buildroot install trees."
     log_info "Refreshing Buildroot install trees for all planned targets (--reinstall)."
     local target_id
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        progress_tick "refreshing target workspaces"
         build_sdk_reinstall_target_workspace "${target_id}"
     done
 }
@@ -823,6 +830,7 @@ build_sdk_run_main_consolidation() {
 
     local target_id legal_dir
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        progress_tick "collecting legal-info inputs"
         legal_dir="${ALLOY_SDK_TARGETS_DIR}/${target_id}/workspace/legal-info"
         [[ -d "${legal_dir}" ]] ||
             fail "Missing Buildroot legal-info directory for target '${target_id}': ${legal_dir}"
@@ -833,6 +841,7 @@ build_sdk_run_main_consolidation() {
         generate_args+=(--include-sources)
     fi
 
+    print_note "Consolidating legal-info and SDK manifest."
     log_info "Running main legal/manifest consolidation pass."
     if ! "${ALLOY_SMELTERL}" "${generate_args[@]}"; then
         fail "Smelterl main legal/manifest consolidation failed"
@@ -867,6 +876,7 @@ build_sdk_run_target_pre_build_hooks() {
     export ALLOY_HOOK_TYPE="pre_build"
 
     for hook_entry in "${hook_entries[@]}"; do
+        progress_tick "running pre_build hooks"
         [[ "${hook_entry}" == *:* ]] ||
             fail "Invalid hook entry in ALLOY_PRE_BUILD_HOOKS: ${hook_entry}"
 
@@ -930,17 +940,24 @@ build_sdk_generate_targets() {
     build_sdk_reinstall_targets_if_requested
 
     local target_id
+    print_note "Generating Buildroot configuration and target contexts."
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        progress_tick "generating target inputs"
         build_sdk_generate_target "${target_id}"
     done
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        progress_tick "running pre_build hooks"
         build_sdk_run_target_pre_build_hooks "${target_id}"
     done
     log_debug "pre_build summary: ran=${BUILD_SDK_PRE_BUILD_RAN}, skipped=${BUILD_SDK_PRE_BUILD_SKIPPED}, missing=${BUILD_SDK_PRE_BUILD_MISSING}"
+    print_note "Running Buildroot for planned targets."
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        progress_tick "building targets with Buildroot"
         build_sdk_build_target "${target_id}"
     done
+    print_note "Exporting Buildroot legal-info."
     for target_id in "${ALLOY_PLAN_TARGET_IDS[@]}"; do
+        progress_tick "collecting legal-info per target"
         build_sdk_run_target_legal_info "${target_id}"
     done
     sdk_utils_collect_auxiliary_sdk_outputs
@@ -972,50 +989,51 @@ build_sdk_print_summary() {
     archive_display="$(display_path_for_root "${cwd}" "${BUILD_SDK_ARCHIVE_PATH}")" || fail "Failed to format summary path: ${BUILD_SDK_ARCHIVE_PATH}"
 
     print_result "Completed SDK build for ${ARG_PRODUCT_NUGGET}."
-    print_note "Smelterl executable: ${smelterl_display}"
-    print_note "Build directory: ${build_dir_display}"
-    print_note "Plan directory: ${plan_dir_display}"
-    print_note "Plan file: ${plan_file_display}"
-    print_note "Plan environment file: ${plan_env_display}"
-    print_note "Targets directory: ${targets_dir_display}"
-    print_note "Generated targets: ${BUILD_SDK_GENERATED_TARGETS[*]}"
-    print_note "Built targets: ${BUILD_SDK_BUILT_TARGETS[*]}"
-    print_note "Staged auxiliary sdk outputs: ${BUILD_SDK_STAGED_AUX_OUTPUT_COUNT:-0}"
-    print_note "Staging directory: ${staging_dir_display}"
-    print_note "Staged SDK manifest: ${manifest_display}"
-    print_note "Staged merged legal-info: ${legal_display}"
-    print_note "Packed SDK directory: ${packed_sdk_dir_display}"
-    print_note "Motherlode directory: ${motherlode_display}"
-    print_note "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
+    log_info "Smelterl executable: ${smelterl_display}"
+    log_info "Build directory: ${build_dir_display}"
+    log_info "Plan directory: ${plan_dir_display}"
+    log_info "Plan file: ${plan_file_display}"
+    log_info "Plan environment file: ${plan_env_display}"
+    log_info "Targets directory: ${targets_dir_display}"
+    log_info "Generated targets: ${BUILD_SDK_GENERATED_TARGETS[*]}"
+    log_info "Built targets: ${BUILD_SDK_BUILT_TARGETS[*]}"
+    log_info "Staged auxiliary sdk outputs: ${BUILD_SDK_STAGED_AUX_OUTPUT_COUNT:-0}"
+    log_info "Staging directory: ${staging_dir_display}"
+    log_info "Staged SDK manifest: ${manifest_display}"
+    log_info "Staged merged legal-info: ${legal_display}"
+    log_info "Packed SDK directory: ${packed_sdk_dir_display}"
+    log_info "Motherlode directory: ${motherlode_display}"
+    log_info "Staged nugget repositories: ${#BUILD_SDK_STAGED_REPOS[@]}"
 
     if [[ ${#ARG_NUGGET_PATHS[@]} -gt 0 ]]; then
-        print_note "Additional command-line nugget sources: ${#ARG_NUGGET_PATHS[@]}"
+        log_info "Additional command-line nugget sources: ${#ARG_NUGGET_PATHS[@]}"
     fi
     if [[ ${#BUILD_SDK_ENV_NUGGET_PATHS[@]} -gt 0 ]]; then
-        print_note "Additional environment nugget sources: ${#BUILD_SDK_ENV_NUGGET_PATHS[@]}"
+        log_info "Additional environment nugget sources: ${#BUILD_SDK_ENV_NUGGET_PATHS[@]}"
     fi
     if [[ "${BUILD_SDK_ALLOW_DIRTY}" == "true" ]]; then
-        print_note "Dirty VCS checkouts are allowed for nugget staging."
+        log_info "Dirty VCS checkouts are allowed for nugget staging."
     fi
     if [[ "${ARG_INCLUDE_SOURCES}" == "true" ]]; then
-        print_note "Legal-info source export was requested."
+        log_info "Legal-info source export was requested."
     fi
     if [[ "${ARG_REINSTALL}" == "true" ]]; then
-        print_note "Buildroot install trees were refreshed before build (--reinstall)."
+        log_info "Buildroot install trees were refreshed before build (--reinstall)."
     fi
     if [[ ${#ARG_CLEAN_PACKAGES[@]} -gt 0 ]]; then
-        print_note "Executed clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
+        log_info "Executed clean-package requests: ${ARG_CLEAN_PACKAGES[*]}"
     fi
 
-    print_hint "SDK packing completed with relocation metadata markers for first-use relocation."
+    log_info "SDK packing completed with relocation metadata markers for first-use relocation."
     print_result "Generated SDK artefact: ${archive_display}"
 }
 
 build_sdk_pack_sdk() {
     print_note "Packaging SDK artefact from staged build outputs..."
     log_info "Packing SDK archive."
-    BUILD_SDK_ARCHIVE_PATH="$(pack_sdk "${ALLOY_SDK_BUILD_DIR}" "${ARG_PRODUCT_NUGGET}")" ||
+    if ! BUILD_SDK_ARCHIVE_PATH="$(progress_run "packing SDK archive" pack_sdk "${ALLOY_SDK_BUILD_DIR}" "${ARG_PRODUCT_NUGGET}")"; then
         fail "SDK packing failed"
+    fi
     [[ -f "${BUILD_SDK_ARCHIVE_PATH}" ]] ||
         fail "SDK archive was not created: ${BUILD_SDK_ARCHIVE_PATH}"
     log_info "SDK archive created: $(build_sdk_display_path "${BUILD_SDK_ARCHIVE_PATH}")"
@@ -1085,6 +1103,7 @@ export ALLOY_SDK_DIR="${ALLOY_SDK_STAGING_DIR}"
 export ALLOY_MOTHERLODE="${build_dir}/motherlode"
 export ALLOY_BUILD_SDK_PRODUCT="${ARG_PRODUCT_NUGGET}"
 
+print_note "Starting SDK build for ${ARG_PRODUCT_NUGGET}."
 log_debug "SDK build workspace root: $(build_sdk_display_path "${build_dir}")"
 build_sdk_stage_nuggets
 build_sdk_ensure_smelterl

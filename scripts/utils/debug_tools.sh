@@ -5,6 +5,10 @@ if [[ -n "${ALLOY_DEBUG_TOOLS_SH_LOADED:-}" ]]; then
 fi
 ALLOY_DEBUG_TOOLS_SH_LOADED=1
 
+DEBUG_TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/utils/console_utils.sh
+source "${DEBUG_TOOLS_DIR}/console_utils.sh"
+
 alloy_debug_level() {
     local debug_level="${ALLOY_DEBUG:-0}"
     if [[ "${debug_level}" =~ ^[0-9]+$ ]]; then
@@ -27,13 +31,31 @@ alloy_log_prefix() {
 alloy_log_stderr() {
     local level="$1"
     shift
-    printf '%s %s: %s\n' "$(alloy_log_prefix)" "${level}" "$*" >&2
+    local prefix styled_level style
+    prefix="$(console_format_text stderr hook_prefix "$(alloy_log_prefix)")"
+    style="info"
+    case "${level}" in
+        WARN) style="warn_label" ;;
+        ERROR) style="error" ;;
+        DEBUG) style="debug" ;;
+    esac
+    styled_level="$(console_format_text stderr "${style}" "${level}:")"
+    printf '%s %s %s\n' "${prefix}" "${styled_level}" "$*" >&2
 }
 
 alloy_log_stdout() {
     local level="$1"
     shift
-    printf '%s %s: %s\n' "$(alloy_log_prefix)" "${level}" "$*"
+    local prefix styled_level style
+    prefix="$(console_format_text stdout hook_prefix "$(alloy_log_prefix)")"
+    style="info"
+    case "${level}" in
+        WARN) style="warn_label" ;;
+        ERROR) style="error" ;;
+        DEBUG) style="debug" ;;
+    esac
+    styled_level="$(console_format_text stdout "${style}" "${level}:")"
+    printf '%s %s %s\n' "${prefix}" "${styled_level}" "$*"
 }
 
 # alloy_log_format_path PATH

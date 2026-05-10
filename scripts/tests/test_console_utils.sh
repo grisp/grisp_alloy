@@ -9,10 +9,26 @@ CONSOLE_UTILS_SCRIPT="$(harness_repo_root)/scripts/utils/console_utils.sh"
 source "${CONSOLE_UTILS_SCRIPT}"
 
 test_console_utils_print_helpers_emit_plain_output_by_default() {
+    local prior_no_color="${NO_COLOR-__unset__}"
+    local prior_force_color="${ALLOY_FORCE_COLOR-__unset__}"
+    export NO_COLOR=1
+    unset ALLOY_FORCE_COLOR || true
+
     local result_out note_out hint_out
     result_out="$(print_result "build complete")"
     note_out="$(print_note "remember this")"
     hint_out="$(print_hint "try --help")"
+
+    if [[ "${prior_no_color}" == "__unset__" ]]; then
+        unset NO_COLOR || true
+    else
+        export NO_COLOR="${prior_no_color}"
+    fi
+    if [[ "${prior_force_color}" == "__unset__" ]]; then
+        unset ALLOY_FORCE_COLOR || true
+    else
+        export ALLOY_FORCE_COLOR="${prior_force_color}"
+    fi
 
     assert_equals "build complete" "${result_out}"
     assert_equals "remember this" "${note_out}"
@@ -37,6 +53,42 @@ test_console_utils_print_helpers_emit_colors_when_supported() {
     assert_equals $'\033[33mhint\033[0m' "${hint_out}"
 }
 
+test_console_utils_print_note_styles_alloy_prefix_separately() {
+    local original_supports_color
+    original_supports_color="$(declare -f console_supports_color)"
+    # shellcheck disable=SC2317
+    console_supports_color() { return 0; }
+    export ALLOY_LOG_PREFIX="alloy"
+
+    local note_out
+    note_out="$(print_note "note")"
+
+    unset ALLOY_LOG_PREFIX || true
+    eval "${original_supports_color}"
+
+    assert_equals $'\033[92m[alloy] \033[0m\033[36mnote\033[0m' "${note_out}"
+}
+
+test_console_utils_print_helpers_keep_alloy_prefix_style_constant() {
+    local original_supports_color
+    original_supports_color="$(declare -f console_supports_color)"
+    # shellcheck disable=SC2317
+    console_supports_color() { return 0; }
+    export ALLOY_LOG_PREFIX="alloy"
+
+    local result_out note_out hint_out
+    result_out="$(print_result "result")"
+    note_out="$(print_note "note")"
+    hint_out="$(print_hint "hint")"
+
+    unset ALLOY_LOG_PREFIX || true
+    eval "${original_supports_color}"
+
+    assert_matches $'^\033\\[92m\\[alloy\\] \033\\[0m' "${result_out}"
+    assert_matches $'^\033\\[92m\\[alloy\\] \033\\[0m' "${note_out}"
+    assert_matches $'^\033\\[92m\\[alloy\\] \033\\[0m' "${hint_out}"
+}
+
 test_console_utils_no_color_disables_ansi_sequences() {
     local original_supports_color
     original_supports_color="$(declare -f console_supports_color)"
@@ -52,6 +104,7 @@ test_console_utils_no_color_disables_ansi_sequences() {
 
     assert_equals "no-color" "${output}"
 }
+
 
 test_console_utils_is_safe_to_source_multiple_times() {
     assert_status_code 0 "bash -c 'source \"${CONSOLE_UTILS_SCRIPT}\"; source \"${CONSOLE_UTILS_SCRIPT}\"; print_result ok >/dev/null'"

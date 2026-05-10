@@ -339,7 +339,7 @@ Cross-repository development note:
   - Scope: Implement and wire builtin nuggets so `smoke_product` SDKs include the language/runtime/tooling required by project builds:
     - `feature_erlang` (host Erlang/OTP + rebar3 availability in SDK host tools, required exports for `env_utils.sh`, target Erlang/OTP availability via staging contract).
 
-- [ ] **Task 5.14: Buildroot progress spinner and less-aggressive SDK console formatting**
+- [x] **Task 5.14: Buildroot progress spinner and less-aggressive SDK console formatting**
   - Scope: Update SDK Buildroot log streaming (`make_buildroot.sh` path) to
     show event-driven activity feedback for filtered-out lines:
     advance an in-place ASCII spinner frame when a Buildroot line is received
@@ -354,6 +354,9 @@ Cross-repository development note:
   - Scope: Improve `br.log` readability by making per-line boundaries clearer
     (timestamp emphasis/formatting suitable for `less -R`) without corrupting
     plain-text log usability.
+  - Scope: As part of this UX pass, align console color policy across
+    orchestrator/buildroot/hook logging and add global `alloy --no-color`
+    support that disables ANSI colors via `NO_COLOR=1`.
   - Tests: Focused shell tests for spinner/event behavior and output
     normalization, plus integration coverage that validates `br.log` still
     captures complete unfiltered Buildroot output.

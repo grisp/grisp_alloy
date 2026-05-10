@@ -15,6 +15,7 @@ echo "HANDLER=build-sdk"
 echo "ALLOY_MODE=${ALLOY_MODE:-}"
 echo "ALLOY_DEBUG=${ALLOY_DEBUG:-}"
 echo "ALLOY_TRACE=${ALLOY_TRACE:-}"
+echo "NO_COLOR=${NO_COLOR:-}"
 echo "ALLOY_DEV_MODE=${ALLOY_DEV_MODE:-}"
 echo "ALLOY_FORCE_VAGRANT=${ALLOY_FORCE_VAGRANT:-}"
 echo "ALLOY_KEEP_VAGRANT=${ALLOY_KEEP_VAGRANT:-}"
@@ -149,6 +150,7 @@ test_alloy_help_flag_shows_global_usage() {
     output="$("${alloy}" --help 2>&1)"
     assert_matches "Usage: alloy" "${output}"
     assert_matches "--init-deps" "${output}"
+    assert_matches "--no-color" "${output}"
 }
 
 test_alloy_help_lists_only_repository_mode_commands_in_repo_mode() {
@@ -220,12 +222,13 @@ test_alloy_dispatches_verb_noun_with_normalized_global_env() {
 
     local output
     output="$(ALLOY_COMMANDS_DIR="${command_dir}" \
-        "${alloy}" build --trace sdk -dd --dev -F -K -P \
+        "${alloy}" build --trace --no-color sdk -dd --dev -F -K -P \
         --forward-env SIGNING_* alpha --beta 2>&1)"
 
     assert_matches "HANDLER=build-sdk" "${output}"
     assert_matches "ALLOY_DEBUG=2" "${output}"
     assert_matches "ALLOY_TRACE=true" "${output}"
+    assert_matches "NO_COLOR=1" "${output}"
     assert_matches "ALLOY_DEV_MODE=true" "${output}"
     assert_matches "ALLOY_FORCE_VAGRANT=true" "${output}"
     assert_matches "ALLOY_KEEP_VAGRANT=true" "${output}"

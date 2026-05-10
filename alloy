@@ -12,6 +12,7 @@ Global options:
   -d, -dd, -ddd              Increment debug level
   -dN, --debug[=N]           Set debug level to N (non-negative integer)
       --trace                Enable bash trace mode for orchestrator scripts
+      --no-color             Disable ANSI colors in console output
       --dev                  Enable development mode
   -F, --force-vagrant        Force Vagrant execution
   -K, --keep-vagrant         Keep Vagrant VM running after completion
@@ -88,6 +89,7 @@ version() {
 
 GLOBAL_DEBUG=0
 GLOBAL_TRACE=false
+GLOBAL_NO_COLOR=false
 GLOBAL_DEV_MODE=false
 GLOBAL_FORCE_VAGRANT=false
 GLOBAL_KEEP_VAGRANT=false
@@ -117,6 +119,9 @@ parse_global_options() {
                 ;;
             --trace)
                 GLOBAL_TRACE=true
+                ;;
+            --no-color)
+                GLOBAL_NO_COLOR=true
                 ;;
             --dev)
                 GLOBAL_DEV_MODE=true
@@ -341,6 +346,9 @@ if [[ "${GLOBAL_TRACE}" == true ]]; then
     set_trace true
 else
     set_trace false
+fi
+if [[ "${GLOBAL_NO_COLOR}" == true ]]; then
+    export NO_COLOR=1
 fi
 export_boolean_env "ALLOY_DEV_MODE" "${GLOBAL_DEV_MODE}"
 export_boolean_env "ALLOY_FORCE_VAGRANT" "${GLOBAL_FORCE_VAGRANT}"
