@@ -46,7 +46,7 @@ test_builtin_nuggets_runtime_features_define_policy_and_package_contracts() {
     assert_status_code 0 "[[ -f '${elixir_file}' ]]"
 
     assert_status_code 0 "grep -Fq '{erlang_global_runtime, <<\"n\">>}' '${erlang_file}'"
-    assert_status_code 0 "grep -Fq '{host_rebar3, {computed, <<\"[[ALLOY_SDK_DIR]]/host/usr/bin/rebar3\">>}}' '${erlang_file}'"
+    assert_status_code 0 "grep -Fq '{host_rebar3, {computed, <<\"[[ALLOY_SDK_DIR]]/host/bin/rebar3\">>}}' '${erlang_file}'"
     assert_status_code 0 "grep -Fq '{target_erlang_root, {computed, <<\"[[ALLOY_SDK_DIR]]/staging/usr/lib/erlang\">>}}' '${erlang_file}'"
     assert_status_code 0 "grep -Fq '{packages, <<\"package\">>}' '${erlang_file}'"
     assert_status_code 0 "grep -Fq 'BR2_PACKAGE_ALLOY_ERLANG_GLOBAL_RUNTIME=[[ALLOY_CONFIG_ERLANG_GLOBAL_RUNTIME]]' '${NUGGETS_DIR}/feature_erlang/buildroot.defconfig.fragment'"
@@ -55,7 +55,7 @@ test_builtin_nuggets_runtime_features_define_policy_and_package_contracts() {
 
     assert_status_code 0 "grep -Fq '{required, nugget, feature_erlang}' '${elixir_file}'"
     assert_status_code 0 "grep -Fq '{elixir_global_runtime, <<\"n\">>}' '${elixir_file}'"
-    assert_status_code 0 "grep -Fq '{host_mix, {computed, <<\"[[ALLOY_SDK_DIR]]/host/usr/bin/mix\">>}' '${elixir_file}'"
+    assert_status_code 0 "grep -Fq '{host_mix, {computed, <<\"[[ALLOY_SDK_DIR]]/host/bin/mix\">>}' '${elixir_file}'"
     assert_status_code 0 "grep -Fq '{host_elixir_root, {computed, <<\"[[ALLOY_SDK_DIR]]/host/usr/lib/elixir\">>}' '${elixir_file}'"
     assert_status_code 0 "grep -Fq '{target_elixir_root, {computed, <<\"[[ALLOY_SDK_DIR]]/staging/usr/lib/elixir\">>}' '${elixir_file}'"
     assert_status_code 0 "grep -Fq '{packages, <<\"package\">>}' '${elixir_file}'"

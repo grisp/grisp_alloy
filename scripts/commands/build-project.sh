@@ -9,6 +9,10 @@ export ALLOY_ROOT_DIR="${ALLOY_ROOT_DIR:-${ROOT_DIR}}"
 source "${ROOT_DIR}/scripts/utils/common.sh"
 # shellcheck source=scripts/utils/sdk_utils.sh
 source "${ROOT_DIR}/scripts/utils/sdk_utils.sh"
+# shellcheck source=scripts/utils/plugin_utils.sh
+source "${ROOT_DIR}/scripts/utils/plugin_utils.sh"
+# shellcheck source=scripts/plugins/project.sh
+source "${ROOT_DIR}/scripts/plugins/project.sh"
 # shellcheck source=scripts/argparse.sh
 source "${ROOT_DIR}/scripts/argparse.sh"
 
@@ -390,10 +394,6 @@ build_project_resolve_sdk_dir() {
 }
 
 build_project_delegate_to_sdk() {
-    if [[ "${ALLOY_MODE}" == "sdk" ]]; then
-        fail "alloy build project execution is not implemented yet (Task 6.2+). SDK selection/installation/relocation completed, but plugin dispatch and project build flow are not wired yet."
-    fi
-
     local sdk_alloy="${BUILD_PROJECT_SDK_DIR}/alloy"
     [[ -x "${sdk_alloy}" ]] || fail "SDK alloy entrypoint is missing or not executable: ${sdk_alloy}"
     local sdk_build_project_cmd="${BUILD_PROJECT_SDK_DIR}/scripts/commands/build-project.sh"
@@ -416,6 +416,84 @@ build_project_delegate_to_sdk() {
     log_debug "Delegating project build to SDK command: ${sdk_alloy} ${delegated_args[*]}"
 
     exec "${sdk_alloy}" "${delegated_args[@]}"
+}
+
+build_project_print_sdk_notice() {
+    if [[ "${ALLOY_SDK_NOTICE_SHOWN:-false}" == "true" ]]; then
+        return 0
+    fi
+    local sdk_name="unknown"
+    local sdk_built_at="unknown"
+
+    sdk_name="$(sdk_utils_info "${BUILD_PROJECT_SDK_DIR}" product_name 2>/dev/null || true)"
+    [[ -n "${sdk_name}" ]] || sdk_name="unknown"
+    sdk_built_at="$(sdk_utils_info "${BUILD_PROJECT_SDK_DIR}" build_time 2>/dev/null || true)"
+    [[ -n "${sdk_built_at}" ]] || sdk_built_at="unknown"
+
+    print_note "Using SDK: ${sdk_name} (built ${sdk_built_at})"
+    log_debug "SDK path: ${BUILD_PROJECT_SDK_DIR}"
+    export ALLOY_SDK_NOTICE_SHOWN=true
+}
+
+build_project_load_sdk_context() {
+    local context_file="${BUILD_PROJECT_SDK_DIR}/scripts/alloy_context.sh"
+    [[ -f "${context_file}" ]] || fail "SDK context file not found: ${context_file}"
+
+    # SDK context expects these variables to exist at source-time.
+    export ALLOY_MOTHERLODE="${ALLOY_MOTHERLODE:-${BUILD_PROJECT_SDK_DIR}/motherlode}"
+    export ALLOY_BUILD_DIR="${ALLOY_BUILD_DIR:-${BUILD_PROJECT_SDK_DIR}/_build}"
+
+    # shellcheck disable=SC1090
+    source "${context_file}"
+}
+
+build_project_run_in_sdk_mode() {
+    local project_source="${ARG_PROJECT_SOURCE}"
+    [[ -d "${project_source}" ]] ||
+        fail "PROJECT_SOURCE must be an existing directory in sdk mode: ${project_source}"
+    project_source="$(cd "${project_source}" && pwd -P)"
+
+    export ALLOY_SDK_DIR="${BUILD_PROJECT_SDK_DIR}"
+    export ALLOY_SDK_HOST_DIR="${BUILD_PROJECT_SDK_DIR}/host"
+    export GLB_SDK_HOST_DIR="${ALLOY_SDK_HOST_DIR}"
+    build_project_load_sdk_context
+
+    project_load_plugins "${BUILD_PROJECT_SDK_DIR}"
+
+    local project_type=""
+    if ! project_detect_type "${project_source}" project_type; then
+        fail "Unable to detect project type for ${project_source}"
+    fi
+
+    log_info "Detected project type: ${project_type}"
+
+    if [[ ${#ARG_PROJECT_PROFILES[@]} -gt 1 ]] && ! project_has_capability "${project_type}" "supports_multi_profiles"; then
+        fail "Project type '${project_type}' does not support multiple profiles: ${ARG_PROJECT_PROFILES[*]}"
+    fi
+
+    if [[ "${project_type}" == "erlang" ]]; then
+        [[ -n "${ALLOY_CONFIG_HOST_REBAR3:-}" ]] ||
+            fail "SDK configuration is missing host_rebar3 export (ALLOY_CONFIG_HOST_REBAR3)"
+        export HOST_REBAR3="${ALLOY_CONFIG_HOST_REBAR3}"
+    fi
+    if [[ "${project_type}" == "elixir" ]]; then
+        [[ -n "${ALLOY_CONFIG_HOST_MIX:-}" ]] ||
+            fail "SDK configuration is missing host_mix export (ALLOY_CONFIG_HOST_MIX)"
+        export HOST_MIX="${ALLOY_CONFIG_HOST_MIX}"
+    fi
+    if [[ -n "${ALLOY_CONFIG_TARGET_ERLANG_ROOT:-}" ]]; then
+        export TARGET_ERLANG="${ALLOY_CONFIG_TARGET_ERLANG_ROOT}"
+    fi
+
+    local profile_spec
+    profile_spec="$(IFS=,; printf '%s' "${ARG_PROJECT_PROFILES[*]}")"
+
+    local release_dir=""
+    project_build_type "${project_type}" release_dir "${project_source}" "${profile_spec}" ||
+        fail "Project build failed for profile specification '${profile_spec}'"
+    [[ -n "${release_dir}" ]] || fail "Project plugin '${project_type}' returned an empty release directory"
+    [[ -d "${release_dir}" ]] || fail "Project plugin '${project_type}' returned a non-directory release path: ${release_dir}"
+    print_result "Built ${project_type} release (${profile_spec}): $(build_project_display_path "${release_dir}")"
 }
 
 args_init
@@ -458,4 +536,8 @@ fi
 build_project_resolve_allow_dirty
 build_project_resolve_sdk_dir
 ensure_sdk_relocated "${BUILD_PROJECT_SDK_DIR}"
-build_project_delegate_to_sdk
+if [[ "${ALLOY_MODE}" != "sdk" ]]; then
+    :
+fi
+build_project_print_sdk_notice
+build_project_run_in_sdk_mode

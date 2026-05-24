@@ -1,40 +1,31 @@
-project_erlang_detect() {
+project_detect_erlang() {
     local project_dir="$1"
     [[ -f "$project_dir/rebar.config" ]]
 }
 
-project_erlang_build() {
-    local -n resref="$1"
-    local project_dir="$2"
-    local profile="$3"
-    local target_erlang="${TARGET_ERLANG:-${ALLOY_SDK_DIR:-}/staging/usr/lib/erlang}"
+project_build_erlang() {
+	local -n resref="$1"
+	local project_dir="$2"
+	local profile="$3"
+	local target_erlang="$4"
 
-    local rebar3_cmd="${HOST_REBAR3:-}"
-    [[ -n "${rebar3_cmd}" ]] || fail "HOST_REBAR3 is not set; SDK configuration export host_rebar3 is required"
-    if [[ ! -e "${rebar3_cmd}" ]]; then
-        fail "HOST_REBAR3 path does not exist: ${rebar3_cmd}"
+    local rebar3_cmd="${GLB_SDK_HOST_DIR}/usr/bin/rebar3"
+    if [[ ! -x "$rebar3_cmd" ]]; then
+        error 1 "rebar3 not found in $rebar3_cmd"
     fi
-    if [[ ! -x "${rebar3_cmd}" ]]; then
-        fail "HOST_REBAR3 is not executable: ${rebar3_cmd}"
-    fi
-    [[ -d "${target_erlang}" ]] || fail "target Erlang runtime not found in ${target_erlang}"
 
-    (
-        cd "$project_dir"
-        # First retrieve the dependencies without using the target ERTS
-        env -u ERL_LIBS "$rebar3_cmd" as "$profile" get-deps
-        # Then build the release using the target ERTS
-        "$rebar3_cmd" as "$profile" release --system_libs "$target_erlang" --include-erts "$target_erlang"
-    )
+	(
+		cd "$project_dir"
+		# First retrieve the dependencies without using the target ERTS
+		env -u ERL_LIBS "$rebar3_cmd" as "$profile" get-deps
+		# Then build the release using the target ERTS
+		"$rebar3_cmd" as "$profile" release --system_libs "$target_erlang" --include-erts "$target_erlang"
+	)
 
-    resref="$( cd "$project_dir/_build/${profile}/rel"/* && pwd )"
+	resref="$( cd "$project_dir/_build/${profile}/rel"/* && pwd )"
 }
 
-project_erlang_capabilities() {
-    printf 'supports_multi_profiles=true\n'
-}
-
-project_erlang_metadata() {
+project_metadata_erlang() {
     local -n app_name_ref="$1"
     local -n app_version_ref="$2"
     local -n release_name_ref="$3"

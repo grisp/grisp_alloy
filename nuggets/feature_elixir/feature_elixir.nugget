@@ -12,7 +12,7 @@
         {elixir_global_runtime, <<"n">>}
     ]},
     {exports, [
-        {host_mix, {computed, <<"[[ALLOY_SDK_DIR]]/host/usr/bin/mix">>}},
+        {host_mix, {computed, <<"[[ALLOY_SDK_DIR]]/host/bin/mix">>}},
         {host_elixir_root, {computed, <<"[[ALLOY_SDK_DIR]]/host/usr/lib/elixir">>}},
         {target_elixir_root, {computed, <<"[[ALLOY_SDK_DIR]]/staging/usr/lib/elixir">>}}
     ]},

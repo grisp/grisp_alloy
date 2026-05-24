@@ -8,6 +8,34 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build project` SDK-mode execution to use the canonical
+  project plugin abstraction (`scripts/plugins/project.sh`) with deterministic
+  project-type detection and plugin build dispatch.
+- Updated project profile handling to build once per invocation: multiple
+  `--profile` values are now combined into a single profile specification and
+  passed in one plugin build call.
+- Added project-plugin capability gating via optional
+  `project_<type>_capabilities` output and command-side enforcement of
+  `supports_multi_profiles` (supported for Erlang, rejected for Elixir).
+- Moved deprecated bootscheme plugin implementation from active runtime paths
+  into `legacy/scripts/plugins/bootscheme*`.
+- Kept legacy root `build-project.sh` behavior path by sourcing legacy
+  project-plugin contract/implementations from `legacy/scripts/plugins/project*`
+  while the new architecture path continues under `scripts/plugins/project*`.
+- Updated `alloy build project` SDK metadata reporting to use shared SDK/manifest
+  utility APIs (`scripts/utils/sdk_utils.sh`, `scripts/utils/manifest_utils.sh`)
+  instead of command-local manifest parsing logic.
+- Updated project tool resolution contracts to be SDK-config driven: Erlang and
+  Elixir project plugins now require `HOST_REBAR3`/`HOST_MIX` from SDK context
+  exports and fail fast when configuration is missing or invalid.
+- Updated `alloy build project` SDK context loading to source
+  `scripts/alloy_context.sh` with required context variables pre-seeded for
+  command-mode use.
+- Fixed host tool packaging layout for runtime language features:
+  `feature_erlang` now exports `host/bin/rebar3` and `alloy_rebar3` no longer
+  installs a broken `host/usr/bin/rebar3` compatibility symlink; host Elixir
+  install now stages library contents directly under `host/usr/lib` so `elixir`
+  and `mix` resolve the expected code paths at runtime.
 - Implemented canonical `alloy build project` command parsing in
   `scripts/commands/build-project.sh` with mode-aware SDK resolution:
   SDK mode now always uses the current SDK, repository mode resolves explicit

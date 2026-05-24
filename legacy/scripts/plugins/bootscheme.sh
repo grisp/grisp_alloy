@@ -31,7 +31,7 @@
 
 bootscheme_setup() {
     local name="$1"
-    BOOTSCHEME_FILE="${GLB_SCRIPT_DIR}/plugins/bootscheme/$(echo ${name} | tr '[:upper:]' '[:lower:]').sh"
+    BOOTSCHEME_FILE="${GLB_TOP_DIR}/legacy/scripts/plugins/bootscheme/$(echo ${name} | tr '[:upper:]' '[:lower:]').sh"
     if [[ ! -f "$BOOTSCHEME_FILE" ]]; then
         error 1 "Boot scheme ${name} not found at ${BOOTSCHEME_FILE}"
     fi

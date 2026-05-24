@@ -10,6 +10,8 @@ SDK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "${SDK_UTILS_DIR}/common.sh"
 # shellcheck source=scripts/utils/file_utils.sh
 source "${SDK_UTILS_DIR}/file_utils.sh"
+# shellcheck source=scripts/utils/manifest_utils.sh
+source "${SDK_UTILS_DIR}/manifest_utils.sh"
 
 ALLOY_SDK_RELOCATION_PLACEHOLDER="${ALLOY_SDK_RELOCATION_PLACEHOLDER:-@@ALLOY_SDK_DIR@@}"
 
@@ -360,6 +362,42 @@ sdk_utils_manifest_product_version() {
         version="0.0.0"
     fi
     printf '%s\n' "${version}"
+}
+
+# sdk_utils_info SDK_DIR KEY
+# Query SDK identity metadata from ALLOY_SDK_MANIFEST.
+# Supported keys: manifest_path, product_name, build_time.
+sdk_utils_info() {
+    local sdk_dir="${1:-}"
+    local info_key="${2:-}"
+    [[ -n "${sdk_dir}" ]] || fail "sdk_utils_info requires SDK_DIR"
+    [[ -n "${info_key}" ]] || fail "sdk_utils_info requires KEY"
+
+    local manifest_path="${sdk_dir}/ALLOY_SDK_MANIFEST"
+    [[ -f "${manifest_path}" ]] || fail "Missing SDK manifest: ${manifest_path}"
+
+    local value=""
+    case "${info_key}" in
+        manifest_path)
+            printf '%s\n' "${manifest_path}"
+            return 0
+            ;;
+        product_name)
+            value="$(manifest_utils_get_field "${manifest_path}" product 2>/dev/null || true)"
+            [[ -n "${value}" ]] || value="$(manifest_utils_get_field "${manifest_path}" name 2>/dev/null || true)"
+            ;;
+        build_time)
+            value="$(manifest_utils_get_field "${manifest_path}" build_date 2>/dev/null || true)"
+            [[ -n "${value}" ]] || value="$(manifest_utils_get_field "${manifest_path}" build_timestamp 2>/dev/null || true)"
+            [[ -n "${value}" ]] || value="$(manifest_utils_get_field "${manifest_path}" created_at 2>/dev/null || true)"
+            ;;
+        *)
+            fail "Unsupported sdk_utils_info key: ${info_key}"
+            ;;
+    esac
+
+    [[ -n "${value}" ]] || return 1
+    printf '%s\n' "${value}"
 }
 
 sdk_utils_is_elf_file() {

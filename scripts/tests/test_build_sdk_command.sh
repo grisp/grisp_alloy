@@ -18,6 +18,7 @@ build_sdk_test_make_fixture() {
     cp "$(harness_repo_root)/scripts/utils/console_utils.sh" "${root_dir}/scripts/utils/console_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/vcs_utils.sh" "${root_dir}/scripts/utils/vcs_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/file_utils.sh" "${root_dir}/scripts/utils/file_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/manifest_utils.sh" "${root_dir}/scripts/utils/manifest_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/sdk_utils.sh" "${root_dir}/scripts/utils/sdk_utils.sh"
     cp "$(harness_repo_root)/scripts/argparse.sh" "${root_dir}/scripts/argparse.sh"
     cp "$(harness_repo_root)/alloy" "${root_dir}/alloy"

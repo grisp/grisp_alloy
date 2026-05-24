@@ -34,7 +34,8 @@ endif
 
 define HOST_ALLOY_ELIXIR_INSTALL_CMDS
 	mkdir -p $(HOST_DIR)/usr/lib $(HOST_DIR)/usr/bin
-	cp -a $(@D)/lib $(HOST_DIR)/usr/lib/elixir
+	rm -rf $(HOST_DIR)/usr/lib/elixir
+	cp -a $(@D)/lib/. $(HOST_DIR)/usr/lib/
 	for tool in elixir iex mix mix.bat; do \
 		if [ -f $(@D)/bin/$$tool ]; then \
 			install -m 0755 $(@D)/bin/$$tool $(HOST_DIR)/usr/bin/$$tool; \

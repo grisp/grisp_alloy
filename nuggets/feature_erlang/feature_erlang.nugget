@@ -11,7 +11,7 @@
     {exports, [
         {host_erlang_root, {computed, <<"[[ALLOY_SDK_DIR]]/host/usr/lib/erlang">>}},
         {target_erlang_root, {computed, <<"[[ALLOY_SDK_DIR]]/staging/usr/lib/erlang">>}},
-        {host_rebar3, {computed, <<"[[ALLOY_SDK_DIR]]/host/usr/bin/rebar3">>}},
+        {host_rebar3, {computed, <<"[[ALLOY_SDK_DIR]]/host/bin/rebar3">>}},
         {otp_version, {exec, <<"scripts/exports.sh">>}}
     ]},
     {buildroot, [

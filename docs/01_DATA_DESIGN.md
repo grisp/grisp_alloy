@@ -134,7 +134,7 @@ scripts/
 │   ├── sdk_utils.sh       # SDK packing, unpacking, and validation
 │   ├── env_utils.sh       # Cross-compilation environment setup
 │   ├── otp_utils.sh       # OTP release scrubbing (strip, cleanup) for firmware
-│   ├── manifest_utils.sh  # Bash wrappers around manifest-tool escript
+│   ├── manifest_utils.sh  # Shared manifest field-read helpers (manifest-tool-backed with fallback parser)
 │   ├── firmware_tools.sh  # Bash API for firmware hooks (add_firmware_output, etc.)
 │   ├── firmware_utils.sh  # Orchestrator-internal firmware build utilities
 │   ├── security_tools.sh  # Bash API for security pack interaction (hooks)

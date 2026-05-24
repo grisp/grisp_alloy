@@ -30,6 +30,7 @@ sdk_utils_test_make_sdk_command_fixture() {
     cp "$(harness_repo_root)/scripts/utils/debug_utils.sh" "${sdk_dir}/scripts/utils/debug_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/common.sh" "${sdk_dir}/scripts/utils/common.sh"
     cp "$(harness_repo_root)/scripts/utils/file_utils.sh" "${sdk_dir}/scripts/utils/file_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/manifest_utils.sh" "${sdk_dir}/scripts/utils/manifest_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/sdk_utils.sh" "${sdk_dir}/scripts/utils/sdk_utils.sh"
     cp "${PREPARE_SDK_COMMAND}" "${sdk_dir}/scripts/commands/prepare-sdk.sh"
     chmod +x "${sdk_dir}/scripts/commands/prepare-sdk.sh"
@@ -74,6 +75,23 @@ test_sdk_utils_relocate_sdk_rewrites_stale_sdk_path() {
 
     assert_equals "prefix=${sdk_dir}/host" "$(cat "${sdk_dir}/scripts/tool.env")"
     assert_equals "${sdk_dir}" "$(cat "${sdk_dir}/.alloy_sdk_dir")"
+}
+
+test_sdk_utils_info_reads_product_name_and_build_time() {
+    local temp_dir sdk_dir
+    temp_dir="$(harness_make_temp_dir "sdk-utils-info")"
+    sdk_dir="$(sdk_utils_test_make_sdk_root "${temp_dir}")"
+
+    cat > "${sdk_dir}/ALLOY_SDK_MANIFEST" <<'EOF'
+{sdk_manifest, <<"1.0">>, [
+    {product, smoke_product},
+    {build_date, <<"2026-05-24T19:00:00Z">>}
+]}.
+EOF
+
+    assert_equals "${sdk_dir}/ALLOY_SDK_MANIFEST" "$(sdk_utils_info "${sdk_dir}" manifest_path)"
+    assert_equals "smoke_product" "$(sdk_utils_info "${sdk_dir}" product_name)"
+    assert_equals "2026-05-24T19:00:00Z" "$(sdk_utils_info "${sdk_dir}" build_time)"
 }
 
 test_sdk_utils_sanitize_text_paths_writes_manifest_and_placeholder_state() {

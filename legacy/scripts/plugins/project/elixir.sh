@@ -1,15 +1,13 @@
-project_elixir_detect() {
+project_detect_elixir() {
     local project_dir="$1"
     [[ -f "$project_dir/mix.exs" ]]
 }
 
-project_elixir_build() {
+project_build_elixir() {
     local -n resref="$1"
     local project_dir="$2"
     local profile="$3"
-    local target_erlang="${TARGET_ERLANG:-${ALLOY_SDK_DIR:-}/staging/usr/lib/erlang}"
-    local sdk_host_dir="${ALLOY_SDK_HOST_DIR:-${ALLOY_SDK_DIR:-}/host}"
-    local sdk_host_bin="${sdk_host_dir}/bin"
+    local target_erlang="$4"
     local rel_path
     local target_erts_dir
     local otp_dir
@@ -24,32 +22,24 @@ project_elixir_build() {
         mix_env="prod"
     fi
 
-    local mix_cmd="${HOST_MIX:-}"
-    [[ -n "${mix_cmd}" ]] || fail "HOST_MIX is not set; SDK configuration export host_mix is required"
-    if [[ ! -e "${mix_cmd}" ]]; then
-        fail "HOST_MIX path does not exist: ${mix_cmd}"
+    # Resolve mix command (host SDK only)
+    local mix_cmd="${GLB_SDK_HOST_DIR}/usr/bin/mix"
+    if [[ ! -x "$mix_cmd" ]]; then
+        error 1 "mix not found in $mix_cmd"
     fi
-    if [[ ! -x "${mix_cmd}" ]]; then
-        fail "HOST_MIX is not executable: ${mix_cmd}"
-    fi
-    [[ -d "${target_erlang}" ]] || fail "target Erlang runtime not found in ${target_erlang}"
-    [[ -d "${sdk_host_bin}" ]] || fail "SDK host bin directory not found: ${sdk_host_bin}"
-    [[ -n "${target_erts_dir}" ]] || fail "target ERTS not found under ${target_erlang}"
 
     # Ensure UTF-8 VM and pass target ERTS location for projects that use it
-    if ! (
+    (
         cd "$project_dir"
         # Use host OTP for Mix/Hex (unset ERL_* that point to target libs)
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
             -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-            PATH="${sdk_host_bin}:${PATH}" \
             ELIXIR_ERL_OPTIONS=+fnu \
             MIX_ENV="$mix_env" \
             "$mix_cmd" deps.get --only "$mix_env"
 
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
             -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-            PATH="${sdk_host_bin}:${PATH}" \
             ELIXIR_ERL_OPTIONS=+fnu \
             MIX_ENV="$mix_env" \
             "$mix_cmd" compile
@@ -57,25 +47,16 @@ project_elixir_build() {
         # For release assembly, point include_erts at target ERTS
         env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
             -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-            PATH="${sdk_host_bin}:${PATH}" \
             ELIXIR_ERL_OPTIONS=+fnu \
             ERTS_DIR="$target_erts_dir" \
             ERL_LIB_DIR="$target_erlang" \
             ERL_SYSTEM_LIB_DIR="$target_erlang/lib" \
             MIX_ENV="$mix_env" \
             "$mix_cmd" release --overwrite
-    ); then
-        fail "Elixir build failed for MIX_ENV=${mix_env}"
-    fi
+    )
 
     # Locate release directory
-    local rel_base="${project_dir}/_build/${mix_env}/rel"
-    local -a rel_candidates=()
-    shopt -s nullglob
-    rel_candidates=("${rel_base}"/*)
-    shopt -u nullglob
-    [[ ${#rel_candidates[@]} -gt 0 ]] || fail "No release directory found under ${rel_base}"
-    rel_path="$(cd "${rel_candidates[0]}" && pwd -P)"
+    rel_path="$( cd "$project_dir/_build/${mix_env}/rel"/* && pwd )"
 
     # Replace embedded ERTS in the release with the target ERTS
     if [[ -n "$target_erts_dir" && -d "$target_erts_dir" ]]; then
@@ -109,11 +90,7 @@ project_elixir_build() {
     resref="$rel_path"
 }
 
-project_elixir_capabilities() {
-    printf 'supports_multi_profiles=false\n'
-}
-
-project_elixir_metadata() {
+project_metadata_elixir() {
     local -n app_name_ref="$1"
     local -n app_version_ref="$2"
     local -n release_name_ref="$3"

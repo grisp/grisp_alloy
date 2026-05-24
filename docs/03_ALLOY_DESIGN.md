@@ -1944,17 +1944,17 @@ The host-side artefact path depends on mode:
 3. **Source alloy_context.sh** - Set `ALLOY_MOTHERLODE="${ALLOY_SDK_DIR}/motherlode"`. Source `${ALLOY_SDK_DIR}/scripts/alloy_context.sh` to load `ALLOY_CONFIG_*` and `ALLOY_EXPORT_*` for use by `setup_cross_env` and plugins.
 4. **Validate SDK directory** - Source `scripts/utils/env_utils.sh` and call `validate_sdk_dir "${ALLOY_SDK_DIR}"` to ensure `host/` and `images/` exist. Exit non-zero with a clear error if not.
 5. **Resolve project source** - Target: `${BUILD_DIR}/project/${PROJECT_NAME}/workspace/`. If `PROJECT_SOURCE` is a VCS URL: if a repository already exists there, ensure the remote URL matches; if it does not, remove the existing directory and clone again; if the URL matches, ensure the required ref (commit, tag, or branch) is checked out by resetting (e.g. fetch then checkout or reset). If `PROJECT_SOURCE` is a local directory, rsync from it into the workspace with `--delete` so the workspace mirrors the source exactly (including removal of files that no longer exist in the source).
-6. **Load plugins and detect project type** - Source `scripts/utils/plugin_utils.sh` and `scripts/plugins/project.sh`. The project plugin loader calls `plugin_load project "${ALLOY_SDK_DIR}/scripts/plugins/project"` to source all plugin files from the directory. Then call `project_detect "${PROJECT_DIR}"` which iterates loaded plugins and calls each `project_<type>_detect` function until one succeeds (returns 0). The detected type is recorded for all subsequent dispatch calls. See [§8.8 Project Plugins](#88-project-plugins).
+6. **Load plugins and detect project type** - Source `scripts/plugins/project.sh` and call `project_load_plugins "${ALLOY_SDK_DIR}"`. Then call `project_detect_type "${PROJECT_DIR}" PROJECT_TYPE` which iterates loaded plugins and calls each `project_<type>_detect` function until one succeeds (returns 0). After detection, enforce profile-related capability gates (currently `supports_multi_profiles`). See [§8.8 Project Plugins](#88-project-plugins).
 7. **Set up cross-compilation environment** - Source `scripts/utils/env_utils.sh` and call `setup_cross_env "${ALLOY_SDK_DIR}"`. Preconditions (steps 2–4) have already been satisfied. This sets up the complete cross-compilation environment that all plugins rely on:
    - Cross-compiler toolchain: `CC`, `CXX`, `CFLAGS`, `LDFLAGS`, `STRIP`, and related variables, all pointing to the SDK's embedded cross-compiler.
-   - `PATH`: prepended with `${ALLOY_SDK_DIR}/host/bin` and `${ALLOY_SDK_DIR}/host/usr/bin`, making the SDK's rebar3, escript, mix, and cross-compiler binaries available.
+   - `PATH`: prepended with `${ALLOY_SDK_DIR}/host/bin` and `${ALLOY_SDK_DIR}/host/usr/bin`, making the SDK's host tools and cross-compiler binaries available.
    - Host Erlang/OTP: `HOST_ERLANG` (for running build tools), `HOST_REBAR3` (SDK's rebar3 path), `OTP_VERSION`.
    - Target Erlang/OTP: `TARGET_ERLANG` pointing to `${ALLOY_SDK_DIR}/staging/usr/lib/erlang` (cross-compiled ERTS and OTP applications for the target architecture).
    - NIF compilation: `ERL_CFLAGS`, `ERL_LDFLAGS`, `ERTS_INCLUDE_DIR`, `ERL_EI_INCLUDE_DIR`, `ERL_EI_LIBDIR`, `REBAR_TARGET_ARCH`.
    - pkg-config: `PKG_CONFIG`, `PKG_CONFIG_SYSROOT_DIR`, `PKG_CONFIG_LIBDIR` pointing to the SDK's target sysroot.
    - Build-for-host tools: `CC_FOR_BUILD`, `CXX_FOR_BUILD`, etc. set to native system tools for host-only build steps.
-   After this step, the SDK's embedded rebar3, escript, and mix (if `feature_elixir` is included) are available on `PATH`. See [§8.6.7](#867-envutilssh).
-8. **Create staging and build** - Create the project artefact staging directory `${BUILD_DIR}/project/${PROJECT_NAME}/staging/` with `release/` and `overlay/` subdirectories. Call `project_build "${PROJECT_TYPE}" "${PROJECT_DIR}" "${PROFILE}" "${STAGING_DIR}/release" "${STAGING_DIR}/overlay"` which dispatches to `project_<type>_build` via `plugin_call`. The plugin builds the OTP release using host tools (bundling the **target** Erlang/OTP runtime from the SDK's `staging/usr/lib/erlang/`) and writes the release directly into the given release directory; it may optionally write overlay content (rootfs files, and optionally `ALLOY_FS_PRIORITIES` at the overlay root) into the given overlay directory. The orchestrator does not copy from a plugin-returned path - the plugin is free to write whatever it wants into the two staging directories. See [§8.8.3 erlang.sh](#883-erlangsh) and [§8.8.4 elixir.sh](#884-elixirsh) for type-specific build details.
+   After this step, the SDK's embedded host tools are available on `PATH`. Project plugins consume tool paths from SDK config exports (`HOST_REBAR3`, `HOST_MIX`) rather than ad-hoc path discovery. See [§8.6.7](#867-envutilssh).
+8. **Create staging and build** - Create the project artefact staging directory `${BUILD_DIR}/project/${PROJECT_NAME}/staging/` with `release/` and `overlay/` subdirectories. Build dispatch uses `project_build_type "${PROJECT_TYPE}" ...` to call `project_<type>_build` once per command invocation. When multiple profiles are accepted, they are passed as one combined comma-separated profile specification (for example `prod,debug`). See [§8.8.3 erlang.sh](#883-erlangsh) and [§8.8.4 elixir.sh](#884-elixirsh) for type-specific build details.
 9. **Scrub OTP release** - Source `scripts/utils/otp_utils.sh` and call `scrub_otp_release "${STAGING_DIR}/release"`. This strips debug symbols from ELF binaries and removes build-time-only files so the project artefact is minimal before packaging. The scrub detects whether the directory is an OTP release (e.g. `lib/` and `releases/` present); if not (e.g. non-OTP project type), it returns 0 without modifying. There is exactly one release directory per project build. See [OTP release scrubbing](#otp-release-scrubbing) and [§8.6.8 otp_utils.sh](#868-otputilssh).
 10. **Validate target architecture of release and overlay** - Before packaging, validate that all ELF executables and shared libraries in the staging release directory and in the staging overlay directory are built for the **target** architecture. This detects cross-compilation mistakes early (e.g. host binaries or wrong-architecture NIFs ending up in the release or overlay).
 
@@ -1970,7 +1970,7 @@ The host-side artefact path depends on mode:
    - If it does but has no VCS: record as `{type, path}` with `{checkout, true}` and `{ref, <<"_checkouts/dep_name">>}`.
    - If it does not exist: use the lock file entry as-is (no `checkout` flag).
    - This ensures the manifest always reflects the **actual code used** at build time, with checkout overrides clearly marked for traceability.
-12. **Write manifest** - Write `ALLOY_PROJECT_MANIFEST` at the staging root (`${STAGING_DIR}/`) using `write_project_manifest()` from `manifest_utils.sh` (delegates to `manifest-tool create-project`; produces an Erlang term file with integrity hash). See [Data Design - Project Manifest](01_DATA_DESIGN.md#project-manifest-specification). The staging directory already contains `release/` and `overlay/` as written by the plugin in step 8 and scrubbed in step 9.
+12. **Write manifest** - Write `ALLOY_PROJECT_MANIFEST` at the staging root (`${STAGING_DIR}/`) by invoking `scripts/tools/manifest-tool create-project` (produces an Erlang term file with integrity hash). See [Data Design - Project Manifest](01_DATA_DESIGN.md#project-manifest-specification). The staging directory already contains `release/` and `overlay/` as written by the plugin in step 8 and scrubbed in step 9.
 13. **Create tarball** - Archive `staging/` to `artefacts/projects/project-NAME-VERSION-TARGET-ARCH.tgz`. `TARGET-ARCH` is sourced from the SDK's `target_arch` manifest field (the GNU architecture triplet).
 14. **Cleanup** - If SDK was extracted to temp, remove it.
 
@@ -2038,7 +2038,7 @@ The host-side artefact path depends on mode:
     e. **Command-line overlay priorities** - For each `--overlay` directory, if an `ALLOY_FS_PRIORITIES` file exists at its root, relocate with base `/`.
     f. **Deduplication** - Last occurrence of a path wins (later sources override earlier ones). Final list sorted by weight descending.
     g. Export `ALLOY_FIRMWARE_FS_PRIORITIES` pointing to the consolidated file.
-11. **Generate firmware manifest and add to rootfs overlay** - Build `ALLOY_FIRMWARE_MANIFEST` using `merge_firmware_manifest()` from `manifest_utils.sh` (delegates to `manifest-tool merge`). Write the result to `workspace/ALLOY_FIRMWARE_MANIFEST`. Then **copy the manifest into the root of the rootfs overlay** (`workspace/rootfs_overlay/ALLOY_FIRMWARE_MANIFEST`) so that when the overlay is merged with the base rootfs in the `pre_firmware` phase, the manifest appears at the **root of the firmware rootfs** (`/ALLOY_FIRMWARE_MANIFEST` in the final image).
+11. **Generate firmware manifest and add to rootfs overlay** - Build `ALLOY_FIRMWARE_MANIFEST` by invoking `scripts/tools/manifest-tool merge`. Write the result to `workspace/ALLOY_FIRMWARE_MANIFEST`. Then **copy the manifest into the root of the rootfs overlay** (`workspace/rootfs_overlay/ALLOY_FIRMWARE_MANIFEST`) so that when the overlay is merged with the base rootfs in the `pre_firmware` phase, the manifest appears at the **root of the firmware rootfs** (`/ALLOY_FIRMWARE_MANIFEST` in the final image).
 
     **Invocation:** The merge function has fixed argument roles so the variable number of projects is unambiguous: **1)** SDK manifest path, **2)** project manifests (see below), **3)** output path, **4)** firmware-info key=value pairs (variant, security pack, project roots, params). The tool expands the project-manifests argument internally (e.g. a glob or a list); it does not rely on the shell to expand a glob into multiple positional args, so the output path and firmware-info always start at known positions. The fourth argument is a **flat** list of key=value strings (the three arrays in the example are concatenated by the shell). The manifest-tool tells them apart by **key prefix**, not by position: `firmware_variant`, `security_pack_<key>`, `project_root_<id>`, and `param_<name>:<type>` each route to the right manifest section (see [§8.7.8 manifest-tool merge](#878-scripts-tools)).
 
@@ -2046,7 +2046,7 @@ The host-side artefact path depends on mode:
 
     Example (when step 3 clears `projects/`, a glob is safe and expands only to this run's projects):
     ```bash
-    merge_firmware_manifest \
+    scripts/tools/manifest-tool merge \
         "${ALLOY_SDK_DIR}/ALLOY_SDK_MANIFEST" \
         "${BUILD_DIR}/firmware/projects/*/ALLOY_PROJECT_MANIFEST" \
         "${BUILD_DIR}/firmware/workspace/ALLOY_FIRMWARE_MANIFEST" \
@@ -2199,7 +2199,7 @@ The wrapper is part of the orchestrator (even though Buildroot invokes it). It d
 
 **Purpose:** Define a set of functions available to firmware hooks (`pre_firmware`, `firmware_build`, `post_firmware`) for structured communication with the orchestrator. These functions are defined in `firmware_tools.sh` (see [§8.6.15 firmware_tools.sh](#8615-firmwaretoolssh)), which is sourced by [hook_common.sh](#860-hookcommonsh-hook-entry-point); firmware hooks get them by sourcing the entry point at the top of their script. They are available to firmware hooks because the hook sources [hook_common.sh](#860-hookcommonsh-hook-entry-point), which sources `firmware_tools.sh`; the hook then has these functions in its process. They require `ALLOY_FIRMWARE_WORK_DIR` to be set (firmware build context only).
 
-> **Note:** `alloy_context.sh` contains only data declarations and stateless accessor helpers (`alloy_nugget_dir`, `alloy_config`, etc.). Functions with side effects - like `alloy_firmware_add_output` - are part of the hook API defined in `firmware_tools.sh`.
+> **Note:** `alloy_context.sh` is primarily a data/context export file plus stateless accessor helpers (`alloy_nugget_dir`, `alloy_config`, etc.), but it may include sourcing-time guards for required context variables (for example `ALLOY_MOTHERLODE`). Callers must pre-seed required context variables before sourcing.
 
 #### `alloy_firmware_add_output`
 
@@ -3250,7 +3250,7 @@ The platform supplies SoC-level options (aarch64, ATF platform, host-imx-mkimage
 | Export Key | Value | Purpose |
 |------------|-------|---------|
 | `host_erlang_root` | `{computed, <<"[[ALLOY_BUILD_DIR]]/workspace/host/usr/lib/erlang">>}` | Root of the host Erlang/OTP installation. |
-| `host_rebar3` | `{path, <<"host/usr/bin/rebar3">>}` | Path to rebar3 in the SDK (resolved relative to SDK root after embedding). |
+| `host_rebar3` | `{path, <<"host/bin/rebar3">>}` | Path to rebar3 in the SDK (resolved relative to SDK root after embedding). |
 | `otp_version` | e.g. `<<"26.2">>` | Erlang/OTP version built by Buildroot. |
 
 **Config keys:**
@@ -3269,17 +3269,17 @@ BR2_PACKAGE_ERLANG=y
 The `BR2_PACKAGE_ERLANG=y` line enables the *target* Erlang/OTP cross-compilation. Buildroot installs the target build to `staging/usr/lib/erlang/` (not to the rootfs). This provides the target ERTS and OTP applications needed by project builds.
 
 **Embed (host tools):** All host Erlang/OTP binaries, libraries, and the rebar3 escript:
-- `host/usr/bin/erl`
-- `host/usr/bin/erlc`
-- `host/usr/bin/escript`
-- `host/usr/bin/rebar3`
+- `host/bin/erl`
+- `host/bin/erlc`
+- `host/bin/escript`
+- `host/bin/rebar3`
 - `host/usr/lib/erlang/**` (OTP applications, ERTS runtime, include files)
 
 These are embedded via the standard `{embed, [{host, Pattern}]}` mechanism, which also auto-resolves shared library dependencies.
 
 **Target ERTS (via staging):** The target Erlang/OTP at `staging/usr/lib/erlang/` is included in the SDK as part of the unconditional `staging/` directory copy - it is not selectively embedded. Project build plugins reference it via the `TARGET_ERLANG` environment variable set by `env_utils.sh`.
 
-**Integration with SDK tools:** The SDK escripts (`scripts/tools/artefact-server` and `scripts/tools/manifest-tool`) use `#!/usr/bin/env escript` as their shebang. Since `env_utils.sh` / the orchestrator prepends `host/usr/bin/` to `PATH`, the SDK's embedded `escript` is used. This eliminates the requirement for Erlang to be installed on the host system when using the SDK.
+**Integration with SDK tools:** The SDK escripts (`scripts/tools/artefact-server` and `scripts/tools/manifest-tool`) use `#!/usr/bin/env escript` as their shebang. Since `env_utils.sh` / the orchestrator prepends `host/bin` to `PATH`, the SDK's embedded `escript` is used. This eliminates the requirement for Erlang to be installed on the host system when using the SDK.
 
 **Integration with `env_utils.sh`:** The `setup_cross_env` function reads `ALLOY_CONFIG_HOST_ERLANG_ROOT` and `ALLOY_CONFIG_OTP_VERSION` to set `HOST_ERLANG`, `ERTS_INCLUDE_DIR`, `ERL_EI_INCLUDE_DIR`, and related variables for cross-compiling NIFs. It also sets `TARGET_ERLANG` to `${SDK_DIR}/staging/usr/lib/erlang` for project plugins to use when bundling the target runtime into OTP releases.
 
@@ -3297,7 +3297,7 @@ These are embedded via the standard `{embed, [{host, Pattern}]}` mechanism, whic
 
 | Export Key | Value | Purpose |
 |------------|-------|---------|
-| `host_mix` | `{path, <<"host/usr/bin/mix">>}` | Path to mix in the SDK. |
+| `host_mix` | `{path, <<"host/bin/mix">>}` | Path to mix in the SDK. |
 | `elixir_version` | e.g. `<<"1.16">>` | Elixir version built by Buildroot. |
 
 **Defconfig fragment:** Enables the host Elixir Buildroot package:
@@ -3306,12 +3306,12 @@ BR2_PACKAGE_HOST_ELIXIR=y
 ```
 
 **Embed:** Elixir binaries and libraries on top of Erlang:
-- `host/usr/bin/mix`
-- `host/usr/bin/elixir`
-- `host/usr/bin/iex`
+- `host/bin/mix`
+- `host/bin/elixir`
+- `host/bin/iex`
 - `host/usr/lib/elixir/**` (Elixir standard library)
 
-**Integration with project plugins:** The Elixir project plugin (`scripts/plugins/project/elixir.sh`) uses `ALLOY_CONFIG_HOST_MIX` (or discovers `mix` on `PATH` via the embedded host tools) for building Elixir releases.
+**Integration with project plugins:** The Elixir project plugin (`scripts/plugins/project/elixir.sh`) consumes `ALLOY_CONFIG_HOST_MIX` (exported from SDK context) and fails fast if the configured tool path is missing or not executable.
 
 ### 7.13 feature_squashfs
 
@@ -3563,7 +3563,7 @@ grisp_alloy/
 │   │   ├── sdk_utils.sh
 │   │   ├── env_utils.sh          # Cross-compilation environment setup
 │   │   ├── otp_utils.sh          # OTP release scrubbing (strip, cleanup) for project build
-│   │   ├── manifest_utils.sh     # Bash wrappers around manifest-tool escript
+│   │   ├── manifest_utils.sh     # Shared manifest field-read helpers
 │   │   ├── plugin_utils.sh       # Category-agnostic plugin framework
 │   │   ├── security_tools.sh     # Bash API for security pack interaction (hooks)
 │   │   ├── security_utils.sh     # Security pack resolution, validation, key=value parsing
@@ -3986,7 +3986,7 @@ After config consolidation, this is available as `ALLOY_CONFIG_TARGET_ARCH_TRIPL
 %% feature_erlang.nugget
 {exports, [
     {host_erlang_root, {computed, <<"[[ALLOY_BUILD_DIR]]/workspace/host/usr/lib/erlang">>}},
-    {host_rebar3, {path, <<"host/usr/bin/rebar3">>}},
+    {host_rebar3, {path, <<"host/bin/rebar3">>}},
     {otp_version, <<"26.2">>}
 ]}
 ```
@@ -4021,36 +4021,29 @@ After config consolidation, these are available as `ALLOY_CONFIG_HOST_ERLANG_ROO
 
 #### 8.6.9 manifest_utils.sh
 
-**Purpose:** Bash convenience wrappers around `scripts/tools/manifest-tool` for manifest operations. All Erlang term parsing, generation, and integrity hashing is delegated to the manifest-tool escript - no Erlang term construction in bash.
+**Purpose:** Shared manifest helpers. Current implementation provides field-read helpers; additional convenience wrappers are planned (TBD).
 
 **Key functions:**
 
 | Function | Purpose |
 |----------|---------|
-| `write_project_manifest DEST_PATH` | Create `ALLOY_PROJECT_MANIFEST` via `manifest-tool create-project`. |
-| `read_manifest_field MANIFEST_PATH FIELD` | Read a single field from any manifest via `manifest-tool get`. |
-| `verify_manifest_integrity MANIFEST_PATH` | Quick integrity check via `manifest-tool verify --integrity-only`. |
-| `merge_firmware_manifest SDK_MANIFEST PROJECT_MANIFESTS_GLOB OUTPUT [FIRMWARE_INFO...]` | Merge SDK + projects into firmware manifest via `manifest-tool merge`. Firmware-info includes variant, security pack identity (opaque key=value pairs from `secpack info`), project roots (`project_root_<id>=<path>`), and build parameters. |
+| `manifest_utils_get_field MANIFEST_PATH FIELD` | Read one top-level field. Uses `manifest-tool get` when available and falls back to a minimal parser for bootstrap/fallback scenarios. |
+| `write_project_manifest DEST_PATH` | Create `ALLOY_PROJECT_MANIFEST` from the current project-build context and plugin metadata (TBD). |
+| `read_manifest_field MANIFEST_PATH FIELD` | Convenience wrapper for reading one field from a manifest (TBD). |
+| `verify_manifest_integrity MANIFEST_PATH` | Integrity-only verification helper for a manifest file (TBD). |
+| `merge_firmware_manifest SDK_MANIFEST PROJECT_MANIFESTS OUTPUT [FIRMWARE_INFO...]` | Merge SDK + project manifests plus firmware metadata into `ALLOY_FIRMWARE_MANIFEST` (TBD). |
 
-**`write_project_manifest` details:**
+#### 8.6.10 sdk_utils_info
 
-Collects project metadata from environment variables set by the project plugin (`PROJECT_NAME`, `PROJECT_VERSION`, `APP_NAME`, `APP_VERSION`, `PROJECT_TYPE`, `PROJECT_PROFILE`) and SDK context from `alloy_context.sh` (`ALLOY_PRODUCT`, `ALLOY_PRODUCT_VERSION`, `ALLOY_CONFIG_TARGET_ARCH_TRIPLET`). The `PROJECT_NAME` and `PROJECT_VERSION` are the OTP release name and version; `APP_NAME` and `APP_VERSION` are the main OTP application name and version (see [Data Design - Project Manifest](01_DATA_DESIGN.md#project-manifest-specification)). Captures VCS information from the project source directory (URL, commit, `git describe`, dirty flag). For each dependency, checks for `_checkouts/` overrides (see step 6 of the [project build flow](#56-project-build-flow)): checkout dependencies are flagged with `checkout=true` and their actual VCS state is recorded. Assembles all collected metadata into `--field`, `--repository`, and `--dependency` arguments and invokes `manifest-tool create-project --output DEST_PATH`. The manifest-tool handles Erlang term construction, field validation, and integrity hash generation.
+**Purpose:** SDK-specific metadata query API layered on top of manifest utilities so commands do not hardcode raw manifest field fallback chains.
 
-**`read_manifest_field` details:**
+**Function:**
 
-Thin wrapper: `manifest-tool get --manifest "$1" --field "$2"`. Used by artefact resolution to read `target_arch` from project manifests, and by build scripts to read SDK metadata.
+| Function | Purpose |
+|----------|---------|
+| `sdk_utils_info SDK_DIR KEY` | Return SDK metadata for `KEY`. Supported keys: `manifest_path`, `product_name`, `build_time`. Reads values from `sdk/ALLOY_SDK_MANIFEST` via `manifest_utils_get_field` using documented fallback key chains (`product` then `name`; `build_date` then `build_timestamp` then `created_at`). |
 
-**`verify_manifest_integrity` details:**
-
-Thin wrapper: `manifest-tool verify --manifest "$1" --integrity-only`. Returns exit code 0 if integrity matches, 1 if mismatched. Used before consuming artefacts (e.g. artefact resolution, merge inputs).
-
-**`merge_firmware_manifest` details:**
-
-Assembles the `manifest-tool merge` invocation with `--sdk-manifest`, `--project-manifests`, `--firmware-info`, and `--output` arguments. Security pack identity metadata is passed as `--firmware-info security_pack_<key>=<value>` pairs, where the keys and values are exactly as reported by `secpack info` (opaque - the orchestrator does not interpret them). Build-time parameters from `--param` are passed as `--firmware-info param_<key>:<type>=<value>` pairs (e.g. `param_serial_number:string=SN123`, `param_factory_mode:boolean=true`); the manifest-tool parses the type tag, converts the value accordingly (binary for `string`, integer for `integer`, atom for `boolean`), and collects them into the `{parameters, [...]}` section. The manifest-tool handles input integrity verification, version validation, repository consolidation, and output integrity hash generation.
-
-**Sourced by:** `build-project.sh`, `build-firmware.sh`.
-
-#### 8.6.10 patch_tools.sh
+#### 8.6.11 patch_tools.sh
 
 **Purpose:** Apply patches from a directory to a source tree with deterministic order, optional `series` file, and support for compressed patch files. This is a `*_tools.sh` file — part of the hook developer API. Used by nugget pre_build hooks (e.g. toolchain_ctng) to patch upstream source before building. Sourced by [hook_common.sh](#860-hookcommonsh-hook-entry-point) for hook types that need patch operations (e.g. `pre_build`). **No export**; hooks get this API by sourcing the entry point. Must be self-sufficient in the hook context (no access to _utils.sh). A developer implementing this must provide the behaviour described below so that callers such as the toolchain pre_build hook can rely on it (the current grisp_alloy implementation uses `scripts/apply-patches.sh`; `patch_tools.sh` should offer the same contract as sourced `alloy_*` functions).
 
@@ -4674,7 +4667,7 @@ All commands follow these error handling principles:
 
 #### 8.8.1 Plugin Contract
 
-Every project plugin is a Bash script located in `scripts/plugins/project/` and named `<type>.sh` (e.g. `erlang.sh`, `elixir.sh`). The script defines functions following the naming convention `project_<type>_<action>`. Functions are either **required** (must be defined and succeed) or **optional** (silently skipped if not defined).
+Every project plugin is a Bash script located in `scripts/plugins/project/` and named `<type>.sh` (e.g. `erlang.sh`, `elixir.sh`). The script defines functions following the naming convention `project_<type>_<action>`. Functions are either **required** (must be defined and succeed) or **optional** (silently skipped if not defined, with conservative defaults when applicable).
 
 **Required functions:**
 
@@ -4707,6 +4700,15 @@ runtime=erlang
 otp_version=26.2
 ```
 
+**Optional capabilities output:**
+
+Plugins may implement `project_<type>_capabilities` and print key=value pairs
+to stdout. Current key consumed by `alloy build project`:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `supports_multi_profiles` | `false` | When `true`, `alloy build project` may pass a combined profile specification (comma-separated, e.g. `prod,debug`) in one build invocation. When `false`, passing multiple `--profile` values fails before build dispatch. |
+
 **Cross-compilation environment available to plugins:**
 
 Before any plugin function is called, the orchestrator has already called `setup_cross_env "${SDK_DIR}"` (see [§8.6.7](#867-envutilssh)). Every plugin function inherits the following environment variables:
@@ -4738,11 +4740,12 @@ Plugins do not set up any of these variables themselves. The environment is thei
 
 1. Source `scripts/utils/plugin_utils.sh` for the generic framework.
 2. Define a `project_load_plugins SDK_DIR` function that calls `plugin_load project "${SDK_DIR}/scripts/plugins/project"`. This sources all `*.sh` files from the plugin directory, making all `project_<type>_<action>` functions available.
-3. Define a `project_detect PROJECT_DIR` function that iterates all known project types (discovered during load by scanning for `project_<type>_detect` functions). For each type, call `project_<type>_detect "${PROJECT_DIR}"`. The first type that returns 0 wins. Store the detected type in a module-level variable (e.g. `_PROJECT_TYPE`). If no plugin matches, abort with an error listing the available types and what was checked.
+3. Define a `project_detect_type PROJECT_DIR RESULT_REF` function that iterates all known project types loaded from plugin filenames. For each type, call `project_<type>_detect "${PROJECT_DIR}"`. The first type that returns 0 wins and is written into `RESULT_REF`. If no plugin matches, return non-zero.
 4. Define high-level dispatch functions that delegate to the detected type via the plugin framework:
-   - `project_build PROJECT_DIR PROFILE RELEASE_STAGING_DIR OVERLAY_STAGING_DIR` - Calls `plugin_call project "${_PROJECT_TYPE}" build "${PROJECT_DIR}" "${PROFILE}" "${RELEASE_STAGING_DIR}" "${OVERLAY_STAGING_DIR}"`. The plugin writes the release and optionally the overlay into those directories; nothing is returned on stdout.
-   - `project_info RELEASE_DIR PROJECT_DIR` - Calls `plugin_read project "${_PROJECT_TYPE}" info INFO_ARRAY "${RELEASE_DIR}" "${PROJECT_DIR}"`. Returns the populated associative array to the caller.
-5. The `project_type` function returns the detected type string (e.g. `erlang`, `elixir`) for inclusion in the project manifest.
+   - `project_build_type TYPE RELEASE_REF PROJECT_DIR PROFILE_SPEC` - Calls `project_<TYPE>_build` and returns the release directory path through `RELEASE_REF`.
+   - `project_read_capabilities TYPE ARRAY_NAME` - Reads plugin capabilities with conservative defaults when optional capability keys are omitted.
+   - `project_has_capability TYPE CAPABILITY_NAME` - Boolean helper returning success when a capability is explicitly `true`.
+5. Build command policy can be enforced from capabilities. Current use: multi-profile builds are accepted only when `supports_multi_profiles=true` for the detected plugin type.
 
 **Sourced by:** `build-project.sh` (step 3 of [§5.6 Project Build Flow](#56-project-build-flow)).
 
@@ -4762,7 +4765,7 @@ Build the Erlang OTP release using the SDK's rebar3 and target Erlang/OTP, then 
 
 Implementation guidance:
 
-1. Resolve the rebar3 command from `HOST_REBAR3` (or from `PATH`, since `host/usr/bin` is prepended). Verify the binary exists and is executable.
+1. Resolve the rebar3 command from `HOST_REBAR3` (exported from SDK config). Verify the binary exists and is executable; fail if not.
 2. **Fetch dependencies** - Run `rebar3 as ${PROFILE} get-deps` in the project directory with `ERL_LIBS` **unset**. Unsetting `ERL_LIBS` is critical: this variable is set to `${TARGET_ERLANG}/lib` by `env_utils.sh` for NIF compilation, but during dependency fetching rebar3 should not see the target libraries, only the host Erlang environment. Use `env -u ERL_LIBS` to unset it for this step only.
 3. **Build release** - Run `rebar3 as ${PROFILE} release --system_libs "${TARGET_ERLANG}" --include-erts "${TARGET_ERLANG}"` in the project directory. The `--include-erts` flag tells rebar3 to bundle the ERTS from `TARGET_ERLANG` (the cross-compiled target runtime) instead of the host ERTS. The `--system_libs` flag tells rebar3 to use OTP applications from `TARGET_ERLANG` instead of the host's. This is the mechanism by which the target Erlang/OTP runtime enters the project's OTP release.
 4. **Write release to staging** - Copy or move the built release (`PROJECT_DIR/_build/${PROFILE}/rel/*/`) into `RELEASE_STAGING_DIR`. The plugin may optionally write `ALLOY_FS_PRIORITIES` at the root of `RELEASE_STAGING_DIR`. Optionally write overlay files (e.g. from a project `overlay/` or `config/` tree) into `OVERLAY_STAGING_DIR`, including `ALLOY_FS_PRIORITIES` at the overlay root if desired.
@@ -4799,7 +4802,7 @@ Build the Elixir OTP release using the SDK's mix, replace the host ERTS/OTP with
 Implementation guidance:
 
 1. **Map profile to Mix environment** - If `PROFILE` is empty or `default`, use `prod` as the Mix environment. Otherwise use `PROFILE` as-is.
-2. Resolve the mix command from `PATH` (the SDK's `host/usr/bin/mix` should be available). Verify the binary exists.
+2. Resolve the mix command from `HOST_MIX` (exported from SDK config). Verify the binary exists and is executable; fail if not.
 3. **Fetch dependencies** - Run `mix deps.get --only ${MIX_ENV}` in the project directory. Unset `ERL_LIBS`, `ERL_FLAGS`, `ERL_AFLAGS`, `ERL_ZFLAGS`, and `MIX_TARGET` to prevent target libraries from interfering with dependency resolution. Set `LANG=en_US.UTF-8`, `LC_ALL=en_US.UTF-8`, and `ELIXIR_ERL_OPTIONS=+fnu` for proper Unicode handling.
 4. **Compile** - Run `mix compile` with the same environment cleanup. This compiles the project using host Erlang/OTP (for running the compiler) but produces BEAM files that are architecture-independent.
 5. **Build release** - Run `mix release --overwrite` with `MIX_ENV` set and `ERTS_DIR` pointing to the target ERTS directory (`${TARGET_ERLANG}/erts-*/`), `ERL_LIB_DIR` to `${TARGET_ERLANG}`, and `ERL_SYSTEM_LIB_DIR` to `${TARGET_ERLANG}/lib`. This hints to mix where target libraries are, though the definitive replacement happens in the next step.

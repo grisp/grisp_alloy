@@ -65,6 +65,12 @@ Goals:
 - Repository-local ownership:
   - in a multi-repository checkout, work is tracked per repository, even when
     development starts from one superproject root.
+- Controlled legacy migration:
+  - keep deprecated implementation under one repository-root `legacy/`
+    namespace as migration progresses,
+  - avoid spending task scope on deep refactors of soon-to-be-removed legacy
+    callers when equivalent behavior can be preserved through explicit
+    compatibility wiring to moved `legacy/` dependencies.
 
 ## Expensive Build Rules
 
@@ -232,13 +238,21 @@ For every task, execute these steps in order.
    - Whenever a function/interface is added or modified, its documentation
      MUST be added, updated, and validated in the same change so there is no
      drift between behavior and documentation.
-   - For sourceable shell utilities, every exported/reusable function MUST have
-     a compact interface comment immediately above it describing:
+  - For sourceable shell utilities, every exported/reusable function MUST have
+    a compact interface comment immediately above it describing:
      - purpose,
      - arguments,
      - stdout/return behavior,
      - required environment inputs and side effects,
      - error handling / failure mode.
+  - Apply the legacy relocation rules during migrations:
+    - when a legacy implementation slice has a validated replacement, move the
+      replaced slice under repository-root `legacy/`,
+    - if unreplaced legacy callers still depend on the old contract, rewire
+      those callers to `legacy/` paths instead of broad legacy refactors that
+      do not advance the target architecture,
+    - keep new-architecture paths independent from `legacy/` internals except
+      for explicit thin compatibility wrappers documented in the task context.
 
 8. Handle failures with discipline.
    - Do not modify tests unless the test itself is clearly wrong.

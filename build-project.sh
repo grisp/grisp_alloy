@@ -162,7 +162,7 @@ fi
 install_sdk
 
 # PROJECT MANAGMENT PLUGIN: Loads and sets up project management plugins
-source "${GLB_SCRIPT_DIR}/plugins/project.sh"
+source "${GLB_TOP_DIR}/legacy/scripts/plugins/project.sh"
 project_setup
 
 # PROJECT BUILD PREPARATION

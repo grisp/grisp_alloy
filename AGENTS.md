@@ -92,6 +92,29 @@ Primary goal: preserve deterministic, reproducible, secure SDK, project, and fir
   with the design docs, but validate against the current repository state and
   existing tests before changing behavior.
 
+## Legacy Migration Policy
+
+- Use one repository-root `legacy/` directory as the canonical home for
+  deprecated implementation slices that are intentionally retained during
+  migration.
+- Keep active runtime paths (`alloy`, `scripts/commands/`, `scripts/utils/`,
+  active nuggets) free of new legacy business logic. Active code may provide
+  thin compatibility wrappers only.
+- Migration pattern for replaced legacy internals:
+  1. Keep legacy implementation in place until a new-architecture replacement exists.
+  2. Once replacement is in place and validated, move the replaced legacy code
+     under `legacy/` (preserving relative structure where practical).
+  3. If older legacy callers still need old behavior, update those callers to
+     consume the moved `legacy/` dependency instead of refactoring that caller
+     to new architecture prematurely.
+  4. Do not introduce new dependencies from new-architecture code into
+     `legacy/` internals.
+- Treat `legacy/` as reference/compatibility surface only, with progressive
+  shrinkage as tasks land. Long-term intent is one final removal of `legacy/`
+  when all replacements are complete.
+- When moving code to `legacy/`, document the move in planning/history and, if
+  behavior visible to repository users changes, in `CHANGELOG.md`.
+
 ## Project Layout
 
 - `alloy`: top-level bash entrypoint.

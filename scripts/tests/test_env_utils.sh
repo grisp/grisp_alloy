@@ -92,7 +92,7 @@ EOF
 )"
 
     env_utils_test_make_exec "${host_bin}/pkg-config" 'exit 0'
-    env_utils_test_make_exec "${host_usr_bin}/rebar3" 'exit 0'
+    env_utils_test_make_exec "${host_bin}/rebar3" 'exit 0'
     env_utils_test_make_exec "${host_usr_bin}/mix" 'exit 0'
 
     printf '%s\n' "${sdk_dir}"
@@ -119,7 +119,7 @@ test_env_utils_setup_cross_env_exports_expected_variables() {
 
     export ALLOY_CONFIG_TARGET_ARCH_TRIPLET="arm-buildroot-linux-gnueabihf"
     export ALLOY_CONFIG_HOST_ERLANG_ROOT="${sdk_dir}/host/usr/lib/erlang"
-    export ALLOY_CONFIG_HOST_REBAR3="${sdk_dir}/host/usr/bin/rebar3"
+    export ALLOY_CONFIG_HOST_REBAR3="${sdk_dir}/host/bin/rebar3"
     export ALLOY_CONFIG_OTP_VERSION="26.2"
 
     setup_cross_env "${sdk_dir}"
@@ -128,7 +128,7 @@ test_env_utils_setup_cross_env_exports_expected_variables() {
     assert_equals "arm-buildroot-linux-gnueabihf-" "${CROSSCOMPILE_PREFIX}"
     assert_equals "${sdk_dir}/host/arm-buildroot-linux-gnueabihf/sysroot" "${ALLOY_TARGET_SYSROOT}"
     assert_equals "${sdk_dir}/host/usr/lib/erlang" "${HOST_ERLANG}"
-    assert_equals "${sdk_dir}/host/usr/bin/rebar3" "${HOST_REBAR3}"
+    assert_equals "${sdk_dir}/host/bin/rebar3" "${HOST_REBAR3}"
     assert_equals "${sdk_dir}/staging/usr/lib/erlang" "${TARGET_ERLANG}"
     assert_equals "26.2" "${OTP_VERSION}"
     assert_matches "${sdk_dir}/host/usr/bin:${sdk_dir}/host/bin" "${PATH}"

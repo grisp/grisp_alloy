@@ -17,8 +17,6 @@ endef
 define HOST_ALLOY_REBAR3_INSTALL_CMDS
 	$(INSTALL) -m 0755 -d $(HOST_DIR)/bin
 	$(INSTALL) -m 0755 $(@D)/rebar3 $(HOST_DIR)/bin
-	$(INSTALL) -m 0755 -d $(HOST_DIR)/usr/bin
-	ln -sf ../../bin/rebar3 $(HOST_DIR)/usr/bin/rebar3
 endef
 
 $(eval $(host-generic-package))

@@ -28,6 +28,13 @@ Backlog policy:
 - If feedback reveals a durable workflow/process improvement, record it in the
   owning repository workflow/agent/planning docs instead of relying on
   conversational memory.
+- Legacy migration policy:
+  - progressively move replaced legacy implementation slices under one
+    repository-root `legacy/` tree,
+  - allow thin compatibility wrappers in active paths while migration is in
+    flight,
+  - prefer rewiring unreplaced legacy callers to moved `legacy/` dependencies
+    over deep refactors of legacy code that will be removed later.
 
 Cross-repository development note:
 - Daily development starts from the `grisp_alloy` repository root, even when
@@ -379,7 +386,7 @@ Cross-repository development note:
   - Refinement note (from Task 1.8): Before sourcing SDK context or calling build plugins, invoke `ensure_sdk_relocated` on the selected SDK root so first-use relocation and read-only failure messaging stay centralized in `sdk_utils.sh`.
   - Done when: Project command starts with a validated SDK context and command help/usage is canonicalized.
 
-- [ ] **Task 6.2: Plugin detection and build dispatch**
+- [x] **Task 6.2: Plugin detection and build dispatch**
   - Scope: Detect project type and call plugin build/info hooks.
   - Tests: Unit tests with mock plugin fixtures.
   - Refinement note (from Task 1.9): Rebuild the project loader on top of `plugin_utils.sh` (`plugin_load`, `plugin_has`, `plugin_call`, `plugin_read`) instead of extending the older hard-coded dispatch pattern in `scripts/plugins/project.sh`.
@@ -391,22 +398,26 @@ Cross-repository development note:
   - Tests: Unit/integration tests validating exported toolchain vars.
   - Refinement note (from Task 1.6): Reuse `scripts/utils/env_utils.sh` as the single source for SDK validation, triplet discovery, toolchain exports, and target-architecture probing; keep `scripts/grisp-env.sh` as a compatibility wrapper only until legacy callers are removed.
   - Refinement note (from Task 5.13): Include smoke-SDK assertions for `HOST_REBAR3`, `TARGET_ERLANG`, and optional `host mix` availability, proving environment exports are sourced from SDK-embedded tools rather than host-global installations.
+  - Refinement note (from Task 6.2): Extend real-plugin integration coverage to assert plugins consume `setup_cross_env` exports (`HOST_REBAR3`, `HOST_MIX`, `TARGET_ERLANG`) rather than fallback path inference when running full command flow tests.
   - Done when: Plugin builds consume consistent cross env.
 
 - [ ] **Task 6.4: Release scrubbing and architecture validation**
   - Scope: Strip/reduce release artifacts and verify target architecture.
   - Tests: Integration tests with valid and wrong-arch binaries.
   - Refinement note (from Task 1.6): Run `validate_release_target_arch` after release scrubbing and include both release and overlay staging trees in coverage so wrong-architecture NIFs or helper binaries fail before packaging.
+  - Refinement note (from Task 6.2): Reuse/extend `test_project_plugins.sh` fixtures so real Erlang and Elixir plugin-produced releases participate in scrub+arch-validation coverage instead of mock-only release trees.
   - Done when: Wrong-arch content fails early.
 
 - [ ] **Task 6.5: Project manifest generation**
   - Scope: Build `ALLOY_PROJECT_MANIFEST` via manifest-tool.
   - Tests: Golden manifest tests and integrity verification tests.
+  - Refinement note (from Task 6.2): Extend real plugin integration tests to validate manifest inputs extracted from actual Erlang/Elixir release outputs (release name/version, app name/version) alongside existing command-level mocks.
   - Done when: Project artefact contains valid manifest.
 
 - [ ] **Task 6.6: Project artifact packing**
   - Scope: Final project archive layout and metadata inclusion.
   - Tests: Integration archive-content test.
+  - Refinement note (from Task 6.2): Extend `test_project_plugins.sh` fixture projects into end-to-end `alloy build project` artefact assertions so plugin build coverage and final packaging coverage stay aligned.
   - Done when: Output package layout is spec-compliant.
 
 ## Phase 7: `alloy build firmware` (Main-Context Ownership)
