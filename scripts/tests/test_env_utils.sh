@@ -118,19 +118,11 @@ test_env_utils_setup_cross_env_exports_expected_variables() {
     sdk_dir="$(env_utils_test_make_sdk "${temp_dir}")"
 
     export ALLOY_CONFIG_TARGET_ARCH_TRIPLET="arm-buildroot-linux-gnueabihf"
-    export ALLOY_CONFIG_HOST_ERLANG_ROOT="${sdk_dir}/host/usr/lib/erlang"
-    export ALLOY_CONFIG_HOST_REBAR3="${sdk_dir}/host/bin/rebar3"
-    export ALLOY_CONFIG_OTP_VERSION="26.2"
-
     setup_cross_env "${sdk_dir}"
 
     assert_equals "${sdk_dir}/host/bin/arm-buildroot-linux-gnueabihf-gcc" "${CC}"
     assert_equals "arm-buildroot-linux-gnueabihf-" "${CROSSCOMPILE_PREFIX}"
     assert_equals "${sdk_dir}/host/arm-buildroot-linux-gnueabihf/sysroot" "${ALLOY_TARGET_SYSROOT}"
-    assert_equals "${sdk_dir}/host/usr/lib/erlang" "${HOST_ERLANG}"
-    assert_equals "${sdk_dir}/host/bin/rebar3" "${HOST_REBAR3}"
-    assert_equals "${sdk_dir}/staging/usr/lib/erlang" "${TARGET_ERLANG}"
-    assert_equals "26.2" "${OTP_VERSION}"
     assert_matches "${sdk_dir}/host/usr/bin:${sdk_dir}/host/bin" "${PATH}"
     assert_equals "${sdk_dir}/host/usr/bin/mix" "$(command -v mix)"
 }
@@ -141,14 +133,51 @@ test_env_utils_setup_cross_env_falls_back_to_scanning_host_bin_for_triplet() {
     sdk_dir="$(env_utils_test_make_sdk "${temp_dir}")"
 
     unset ALLOY_CONFIG_TARGET_ARCH_TRIPLET || true
-    unset ALLOY_CONFIG_HOST_ERLANG_ROOT || true
-    unset ALLOY_CONFIG_HOST_REBAR3 || true
-    unset ALLOY_CONFIG_OTP_VERSION || true
-
     setup_cross_env "${sdk_dir}"
 
     assert_equals "arm-buildroot-linux-gnueabihf" "${CROSSCOMPILE_ARCH}"
-    assert_equals "13.2" "${OTP_VERSION}"
+}
+
+test_env_utils_setup_cross_env_falls_back_to_cc_when_cross_cxx_is_missing() {
+    local temp_dir sdk_dir
+    temp_dir="$(harness_make_temp_dir "env-utils")"
+    sdk_dir="$(env_utils_test_make_sdk "${temp_dir}")"
+
+    rm -f "${sdk_dir}/host/bin/arm-buildroot-linux-gnueabihf-g++"
+    setup_cross_env "${sdk_dir}"
+
+    assert_equals "${CC}" "${CXX}"
+}
+
+test_env_utils_setup_erlang_runtime_env_exports_expected_variables() {
+    local temp_dir sdk_dir
+    temp_dir="$(harness_make_temp_dir "env-utils")"
+    sdk_dir="$(env_utils_test_make_sdk "${temp_dir}")"
+
+    export ALLOY_CONFIG_TARGET_ARCH_TRIPLET="arm-buildroot-linux-gnueabihf"
+    export ALLOY_CONFIG_HOST_ERLANG_ROOT="${sdk_dir}/host/usr/lib/erlang"
+    export ALLOY_CONFIG_HOST_REBAR3="${sdk_dir}/host/bin/rebar3"
+    export ALLOY_CONFIG_OTP_VERSION="26.2"
+
+    setup_cross_env "${sdk_dir}"
+    setup_erlang_runtime_env "${sdk_dir}"
+
+    assert_equals "${sdk_dir}/host/usr/lib/erlang" "${HOST_ERLANG}"
+    assert_equals "${sdk_dir}/host/bin/rebar3" "${HOST_REBAR3}"
+    assert_equals "${sdk_dir}/staging/usr/lib/erlang" "${TARGET_ERLANG}"
+    assert_equals "26.2" "${OTP_VERSION}"
+    assert_equals "arm-buildroot-linux-gnueabihf" "${REBAR_TARGET_ARCH}"
+}
+
+test_env_utils_setup_elixir_runtime_env_exports_host_mix() {
+    local temp_dir sdk_dir
+    temp_dir="$(harness_make_temp_dir "env-utils")"
+    sdk_dir="$(env_utils_test_make_sdk "${temp_dir}")"
+
+    setup_cross_env "${sdk_dir}"
+    setup_elixir_runtime_env "${sdk_dir}"
+
+    assert_equals "${sdk_dir}/host/usr/bin/mix" "${HOST_MIX}"
 }
 
 test_env_utils_setup_cross_env_requires_native_build_tools() {

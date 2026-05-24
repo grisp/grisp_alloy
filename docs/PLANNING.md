@@ -393,13 +393,28 @@ Cross-repository development note:
   - Refinement note (from Task 5.13): Validate both `project_erlang_*` and `project_elixir_*` plugin selection paths against SDKs produced from the `smoke_product` nugget chain so dispatch coverage proves both runtimes are reachable from one canonical smoke SDK.
   - Done when: Plugin selection and dispatch are deterministic.
 
-- [ ] **Task 6.3: Cross-compilation environment setup**
+- [x] **Task 6.3: Cross-compilation environment setup**
   - Scope: Use SDK host/staging toolchains and environment exports.
   - Tests: Unit/integration tests validating exported toolchain vars.
   - Refinement note (from Task 1.6): Reuse `scripts/utils/env_utils.sh` as the single source for SDK validation, triplet discovery, toolchain exports, and target-architecture probing; keep `scripts/grisp-env.sh` as a compatibility wrapper only until legacy callers are removed.
   - Refinement note (from Task 5.13): Include smoke-SDK assertions for `HOST_REBAR3`, `TARGET_ERLANG`, and optional `host mix` availability, proving environment exports are sourced from SDK-embedded tools rather than host-global installations.
   - Refinement note (from Task 6.2): Extend real-plugin integration coverage to assert plugins consume `setup_cross_env` exports (`HOST_REBAR3`, `HOST_MIX`, `TARGET_ERLANG`) rather than fallback path inference when running full command flow tests.
   - Done when: Plugin builds consume consistent cross env.
+
+- [ ] **Task 6.3a: Project source workspace resolution and staged build roots**
+  - Scope: Implement Project Build Flow step 5 and step 8 in the command layer so builds execute from `${ALLOY_BUILD_DIR}/project/<project-id-or-name>/workspace/` instead of mutating the user source tree.
+  - Scope: Support `PROJECT_SOURCE` as both local directory and VCS reference (`git+URL[#REF]`), with deterministic workspace refresh:
+    - local directory: rsync mirror into workspace with `--delete`,
+    - VCS source: clone/fetch/checkout/reset via `vcs_utils.sh` with explicit dirty-policy propagation from `--allow-dirty` / `ALLOY_ALLOW_DIRTY`.
+  - Scope: Create and manage per-build staging root `${ALLOY_BUILD_DIR}/project/<...>/staging/` with `release/` and `overlay/` subdirectories, and pass staging destinations into plugin build dispatch so plugin outputs are always produced under staging rather than implicit in-tree paths.
+  - Scope: Preserve deterministic cleanup semantics for repeated builds (workspace and staging refresh without stale carry-over), while keeping current SDK delegation model intact.
+  - Tests: Command/integration tests covering:
+    - local source mirroring into workspace with deletion of removed source files,
+    - VCS source clone + ref checkout + remote URL mismatch reclone behavior,
+    - plugin build execution against workspace copy (source tree stays untouched except expected VCS reads),
+    - staged output roots (`staging/release`, `staging/overlay`) created/populated deterministically.
+  - Refinement note: This task must land before Task 6.4/6.5/6.6 so scrub, arch validation, manifest generation, and artefact packing operate on the design-defined staging structure.
+  - Done when: `alloy build project` no longer builds in the user source directory, and the workspace/staging directory contract from `docs/03_ALLOY_DESIGN.md` §5.6 steps 5+8 is test-covered and stable.
 
 - [ ] **Task 6.4: Release scrubbing and architecture validation**
   - Scope: Strip/reduce release artifacts and verify target architecture.

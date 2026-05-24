@@ -317,8 +317,8 @@ validate_sdk_dir() {
 }
 
 # setup_cross_env SDK_DIR
-# Export the cross-compilation, pkg-config, and Erlang build environment derived from SDK_DIR.
-# Env/side effects: expects SDK_DIR to be a validated, relocated SDK and may read ALLOY_CONFIG_* exports from a sourced alloy_context.sh; updates PATH and exports CC/CXX/.../HOST_ERLANG/TARGET_ERLANG plus related build variables.
+# Export the generic cross-compilation and pkg-config environment derived from SDK_DIR.
+# Env/side effects: expects SDK_DIR to be a validated, relocated SDK and may read generic ALLOY_CONFIG_* exports from a sourced alloy_context.sh; updates PATH and exports CC/CXX/... and sysroot-related variables.
 # Errors: returns 2 for missing arguments or missing required host commands, 1 for invalid SDK contents/tool paths, and stops at the first failed dependency or layout check.
 setup_cross_env() {
     local sdk_dir="${1:-}"
@@ -341,7 +341,6 @@ setup_cross_env() {
     local tool_spec
     for tool_spec in \
         "CC:gcc" \
-        "CXX:g++" \
         "LD:ld" \
         "AR:ar" \
         "AS:as" \
@@ -357,6 +356,16 @@ setup_cross_env() {
         env_utils_require_executable "${tool_path}" "${tool_var}" || return $?
         export "${tool_var}=${tool_path}"
     done
+    local cxx_tool_path="${tool_prefix}g++"
+    if [[ -x "${cxx_tool_path}" ]]; then
+        export CXX="${cxx_tool_path}"
+    else
+        # Some SDK/toolchain variants intentionally ship only a C compiler.
+        # Keep the generic cross env usable and let language-specific flows
+        # enforce stricter C++ requirements when they actually need them.
+        export CXX="${CC}"
+        log_debug "Cross C++ compiler not found at ${cxx_tool_path}; falling back to CC (${CC})"
+    fi
 
     export CROSSCOMPILE_PREFIX="${target_triplet}-"
     export CROSSCOMPILE="${host_bin}/${target_triplet}"
@@ -381,7 +390,46 @@ setup_cross_env() {
     export PKG_CONFIG_SYSROOT_DIR="${sysroot_dir}"
     export PKG_CONFIG_LIBDIR="${sysroot_dir}/usr/lib/pkgconfig"
 
-    local target_erlang_dir="${sdk_dir}/staging/usr/lib/erlang"
+    local native_cxx
+    native_cxx="$(command -v c++ || command -v g++ || true)"
+    if [[ -z "${native_cxx}" ]]; then
+        log_error "Required command not found: c++"
+        return 127
+    fi
+
+    CC_FOR_BUILD="$(command -v cc)"
+    export CC_FOR_BUILD
+    export CXX_FOR_BUILD="${native_cxx}"
+    LD_FOR_BUILD="$(command -v ld)"
+    export LD_FOR_BUILD
+    AR_FOR_BUILD="$(command -v ar)"
+    export AR_FOR_BUILD
+    AS_FOR_BUILD="$(command -v as)"
+    export AS_FOR_BUILD
+    GCC_FOR_BUILD="$(command -v gcc || command -v cc)"
+    export GCC_FOR_BUILD
+    export CPPFLAGS_FOR_BUILD=""
+    export CFLAGS_FOR_BUILD=""
+    export CXXFLAGS_FOR_BUILD=""
+    export LDFLAGS_FOR_BUILD=""
+
+    return 0
+}
+
+# setup_erlang_runtime_env SDK_DIR
+# Export Erlang/OTP-targeted runtime variables from SDK_DIR and ALLOY_CONFIG_* values.
+# Env/side effects: expects setup_cross_env to have run; exports TARGET_ERLANG/HOST_ERLANG/HOST_REBAR3 and Erlang include/link helper variables.
+# Errors: returns 2 for missing arguments and 1 for missing runtime trees or executables.
+setup_erlang_runtime_env() {
+    local sdk_dir="${1:-}"
+    if [[ -z "${sdk_dir}" ]]; then
+        log_error "setup_erlang_runtime_env requires SDK_DIR"
+        return 2
+    fi
+
+    local host_bin="${sdk_dir}/host/bin"
+    local host_usr_bin="${sdk_dir}/host/usr/bin"
+    local target_erlang_dir="${ALLOY_CONFIG_TARGET_ERLANG_ROOT:-${sdk_dir}/staging/usr/lib/erlang}"
     if [[ ! -d "${target_erlang_dir}" ]]; then
         log_error "Target Erlang runtime not found: ${target_erlang_dir}"
         return 1
@@ -390,7 +438,7 @@ setup_cross_env() {
     export ERL_LIBS="${TARGET_ERLANG}/lib"
     export REBAR_PLT_DIR="${TARGET_ERLANG}"
 
-    local host_erlang_dir="${ALLOY_CONFIG_HOST_ERLANG_ROOT:-${host_dir}/usr/lib/erlang}"
+    local host_erlang_dir="${ALLOY_CONFIG_HOST_ERLANG_ROOT:-${sdk_dir}/host/usr/lib/erlang}"
     if [[ ! -d "${host_erlang_dir}" ]]; then
         log_error "Host Erlang runtime not found: ${host_erlang_dir}"
         return 1
@@ -406,7 +454,7 @@ setup_cross_env() {
     env_utils_require_executable "${host_rebar3_path}" "HOST_REBAR3" || return $?
     export HOST_REBAR3="${host_rebar3_path}"
 
-    export REBAR_TARGET_ARCH="${target_triplet}"
+    export REBAR_TARGET_ARCH="${CROSSCOMPILE_ARCH:-}"
     export OTP_VERSION="${ALLOY_CONFIG_OTP_VERSION:-}"
     if [[ -z "${OTP_VERSION}" ]]; then
         OTP_VERSION="$(env_utils_detect_otp_version "${TARGET_ERLANG}" || true)"
@@ -448,28 +496,30 @@ setup_cross_env() {
     export ERL_CFLAGS="-I${ERTS_INCLUDE_DIR} -I${ERL_EI_INCLUDE_DIR}"
     export ERL_LDFLAGS="-L${erts_dir}/lib -L${ERL_EI_LIBDIR} -lerts -lei"
 
-    local native_cxx
-    native_cxx="$(command -v c++ || command -v g++ || true)"
-    if [[ -z "${native_cxx}" ]]; then
-        log_error "Required command not found: c++"
-        return 127
+    return 0
+}
+
+# setup_elixir_runtime_env SDK_DIR
+# Export Elixir host tooling variables from SDK_DIR and ALLOY_CONFIG_* values.
+# Env/side effects: expects setup_cross_env to have run; exports HOST_MIX.
+# Errors: returns 2 for missing arguments and 1 for missing mix executable.
+setup_elixir_runtime_env() {
+    local sdk_dir="${1:-}"
+    if [[ -z "${sdk_dir}" ]]; then
+        log_error "setup_elixir_runtime_env requires SDK_DIR"
+        return 2
     fi
 
-    CC_FOR_BUILD="$(command -v cc)"
-    export CC_FOR_BUILD
-    export CXX_FOR_BUILD="${native_cxx}"
-    LD_FOR_BUILD="$(command -v ld)"
-    export LD_FOR_BUILD
-    AR_FOR_BUILD="$(command -v ar)"
-    export AR_FOR_BUILD
-    AS_FOR_BUILD="$(command -v as)"
-    export AS_FOR_BUILD
-    GCC_FOR_BUILD="$(command -v gcc || command -v cc)"
-    export GCC_FOR_BUILD
-    export CPPFLAGS_FOR_BUILD=""
-    export CFLAGS_FOR_BUILD=""
-    export CXXFLAGS_FOR_BUILD=""
-    export LDFLAGS_FOR_BUILD=""
+    local host_bin="${sdk_dir}/host/bin"
+    local host_usr_bin="${sdk_dir}/host/usr/bin"
+    local host_mix_path="${ALLOY_CONFIG_HOST_MIX:-}"
+    if [[ -z "${host_mix_path}" ]]; then
+        host_mix_path="$(env_utils_find_first_executable \
+            "${host_usr_bin}/mix" \
+            "${host_bin}/mix")" || return $?
+    fi
+    env_utils_require_executable "${host_mix_path}" "HOST_MIX" || return $?
+    export HOST_MIX="${host_mix_path}"
 
     return 0
 }

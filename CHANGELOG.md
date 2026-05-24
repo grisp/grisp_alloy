@@ -8,6 +8,15 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- Updated `alloy build project` environment setup to use layered SDK context
+  helpers: `setup_cross_env` now provides generic cross-compilation baseline
+  exports, while Erlang/Elixir runtime exports are configured by
+  `setup_erlang_runtime_env` and `setup_elixir_runtime_env`.
+- Updated generic cross-environment tool detection to tolerate SDKs that ship
+  no cross `g++`: `CXX` now falls back to `CC` instead of failing the command.
+- Updated legacy compatibility wrapper `scripts/grisp-env.sh` to keep Erlang
+  runtime exports by invoking `setup_erlang_runtime_env` after generic
+  cross-environment setup.
 - Updated `alloy build project` SDK-mode execution to use the canonical
   project plugin abstraction (`scripts/plugins/project.sh`) with deterministic
   project-type detection and plugin build dispatch.

@@ -1945,15 +1945,15 @@ The host-side artefact path depends on mode:
 4. **Validate SDK directory** - Source `scripts/utils/env_utils.sh` and call `validate_sdk_dir "${ALLOY_SDK_DIR}"` to ensure `host/` and `images/` exist. Exit non-zero with a clear error if not.
 5. **Resolve project source** - Target: `${BUILD_DIR}/project/${PROJECT_NAME}/workspace/`. If `PROJECT_SOURCE` is a VCS URL: if a repository already exists there, ensure the remote URL matches; if it does not, remove the existing directory and clone again; if the URL matches, ensure the required ref (commit, tag, or branch) is checked out by resetting (e.g. fetch then checkout or reset). If `PROJECT_SOURCE` is a local directory, rsync from it into the workspace with `--delete` so the workspace mirrors the source exactly (including removal of files that no longer exist in the source).
 6. **Load plugins and detect project type** - Source `scripts/plugins/project.sh` and call `project_load_plugins "${ALLOY_SDK_DIR}"`. Then call `project_detect_type "${PROJECT_DIR}" PROJECT_TYPE` which iterates loaded plugins and calls each `project_<type>_detect` function until one succeeds (returns 0). After detection, enforce profile-related capability gates (currently `supports_multi_profiles`). See [§8.8 Project Plugins](#88-project-plugins).
-7. **Set up cross-compilation environment** - Source `scripts/utils/env_utils.sh` and call `setup_cross_env "${ALLOY_SDK_DIR}"`. Preconditions (steps 2–4) have already been satisfied. This sets up the complete cross-compilation environment that all plugins rely on:
-   - Cross-compiler toolchain: `CC`, `CXX`, `CFLAGS`, `LDFLAGS`, `STRIP`, and related variables, all pointing to the SDK's embedded cross-compiler.
-   - `PATH`: prepended with `${ALLOY_SDK_DIR}/host/bin` and `${ALLOY_SDK_DIR}/host/usr/bin`, making the SDK's host tools and cross-compiler binaries available.
-   - Host Erlang/OTP: `HOST_ERLANG` (for running build tools), `HOST_REBAR3` (SDK's rebar3 path), `OTP_VERSION`.
-   - Target Erlang/OTP: `TARGET_ERLANG` pointing to `${ALLOY_SDK_DIR}/staging/usr/lib/erlang` (cross-compiled ERTS and OTP applications for the target architecture).
-   - NIF compilation: `ERL_CFLAGS`, `ERL_LDFLAGS`, `ERTS_INCLUDE_DIR`, `ERL_EI_INCLUDE_DIR`, `ERL_EI_LIBDIR`, `REBAR_TARGET_ARCH`.
+7. **Set up cross-compilation environment** - Source `scripts/utils/env_utils.sh` and call `setup_cross_env "${ALLOY_SDK_DIR}"`. Preconditions (steps 2–4) have already been satisfied. This sets up the generic cross-compilation baseline used by all project types:
+   - Cross-compiler toolchain: `CC`, `CXX`, `CFLAGS`, `LDFLAGS`, `STRIP`, and related variables, all pointing to the SDK's embedded cross-compiler. If a cross `g++` is not shipped, `CXX` falls back to `CC` so C-only flows remain usable.
+   - `PATH`: prepended with `${ALLOY_SDK_DIR}/host/bin` and `${ALLOY_SDK_DIR}/host/usr/bin`, making SDK host tools and cross-compiler binaries available.
    - pkg-config: `PKG_CONFIG`, `PKG_CONFIG_SYSROOT_DIR`, `PKG_CONFIG_LIBDIR` pointing to the SDK's target sysroot.
    - Build-for-host tools: `CC_FOR_BUILD`, `CXX_FOR_BUILD`, etc. set to native system tools for host-only build steps.
-   After this step, the SDK's embedded host tools are available on `PATH`. Project plugins consume tool paths from SDK config exports (`HOST_REBAR3`, `HOST_MIX`) rather than ad-hoc path discovery. See [§8.6.7](#867-envutilssh).
+   Runtime-specific setup is applied after project-type detection:
+   - `setup_erlang_runtime_env "${ALLOY_SDK_DIR}"` for Erlang-targeted flows.
+   - `setup_erlang_runtime_env` + `setup_elixir_runtime_env "${ALLOY_SDK_DIR}"` for Elixir-targeted flows.
+   Project plugins consume runtime tool paths from SDK context exports (`ALLOY_CONFIG_HOST_REBAR3`, `ALLOY_CONFIG_HOST_MIX`) through these helpers rather than ad-hoc path discovery. See [§8.6.7](#867-envutilssh).
 8. **Create staging and build** - Create the project artefact staging directory `${BUILD_DIR}/project/${PROJECT_NAME}/staging/` with `release/` and `overlay/` subdirectories. Build dispatch uses `project_build_type "${PROJECT_TYPE}" ...` to call `project_<type>_build` once per command invocation. When multiple profiles are accepted, they are passed as one combined comma-separated profile specification (for example `prod,debug`). See [§8.8.3 erlang.sh](#883-erlangsh) and [§8.8.4 elixir.sh](#884-elixirsh) for type-specific build details.
 9. **Scrub OTP release** - Source `scripts/utils/otp_utils.sh` and call `scrub_otp_release "${STAGING_DIR}/release"`. This strips debug symbols from ELF binaries and removes build-time-only files so the project artefact is minimal before packaging. The scrub detects whether the directory is an OTP release (e.g. `lib/` and `releases/` present); if not (e.g. non-OTP project type), it returns 0 without modifying. There is exactly one release directory per project build. See [OTP release scrubbing](#otp-release-scrubbing) and [§8.6.8 otp_utils.sh](#868-otputilssh).
 10. **Validate target architecture of release and overlay** - Before packaging, validate that all ELF executables and shared libraries in the staging release directory and in the staging overlay directory are built for the **target** architecture. This detects cross-compilation mistakes early (e.g. host binaries or wrong-architecture NIFs ending up in the release or overlay).
@@ -3937,7 +3937,9 @@ The flow is:
 
 | Function | Purpose |
 |----------|---------|
-| `setup_cross_env SDK_DIR` | Set up the complete cross-compilation environment using SDK host tools. **Preconditions:** Caller must have already validated the SDK directory, ensured the SDK is relocated, and sourced `alloy_context.sh` (see [§5.6 Project Build Flow](#56-project-build-flow) and [§5.7 Firmware Build Flow](#57-firmware-build-flow)). |
+| `setup_cross_env SDK_DIR` | Set up the generic cross-compilation baseline (toolchain/sysroot/pkg-config/build-for-host) using SDK host tools. **Preconditions:** Caller must have already validated the SDK directory, ensured the SDK is relocated, and sourced `alloy_context.sh` (see [§5.6 Project Build Flow](#56-project-build-flow) and [§5.7 Firmware Build Flow](#57-firmware-build-flow)). |
+| `setup_erlang_runtime_env SDK_DIR` | Set up Erlang runtime/tooling exports (`TARGET_ERLANG`, `HOST_ERLANG`, `HOST_REBAR3`, OTP/NIF helper vars) on top of the generic baseline. |
+| `setup_elixir_runtime_env SDK_DIR` | Set up Elixir runtime/tooling exports (`HOST_MIX`) on top of the generic baseline. |
 | `validate_sdk_dir SDK_DIR` | Validate that SDK_DIR contains the expected structure (`host/`, `images/`). Used by the orchestrator before calling `setup_cross_env`. |
 | `validate_release_target_arch RELEASE_DIR [OVERLAY_DIR]` | Validate that all ELF executables and shared libraries under RELEASE_DIR (and optionally OVERLAY_DIR) are for the target architecture. Follows the algorithm in [§5.6 Project Build Flow](#56-project-build-flow) step 6. Uses the cross-compiler and `readelf` already set up by `setup_cross_env`. Exits 0 if all ELF files match the target; non-zero with a clear error (file path, expected vs actual Machine) on mismatch. May be implemented in this file or in a dedicated script; see step 6 for the full specification. |
 
@@ -3957,15 +3959,23 @@ The function **assumes** the caller (orchestrator) has already: (1) validated th
    - `LDFLAGS` - `--sysroot=SDK_DIR/host/<TRIPLET>/sysroot`.
    - `PKG_CONFIG_SYSROOT_DIR` - `SDK_DIR/host/<TRIPLET>/sysroot`.
    - `PKG_CONFIG_LIBDIR` - `SDK_DIR/host/<TRIPLET>/sysroot/usr/lib/pkgconfig`.
-5. **Set Erlang SDK variables** - Uses `feature_erlang` nugget exports:
+5. **Set generic build-for-host variables** - Export native host compiler tool variables (`CC_FOR_BUILD`, `CXX_FOR_BUILD`, etc.) for host-only build steps.
+
+Runtime-specific setup is handled by dedicated helpers:
+
+6. **Set Erlang SDK variables (`setup_erlang_runtime_env`)** - Uses `feature_erlang` nugget exports:
    - `HOST_ERLANG` - Path to host Erlang/OTP in SDK (`ALLOY_CONFIG_HOST_ERLANG_ROOT`; exported by `feature_erlang`).
    - `HOST_REBAR3` - Path to the SDK's rebar3 (`ALLOY_CONFIG_HOST_REBAR3`; exported by `feature_erlang`).
-   - `TARGET_ERLANG` - Path to target Erlang/OTP in SDK (`${SDK_DIR}/staging/usr/lib/erlang`). This is the cross-compiled target ERTS and OTP applications that project plugins bundle into OTP releases via `--include-erts` / `--system_libs`.
+   - `TARGET_ERLANG` - Path to target Erlang/OTP in SDK (`ALLOY_CONFIG_TARGET_ERLANG_ROOT` when exported, else `${SDK_DIR}/staging/usr/lib/erlang`). This is the cross-compiled target ERTS and OTP applications that project plugins bundle into OTP releases via `--include-erts` / `--system_libs`.
    - `ERL_LIBS` - Set to `${TARGET_ERLANG}/lib` (target OTP applications). Note: project plugins that run host tools (rebar3, mix) for dependency fetching must temporarily unset this variable to avoid confusing the host Erlang with target libraries - see [§8.8.3 erlang.sh](#883-erlangsh) and [§8.8.4 elixir.sh](#884-elixirsh).
    - `REBAR_PLT_DIR` - Set to `${TARGET_ERLANG}` (PLT cache directory for dialyzer).
    - `ERTS_INCLUDE_DIR`, `ERL_EI_INCLUDE_DIR`, `ERL_EI_LIBDIR` - Derived from `TARGET_ERLANG` path structure (discovered by scanning `staging/usr/lib/erlang/erts-*` and `staging/usr/lib/erlang/lib/erl_interface-*`).
    - `ERL_CFLAGS`, `ERL_LDFLAGS` - Combined cross-compilation and Erlang include/lib flags for NIF compilation against the target ERTS.
-   - `REBAR_TARGET_ARCH` - Set to the cross-compiler prefix for rebar3 cross-compilation.
+   - `REBAR_TARGET_ARCH` - Set to the cross target architecture for rebar3 cross-compilation.
+   - `OTP_VERSION` - Taken from `ALLOY_CONFIG_OTP_VERSION` when available, otherwise derived from `TARGET_ERLANG`.
+
+7. **Set Elixir SDK variables (`setup_elixir_runtime_env`)** - Uses `feature_elixir` nugget exports:
+   - `HOST_MIX` - Path to SDK `mix` executable (`ALLOY_CONFIG_HOST_MIX` when exported, otherwise discovered from SDK host bin paths).
    - `OTP_VERSION` - Erlang/OTP version (`ALLOY_CONFIG_OTP_VERSION`; exported by `feature_erlang`).
 6. **Set build-for-host variables:**
    - `CC_FOR_BUILD`, `CXX_FOR_BUILD`, `LD_FOR_BUILD`, `AR_FOR_BUILD` - Set to native system tools (so host-only build steps use the host compiler, not the cross-compiler).

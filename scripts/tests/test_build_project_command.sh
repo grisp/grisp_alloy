@@ -9,8 +9,46 @@ BUILD_PROJECT_COMMAND="$(harness_repo_root)/scripts/commands/build-project.sh"
 build_project_test_write_fake_sdk() {
     local sdk_root="$1"
     local marker="$2"
+    local triplet="${3:-arm-buildroot-linux-gnueabihf}"
 
-    mkdir -p "${sdk_root}/scripts" "${sdk_root}/host/bin" "${sdk_root}/host/usr/bin" "${sdk_root}/staging/usr/lib/erlang"
+    mkdir -p \
+        "${sdk_root}/scripts" \
+        "${sdk_root}/host/bin" \
+        "${sdk_root}/host/usr/bin" \
+        "${sdk_root}/host/usr/lib/erlang" \
+        "${sdk_root}/host/${triplet}/sysroot/usr/include" \
+        "${sdk_root}/host/${triplet}/sysroot/usr/lib/pkgconfig" \
+        "${sdk_root}/staging/usr/lib/erlang/erts-13.2/include" \
+        "${sdk_root}/staging/usr/lib/erlang/erts-13.2/lib" \
+        "${sdk_root}/staging/usr/lib/erlang/lib/erl_interface-5.4/include" \
+        "${sdk_root}/staging/usr/lib/erlang/lib/erl_interface-5.4/lib" \
+        "${sdk_root}/images"
+
+    local tool_name
+    for tool_name in gcc g++ ld ar as nm strip objcopy objdump ranlib readelf; do
+        cat > "${sdk_root}/host/bin/${triplet}-${tool_name}" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+        chmod +x "${sdk_root}/host/bin/${triplet}-${tool_name}"
+    done
+
+    cat > "${sdk_root}/host/bin/pkg-config" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "${sdk_root}/host/bin/pkg-config"
+    cat > "${sdk_root}/host/bin/rebar3" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "${sdk_root}/host/bin/rebar3"
+    cat > "${sdk_root}/host/usr/bin/mix" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "${sdk_root}/host/usr/bin/mix"
+
     cat > "${sdk_root}/alloy" <<FAKE
 #!/usr/bin/env bash
 set -euo pipefail
@@ -30,11 +68,12 @@ FAKE
 EOF
     : > "${sdk_root}/.alloy_relocation_manifest"
     printf '%s\n' '@@ALLOY_SDK_DIR@@' > "${sdk_root}/.alloy_sdk_dir"
-    cat > "${sdk_root}/scripts/alloy_context.sh" <<'EOF'
+    cat > "${sdk_root}/scripts/alloy_context.sh" <<EOF
 #!/usr/bin/env bash
 export ALLOY_CONFIG_HOST_REBAR3="${ALLOY_SDK_DIR}/host/bin/rebar3"
 export ALLOY_CONFIG_HOST_MIX="${ALLOY_SDK_DIR}/host/bin/mix"
 export ALLOY_CONFIG_TARGET_ERLANG_ROOT="${ALLOY_SDK_DIR}/staging/usr/lib/erlang"
+export ALLOY_CONFIG_TARGET_ARCH_TRIPLET="${triplet}"
 EOF
 }
 
@@ -56,7 +95,8 @@ project_mock_build() {
 
     local output_release_path="${project_dir}/_build/${profile}/rel/mock_release"
     mkdir -p "${output_release_path}/lib"
-    printf 'profile=%s\ntarget_erlang=%s\n' "${profile}" "${target_erlang}" > "${output_release_path}/build-info.txt"
+    printf 'profile=%s\ntarget_erlang=%s\ncc=%s\n' \
+        "${profile}" "${target_erlang}" "${CC:-}" > "${output_release_path}/build-info.txt"
     resref="${output_release_path}"
 }
 
@@ -102,6 +142,7 @@ build_project_test_make_command_fixture() {
     cp "$(harness_repo_root)/scripts/utils/file_utils.sh" "${root_dir}/scripts/utils/file_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/manifest_utils.sh" "${root_dir}/scripts/utils/manifest_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/sdk_utils.sh" "${root_dir}/scripts/utils/sdk_utils.sh"
+    cp "$(harness_repo_root)/scripts/utils/env_utils.sh" "${root_dir}/scripts/utils/env_utils.sh"
     cp "$(harness_repo_root)/scripts/utils/plugin_utils.sh" "${root_dir}/scripts/utils/plugin_utils.sh"
     cp "$(harness_repo_root)/scripts/plugins/project.sh" "${root_dir}/scripts/plugins/project.sh"
     cp "$(harness_repo_root)/scripts/argparse.sh" "${root_dir}/scripts/argparse.sh"
@@ -150,6 +191,7 @@ test_build_project_command_sdk_mode_detects_plugin_and_dispatches_build() {
     assert_matches "Built mock release \\(prod\\)" "${output}"
     assert_status_code 0 "test -f '${root_dir}/demo-project/_build/prod/rel/mock_release/build-info.txt'"
     assert_status_code 0 "grep -Fq 'profile=prod' '${root_dir}/demo-project/_build/prod/rel/mock_release/build-info.txt'"
+    assert_status_code 0 "grep -Fq 'cc=${root_dir}/host/bin/arm-buildroot-linux-gnueabihf-gcc' '${root_dir}/demo-project/_build/prod/rel/mock_release/build-info.txt'"
 }
 
 test_build_project_command_sdk_mode_builds_once_with_combined_profiles() {

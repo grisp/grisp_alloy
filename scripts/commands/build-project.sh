@@ -9,6 +9,8 @@ export ALLOY_ROOT_DIR="${ALLOY_ROOT_DIR:-${ROOT_DIR}}"
 source "${ROOT_DIR}/scripts/utils/common.sh"
 # shellcheck source=scripts/utils/sdk_utils.sh
 source "${ROOT_DIR}/scripts/utils/sdk_utils.sh"
+# shellcheck source=scripts/utils/env_utils.sh
+source "${ROOT_DIR}/scripts/utils/env_utils.sh"
 # shellcheck source=scripts/utils/plugin_utils.sh
 source "${ROOT_DIR}/scripts/utils/plugin_utils.sh"
 # shellcheck source=scripts/plugins/project.sh
@@ -471,19 +473,21 @@ build_project_run_in_sdk_mode() {
         fail "Project type '${project_type}' does not support multiple profiles: ${ARG_PROJECT_PROFILES[*]}"
     fi
 
-    if [[ "${project_type}" == "erlang" ]]; then
-        [[ -n "${ALLOY_CONFIG_HOST_REBAR3:-}" ]] ||
-            fail "SDK configuration is missing host_rebar3 export (ALLOY_CONFIG_HOST_REBAR3)"
-        export HOST_REBAR3="${ALLOY_CONFIG_HOST_REBAR3}"
-    fi
-    if [[ "${project_type}" == "elixir" ]]; then
-        [[ -n "${ALLOY_CONFIG_HOST_MIX:-}" ]] ||
-            fail "SDK configuration is missing host_mix export (ALLOY_CONFIG_HOST_MIX)"
-        export HOST_MIX="${ALLOY_CONFIG_HOST_MIX}"
-    fi
-    if [[ -n "${ALLOY_CONFIG_TARGET_ERLANG_ROOT:-}" ]]; then
-        export TARGET_ERLANG="${ALLOY_CONFIG_TARGET_ERLANG_ROOT}"
-    fi
+    setup_cross_env "${BUILD_PROJECT_SDK_DIR}" ||
+        fail "Failed to set up generic cross-compilation environment"
+
+    case "${project_type}" in
+        erlang)
+            setup_erlang_runtime_env "${BUILD_PROJECT_SDK_DIR}" ||
+                fail "Failed to set up Erlang runtime environment for project build"
+            ;;
+        elixir)
+            setup_erlang_runtime_env "${BUILD_PROJECT_SDK_DIR}" ||
+                fail "Failed to set up Erlang runtime environment for Elixir project build"
+            setup_elixir_runtime_env "${BUILD_PROJECT_SDK_DIR}" ||
+                fail "Failed to set up Elixir runtime environment for project build"
+            ;;
+    esac
 
     local profile_spec
     profile_spec="$(IFS=,; printf '%s' "${ARG_PROJECT_PROFILES[*]}")"

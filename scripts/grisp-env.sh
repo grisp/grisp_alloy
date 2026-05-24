@@ -35,6 +35,9 @@ fi
 if ! setup_cross_env "${GLB_SDK_DIR}"; then
     return $?
 fi
+if ! setup_erlang_runtime_env "${GLB_SDK_DIR}"; then
+    return $?
+fi
 
 GRISP_SDK_ROOT="${GLB_SDK_DIR}"
 GRISP_SDK_HOST="${GLB_SDK_HOST_DIR}"
