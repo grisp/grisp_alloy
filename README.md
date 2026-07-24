@@ -37,7 +37,7 @@ Supported targets in this repository:
 - `kontron-albl-imx8mm`
 
 External target bundles can add private `system_*`, `ramfs_*`, and
-`toolchain/configs/*_defconfig` files without forking this repository. Pass
+`toolchain/configs/*_defconfig` files without modifying this repository. Pass
 external bundle roots with repeated `--external <DIR>` flags or set
 `GRISP_ALLOY_EXTERNAL_PATH` to a colon-separated list:
 
