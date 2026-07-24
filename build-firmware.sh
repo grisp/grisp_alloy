@@ -61,6 +61,8 @@ show_usage()
     echo "    Security profile (default: default)"
     echo " -U | --sign-update"
     echo "    Enable grisp_updater package signing (requires --security-pack)"
+    echo " --external <DIR>"
+    echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
     echo "Examples:"
     echo "  build-firmware.sh grisp2 projA"
@@ -86,6 +88,7 @@ args_add o overlay ARG_OVERLAY_DIR value ""
 args_add S security-pack ARG_SECPACK_DIR value ""
 args_add p profile ARG_PROFILE value "default"
 args_add U sign-update ARG_SIGN_UPDATE flag true false
+args_add "" external ARG_EXTERNAL_DIRS accum
 
 if ! args_parse "$@"; then
     exit 1
@@ -295,6 +298,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
         NEW_ARGS=( ${NEW_ARGS[@]} "--overlay" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
     fi
+    for external_dir in "${ARG_EXTERNAL_DIRS[@]}"; do
+        NEW_ARGS+=( "--external" "$external_dir" )
+    done
 
     # Security pack handling in VM: copy minimal content and pass path
     if [[ ${ARG_SECPACK_DIR_OPT} -gt 0 ]]; then

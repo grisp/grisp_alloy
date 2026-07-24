@@ -49,6 +49,8 @@ show_usage()
     echo "    Keep the vagrant VM running after exiting."
     echo " -p | --clean-package <PACKAGE_PREFIX>"
     echo "    Clean given package prefix; can be used with --rebuild to rebuild a package."
+    echo " --external <DIR>"
+    echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
     echo "e.g. build-sdk.sh grisp2"
 }
@@ -65,6 +67,7 @@ args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
 args_add P provision ARG_PROVISION_VAGRANT flag true false
 args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
 args_add p clean-package ARG_CLEAN_PACKAGES accum
+args_add "" external ARG_EXTERNAL_DIRS accum
 
 if ! args_parse "$@"; then
     exit 1
@@ -114,6 +117,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     fi
     for p in "${ARG_CLEAN_PACKAGES[@]}"; do
         NEW_ARGS+=( "--clean-package" "$p" )
+    done
+    for external_dir in "${ARG_EXTERNAL_DIRS[@]}"; do
+        NEW_ARGS+=( "--external" "$external_dir" )
     done
     NEW_ARGS+=( "$ARG_TARGET" )
     if [[ $ARG_KEEP_VAGRANT == false ]]; then

@@ -38,6 +38,8 @@ show_usage()
     echo "    Keep the vagrant VM running after exiting"
     echo " -p | --profile <PROFILE>"
     echo "    Project profile to build (default: default)"
+    echo " --external <DIR>"
+    echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
     echo "e.g. build-project.sh grisp2 ~/my_project"
 }
@@ -52,6 +54,7 @@ args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
 args_add P provision ARG_PROVISION_VAGRANT flag true false
 args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
 args_add p profile ARG_PROJECT_PROFILE value "default"
+args_add "" external ARG_EXTERNAL_DIRS accum
 
 if ! args_parse "$@"; then
     exit 1
@@ -140,6 +143,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ ${ARG_PROJECT_PROFILE_OPT} -gt 0 ]]; then
         NEW_ARGS+=( "--profile" "$ARG_PROJECT_PROFILE" )
     fi
+    for external_dir in "${ARG_EXTERNAL_DIRS[@]}"; do
+        NEW_ARGS+=( "--external" "$external_dir" )
+    done
     NEW_ARGS+=( "$ARG_TARGET" )
     NEW_ARGS+=( "$VAGRANT_PROJECT_BUILD_DIR" )
 
