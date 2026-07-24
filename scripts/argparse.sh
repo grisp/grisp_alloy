@@ -56,8 +56,17 @@ args_add() {
     local long="$1"; shift
     local var="$1"; shift
     local type="$1"; shift
-    local def_a="$1"; shift || true
-    local def_b="$1"; shift || true
+    local def_a=""
+    local def_b=""
+
+    if [[ $# -gt 0 ]]; then
+        def_a="$1"
+        shift
+    fi
+    if [[ $# -gt 0 ]]; then
+        def_b="$1"
+        shift
+    fi
 
     case "$type" in
         flag|value|accum) : ;;
