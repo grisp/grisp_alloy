@@ -15,3 +15,6 @@ if [[ ! -d $BINARIES_DIR ]]; then
 fi
 
 cp -f "$FWUP_CONFIG" "$BINARIES_DIR"
+if [[ -f "$GLB_TARGET_SYSTEM_DIR/fwup-upgrade-helper.sh" ]]; then
+    cp -f "$GLB_TARGET_SYSTEM_DIR/fwup-upgrade-helper.sh" "$BINARIES_DIR"
+fi
