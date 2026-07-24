@@ -168,6 +168,7 @@ if [[ -f "$TARGET_SECPACK_SCRIPT" ]]; then
 fi
 
 install_sdk
+alloy_verify_sdk_context_strict
 
 OPENSSL_BIN="${GLB_SDK_HOST_DIR}/bin/openssl"
 if [[ ! -x "$OPENSSL_BIN" ]]; then

@@ -198,6 +198,14 @@ import sys
 
 base = os.path.abspath(sys.argv[1])
 skip_dirs = {".git", ".vagrant", "_build", "_cache", "artefacts"}
+skip_suffixes = (".md",)
+skip_relpaths = {
+    "scripts/test-hu-efuse.sh",
+}
+skip_prefixes = (
+    "docs/",
+    "scripts/testdata/",
+)
 digest = hashlib.sha256()
 
 for root, dirs, files in os.walk(base):
@@ -206,6 +214,12 @@ for root, dirs, files in os.walk(base):
     for name in sorted(files):
         path = os.path.join(root, name)
         rel = name if rel_root == "." else os.path.join(rel_root, name)
+        if rel in skip_relpaths:
+            continue
+        if rel.endswith(skip_suffixes):
+            continue
+        if any(rel.startswith(prefix) for prefix in skip_prefixes):
+            continue
         digest.update(rel.encode("utf-8", "surrogateescape"))
         digest.update(b"\0")
         if os.path.islink(path):
@@ -628,9 +642,15 @@ alloy_verify_sdk_context() {
     alloy_context_expect "$metadata" GLB_TARGET_NAME "${GLB_TARGET_NAME:-}"
     alloy_context_expect "$metadata" GLB_COMMON_SYSTEM_VER "${GLB_COMMON_SYSTEM_VER:-}"
     alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_VER "${GLB_TARGET_SYSTEM_VER:-}"
+    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_SOURCE "${GLB_TARGET_SYSTEM_SOURCE:-}"
+}
+
+alloy_verify_sdk_context_strict() {
+    local metadata="${GLB_SDK_DIR}/ALLOY-RESOLVER-CONTEXT"
+
+    alloy_verify_sdk_context
     alloy_context_expect "$metadata" GLB_COMMON_SYSTEM_TREE_SHA256 "${GLB_COMMON_SYSTEM_TREE_SHA256:-}"
     alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_TREE_SHA256 "${GLB_TARGET_SYSTEM_TREE_SHA256:-}"
-    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_SOURCE "${GLB_TARGET_SYSTEM_SOURCE:-}"
 }
 
 alloy_firmware_misc_provenance() {

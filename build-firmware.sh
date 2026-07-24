@@ -485,6 +485,7 @@ fi
 
 # SDK INSTALLATION
 install_sdk
+alloy_verify_sdk_context_strict
 
 resolve_ramfs_artifact() {
     local flavour="$1"
