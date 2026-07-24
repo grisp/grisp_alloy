@@ -160,6 +160,7 @@ FIRMWARE_PROFILES=()
 FIRMWARE_DEFAULT_PROFILE=default
 FIRMWARE_PROVISIONING_MODES=()
 FIRMWARE_DEFAULT_PROVISIONING_MODE=normal
+ALLOY_STRICT_EXTERNAL_BUNDLE=false
 sdk_artifacts_init_defaults
 
 # CRUCIBLE: Target-specific build configuration.
@@ -521,6 +522,11 @@ case "${BOOTSCHEME_KERNEL_RAMFS}" in
         error 1 "Invalid BOOTSCHEME_KERNEL_RAMFS policy '${BOOTSCHEME_KERNEL_RAMFS}' for target ${GLB_TARGET_NAME}; expected none, optional, or required"
         ;;
 esac
+
+if [[ "${BOOTSCHEME_KERNEL_RAMFS}" != "none" && -n "${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}" ]]; then
+    alloy_resolve_ramfs_context "${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}"
+    alloy_require_target_bundle_component "ramfs_${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}" "$GLB_RAMFS_BUNDLE_ROOT"
+fi
 
 if [[ ${ARG_RAMFS_FILE_OPT} -gt 0 ]]; then
     if [[ ! -f "$ARG_RAMFS_FILE" ]]; then

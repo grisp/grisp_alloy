@@ -114,6 +114,11 @@ fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
 # Load target-specific toolchain configuration
+ALLOY_STRICT_EXTERNAL_BUNDLE=false
+CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
+if [[ -f "$CRUCIBLE_FILE" ]]; then
+    source "$CRUCIBLE_FILE"
+fi
 alloy_resolve_toolchain_defconfig TOOLCHAIN_DEFCONFIG "$GLB_TARGET_NAME" "$BUILD_OS" "$BUILD_ARCH"
 
 if [[ ! -e $TOOLCHAIN_DEFCONFIG ]]; then

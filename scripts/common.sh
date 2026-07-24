@@ -437,6 +437,7 @@ alloy_resolve_toolchain_defconfig() {
     local path
     local root
     local i
+    local strict_bundle="${ALLOY_STRICT_EXTERNAL_BUNDLE:-false}"
 
     if [[ -n "${GLB_TARGET_SYSTEM_DIR:-}" ]]; then
         path="${GLB_TARGET_SYSTEM_DIR}/toolchain/configs/${filename}"
@@ -445,13 +446,20 @@ alloy_resolve_toolchain_defconfig() {
         fi
     fi
 
-    alloy_external_roots external_roots
-    for root in "${external_roots[@]}"; do
-        path="${root}/toolchain/configs/${filename}"
+    if [[ "$strict_bundle" == "true" && "${GLB_TARGET_SYSTEM_SOURCE:-}" == "external" ]]; then
+        path="${GLB_TARGET_BUNDLE_ROOT}/toolchain/configs/${filename}"
         if [[ -f "$path" ]]; then
             append_unique candidates "$(alloy_abspath "$path")"
         fi
-    done
+    else
+        alloy_external_roots external_roots
+        for root in "${external_roots[@]}"; do
+            path="${root}/toolchain/configs/${filename}"
+            if [[ -f "$path" ]]; then
+                append_unique candidates "$(alloy_abspath "$path")"
+            fi
+        done
+    fi
 
     if [[ "${#candidates[@]}" -gt 1 ]]; then
         echo "ERROR: Multiple external toolchain config matches for '${filename}':" 1>&2
@@ -464,12 +472,27 @@ alloy_resolve_toolchain_defconfig() {
     if [[ "${#candidates[@]}" -eq 1 ]]; then
         GLB_TOOLCHAIN_DEFCONFIG="${candidates[0]}"
         GLB_TOOLCHAIN_CONFIG_SOURCE=external
+    elif [[ "$strict_bundle" == "true" && "${GLB_TARGET_SYSTEM_SOURCE:-}" == "external" ]]; then
+        error 1 "Target ${GLB_TARGET_NAME} requires toolchain/configs/${filename} in its external bundle: ${GLB_TARGET_BUNDLE_ROOT}"
     else
         GLB_TOOLCHAIN_DEFCONFIG="${GLB_TOOLCHAIN_DIR}/configs/${filename}"
         GLB_TOOLCHAIN_CONFIG_SOURCE=in-tree
     fi
 
     eval "$out_var=\"\$GLB_TOOLCHAIN_DEFCONFIG\""
+}
+
+alloy_require_target_bundle_component() {
+    local component="$1"
+    local bundle_root="$2"
+    local strict_bundle="${ALLOY_STRICT_EXTERNAL_BUNDLE:-false}"
+
+    if [[ "$strict_bundle" != "true" || "${GLB_TARGET_SYSTEM_SOURCE:-}" != "external" ]]; then
+        return 0
+    fi
+    if [[ "$(alloy_abspath "$bundle_root")" != "$(alloy_abspath "$GLB_TARGET_BUNDLE_ROOT")" ]]; then
+        error 1 "Target ${GLB_TARGET_NAME} requires ${component} from its external bundle ${GLB_TARGET_BUNDLE_ROOT}, got ${bundle_root}"
+    fi
 }
 
 alloy_write_external_context() {
