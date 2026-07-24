@@ -161,6 +161,7 @@ install_sdk() {
             error 1 "SDK ${GLB_SDK_FILENAME} is invalid"
         fi
     fi
+    alloy_verify_sdk_context
 }
 
 alloy_git_vcs_tag() {
@@ -181,6 +182,63 @@ alloy_git_vcs_tag() {
     else
         git -C "$dir" rev-parse --short HEAD 2>/dev/null || printf '%s\n' unknown
     fi
+}
+
+alloy_tree_hash() {
+    local dir="$1"
+
+    if [[ ! -d "$dir" ]]; then
+        printf '%s\n' missing
+        return 0
+    fi
+    python3 - "$dir" <<'PY'
+import hashlib
+import os
+import sys
+
+base = os.path.abspath(sys.argv[1])
+skip_dirs = {".git", ".vagrant", "_build", "_cache", "artefacts"}
+digest = hashlib.sha256()
+
+for root, dirs, files in os.walk(base):
+    dirs[:] = sorted(d for d in dirs if d not in skip_dirs)
+    rel_root = os.path.relpath(root, base)
+    for name in sorted(files):
+        path = os.path.join(root, name)
+        rel = name if rel_root == "." else os.path.join(rel_root, name)
+        digest.update(rel.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+        if os.path.islink(path):
+            digest.update(b"L")
+            digest.update(os.readlink(path).encode("utf-8", "surrogateescape"))
+        else:
+            digest.update(b"F")
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        digest.update(b"\0")
+
+print(digest.hexdigest())
+PY
+}
+
+alloy_file_hash() {
+    local path="$1"
+
+    if [[ ! -f "$path" ]]; then
+        printf '%s\n' missing
+        return 0
+    fi
+    python3 - "$path" <<'PY'
+import hashlib
+import sys
+
+digest = hashlib.sha256()
+with open(sys.argv[1], "rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY
 }
 
 alloy_external_roots() {
@@ -343,6 +401,8 @@ alloy_resolve_target_context() {
     GLB_TARGET_SYSTEM_VER="$( cat "${GLB_TARGET_SYSTEM_DIR}/VERSION" )"
     GLB_COMMON_SYSTEM_VCS="$(alloy_git_vcs_tag "$GLB_COMMON_SYSTEM_DIR")"
     GLB_TARGET_SYSTEM_VCS="$(alloy_git_vcs_tag "$GLB_TARGET_SYSTEM_DIR")"
+    GLB_COMMON_SYSTEM_TREE_SHA256="$(alloy_tree_hash "$GLB_COMMON_SYSTEM_DIR")"
+    GLB_TARGET_SYSTEM_TREE_SHA256="$(alloy_tree_hash "$GLB_TARGET_SYSTEM_DIR")"
     GLB_SDK_DIR="${GLB_SDK_BASE_DIR}/${GLB_COMMON_SYSTEM_VER}/${GLB_TARGET_NAME}/${GLB_TARGET_SYSTEM_VER}"
     GLB_SDK_HOST_DIR="${GLB_SDK_DIR}/host"
     GLB_SDK_FILENAME="${GLB_SDK_NAME}-${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_NAME}-${GLB_TARGET_SYSTEM_VER}-${HOST_OS}-${HOST_ARCH}.tar.gz"
@@ -418,6 +478,8 @@ alloy_resolve_ramfs_context() {
     GLB_RAMFS_FLAVOUR_VER="$( cat "${GLB_RAMFS_FLAVOUR_DIR}/VERSION" )"
     GLB_RAMFS_COMMON_VCS="$(alloy_git_vcs_tag "$GLB_RAMFS_COMMON_DIR")"
     GLB_RAMFS_FLAVOUR_VCS="$(alloy_git_vcs_tag "$GLB_RAMFS_FLAVOUR_DIR")"
+    GLB_RAMFS_COMMON_TREE_SHA256="$(alloy_tree_hash "$GLB_RAMFS_COMMON_DIR")"
+    GLB_RAMFS_FLAVOUR_TREE_SHA256="$(alloy_tree_hash "$GLB_RAMFS_FLAVOUR_DIR")"
 
     if [[ "${GLB_DEBUG:-0}" -gt 0 ]]; then
         echo "Resolved ramfs ${GLB_RAMFS_FLAVOUR}: ${GLB_RAMFS_FLAVOUR_DIR} (${GLB_RAMFS_FLAVOUR_SOURCE})"
@@ -478,6 +540,7 @@ alloy_resolve_toolchain_defconfig() {
         GLB_TOOLCHAIN_DEFCONFIG="${GLB_TOOLCHAIN_DIR}/configs/${filename}"
         GLB_TOOLCHAIN_CONFIG_SOURCE=in-tree
     fi
+    GLB_TOOLCHAIN_DEFCONFIG_SHA256="$(alloy_file_hash "$GLB_TOOLCHAIN_DEFCONFIG")"
 
     eval "$out_var=\"\$GLB_TOOLCHAIN_DEFCONFIG\""
 }
@@ -506,20 +569,75 @@ alloy_write_external_context() {
         printf 'GLB_TARGET_SYSTEM_SOURCE=%q\n' "${GLB_TARGET_SYSTEM_SOURCE:-}"
         printf 'GLB_TARGET_SYSTEM_VER=%q\n' "${GLB_TARGET_SYSTEM_VER:-}"
         printf 'GLB_TARGET_SYSTEM_VCS=%q\n' "${GLB_TARGET_SYSTEM_VCS:-}"
+        printf 'GLB_TARGET_SYSTEM_TREE_SHA256=%q\n' "${GLB_TARGET_SYSTEM_TREE_SHA256:-}"
         printf 'GLB_COMMON_SYSTEM_VER=%q\n' "${GLB_COMMON_SYSTEM_VER:-}"
         printf 'GLB_COMMON_SYSTEM_VCS=%q\n' "${GLB_COMMON_SYSTEM_VCS:-}"
+        printf 'GLB_COMMON_SYSTEM_TREE_SHA256=%q\n' "${GLB_COMMON_SYSTEM_TREE_SHA256:-}"
         printf 'GLB_RAMFS_FLAVOUR=%q\n' "${GLB_RAMFS_FLAVOUR:-}"
         printf 'GLB_RAMFS_FLAVOUR_DIR=%q\n' "${GLB_RAMFS_FLAVOUR_DIR:-}"
         printf 'GLB_RAMFS_BUNDLE_ROOT=%q\n' "${GLB_RAMFS_BUNDLE_ROOT:-}"
         printf 'GLB_RAMFS_FLAVOUR_SOURCE=%q\n' "${GLB_RAMFS_FLAVOUR_SOURCE:-}"
         printf 'GLB_RAMFS_FLAVOUR_VER=%q\n' "${GLB_RAMFS_FLAVOUR_VER:-}"
         printf 'GLB_RAMFS_FLAVOUR_VCS=%q\n' "${GLB_RAMFS_FLAVOUR_VCS:-}"
+        printf 'GLB_RAMFS_FLAVOUR_TREE_SHA256=%q\n' "${GLB_RAMFS_FLAVOUR_TREE_SHA256:-}"
         printf 'GLB_RAMFS_COMMON_VER=%q\n' "${GLB_RAMFS_COMMON_VER:-}"
         printf 'GLB_RAMFS_COMMON_VCS=%q\n' "${GLB_RAMFS_COMMON_VCS:-}"
+        printf 'GLB_RAMFS_COMMON_TREE_SHA256=%q\n' "${GLB_RAMFS_COMMON_TREE_SHA256:-}"
         printf 'GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE=%q\n' "${GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE:-}"
         printf 'GLB_TOOLCHAIN_DEFCONFIG=%q\n' "${GLB_TOOLCHAIN_DEFCONFIG:-}"
         printf 'GLB_TOOLCHAIN_CONFIG_SOURCE=%q\n' "${GLB_TOOLCHAIN_CONFIG_SOURCE:-}"
+        printf 'GLB_TOOLCHAIN_DEFCONFIG_SHA256=%q\n' "${GLB_TOOLCHAIN_DEFCONFIG_SHA256:-}"
+        printf 'ALLOY_STRICT_EXTERNAL_BUNDLE=%q\n' "${ALLOY_STRICT_EXTERNAL_BUNDLE:-false}"
     } > "$output"
+}
+
+alloy_context_raw_value() {
+    local file="$1"
+    local key="$2"
+
+    awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); found = 1; exit } END { exit found ? 0 : 1 }' "$file"
+}
+
+alloy_context_expect() {
+    local file="$1"
+    local key="$2"
+    local expected="$3"
+    local expected_raw
+    local actual_raw
+
+    expected_raw="$(printf '%q' "$expected")"
+    actual_raw="$(alloy_context_raw_value "$file" "$key" || true)"
+    if [[ -z "$actual_raw" ]]; then
+        error 1 "SDK provenance ${file} is missing ${key}"
+    fi
+    if [[ "$actual_raw" != "$expected_raw" ]]; then
+        error 1 "SDK provenance mismatch for ${key}: expected ${expected}, got ${actual_raw}"
+    fi
+}
+
+alloy_verify_sdk_context() {
+    local metadata="${GLB_SDK_DIR}/ALLOY-RESOLVER-CONTEXT"
+
+    if [[ ! -f "$metadata" ]]; then
+        if [[ "${GLB_TARGET_SYSTEM_SOURCE:-}" == "external" ]]; then
+            error 1 "SDK provenance metadata missing for external target ${GLB_TARGET_NAME}: ${metadata}; rebuild the SDK with the same --external or GRISP_ALLOY_EXTERNAL_PATH context"
+        fi
+        return 0
+    fi
+
+    alloy_context_expect "$metadata" GLB_TARGET_NAME "${GLB_TARGET_NAME:-}"
+    alloy_context_expect "$metadata" GLB_COMMON_SYSTEM_VER "${GLB_COMMON_SYSTEM_VER:-}"
+    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_VER "${GLB_TARGET_SYSTEM_VER:-}"
+    alloy_context_expect "$metadata" GLB_COMMON_SYSTEM_TREE_SHA256 "${GLB_COMMON_SYSTEM_TREE_SHA256:-}"
+    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_TREE_SHA256 "${GLB_TARGET_SYSTEM_TREE_SHA256:-}"
+    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_SOURCE "${GLB_TARGET_SYSTEM_SOURCE:-}"
+}
+
+alloy_firmware_misc_provenance() {
+    printf 'alloy-provenance-v1:target-source=%s;common-tree-sha256=%s;target-tree-sha256=%s' \
+        "${GLB_TARGET_SYSTEM_SOURCE:-}" \
+        "${GLB_COMMON_SYSTEM_TREE_SHA256:-}" \
+        "${GLB_TARGET_SYSTEM_TREE_SHA256:-}"
 }
 
 alloy_sanitize_path_component() {

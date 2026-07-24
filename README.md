@@ -217,6 +217,14 @@ Targets may declare firmware profiles, provisioning modes, SDK artefact
 profiles, and initramfs policy in `system_<target>/crucible.sh`. Targets that do
 not declare profiles keep the previous default behavior.
 
+SDKs built from this branch include `ALLOY-RESOLVER-CONTEXT` provenance with
+target/common source hashes, bundle source type, toolchain config source, and
+external path metadata. Downstream commands reject external-target SDKs and
+project artefacts whose provenance does not match the currently resolved target
+context. Firmware archives for external targets also carry the same provenance
+in FWUP metadata so `flash-firmware.sh` can reject stale or cross-bundle images
+before conversion or hardware probing.
+
 ### Optional Ramfs Artefact
 
 ```sh

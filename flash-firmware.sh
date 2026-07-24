@@ -380,6 +380,14 @@ FIRMWARE_FILE="$( resolve_firmware "$ARG_FIRMWARE_REF" )"
 FIRMWARE_BASE="$( basename "$FIRMWARE_FILE" .fw )"
 FIRMWARE_VERSION="$( fw_metadata_key "$FIRMWARE_FILE" meta-version )"
 FIRMWARE_UUID="$( fw_metadata_key "$FIRMWARE_FILE" meta-uuid )"
+FIRMWARE_MISC="$( fw_metadata_key "$FIRMWARE_FILE" meta-misc )"
+
+if [[ "${GLB_TARGET_SYSTEM_SOURCE:-}" == "external" ]]; then
+    EXPECTED_FIRMWARE_MISC="$(alloy_firmware_misc_provenance)"
+    if [[ "$FIRMWARE_MISC" != "$EXPECTED_FIRMWARE_MISC" ]]; then
+        error 1 "Firmware provenance does not match external target ${GLB_TARGET_NAME}; rebuild firmware with the same --external or GRISP_ALLOY_EXTERNAL_PATH context"
+    fi
+fi
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grisp-alloy-uuu.XXXXXX")"
 cleanup() {

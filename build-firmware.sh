@@ -609,6 +609,21 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
     if [[ -n "$PROJECT_TARGET_SYSTEM_VER" && -n "$GLB_TARGET_SYSTEM_VER" && "$PROJECT_TARGET_SYSTEM_VER" != "$GLB_TARGET_SYSTEM_VER" ]]; then
         error 1 "Artefact $app_name target system version '$PROJECT_TARGET_SYSTEM_VER' does not match '$GLB_TARGET_SYSTEM_VER'"
     fi
+    if [[ -n "${PROJECT_TARGET_SYSTEM_SOURCE:-}" && "$PROJECT_TARGET_SYSTEM_SOURCE" != "$GLB_TARGET_SYSTEM_SOURCE" ]]; then
+        error 1 "Artefact $app_name target source '$PROJECT_TARGET_SYSTEM_SOURCE' does not match '$GLB_TARGET_SYSTEM_SOURCE'"
+    elif [[ -z "${PROJECT_TARGET_SYSTEM_SOURCE:-}" && "$GLB_TARGET_SYSTEM_SOURCE" == "external" ]]; then
+        error 1 "Artefact $app_name is missing target source provenance for external target '$GLB_TARGET_NAME'"
+    fi
+    if [[ -n "${PROJECT_COMMON_SYSTEM_TREE_SHA256:-}" && "$PROJECT_COMMON_SYSTEM_TREE_SHA256" != "$GLB_COMMON_SYSTEM_TREE_SHA256" ]]; then
+        error 1 "Artefact $app_name common system hash '$PROJECT_COMMON_SYSTEM_TREE_SHA256' does not match '$GLB_COMMON_SYSTEM_TREE_SHA256'"
+    elif [[ -z "${PROJECT_COMMON_SYSTEM_TREE_SHA256:-}" && "$GLB_TARGET_SYSTEM_SOURCE" == "external" ]]; then
+        error 1 "Artefact $app_name is missing common system hash provenance for external target '$GLB_TARGET_NAME'"
+    fi
+    if [[ -n "${PROJECT_TARGET_SYSTEM_TREE_SHA256:-}" && "$PROJECT_TARGET_SYSTEM_TREE_SHA256" != "$GLB_TARGET_SYSTEM_TREE_SHA256" ]]; then
+        error 1 "Artefact $app_name target system hash '$PROJECT_TARGET_SYSTEM_TREE_SHA256' does not match '$GLB_TARGET_SYSTEM_TREE_SHA256'"
+    elif [[ -z "${PROJECT_TARGET_SYSTEM_TREE_SHA256:-}" && "$GLB_TARGET_SYSTEM_SOURCE" == "external" ]]; then
+        error 1 "Artefact $app_name is missing target system hash provenance for external target '$GLB_TARGET_NAME'"
+    fi
     if [[ -n "$PROJECT_CROSSCOMPILE_ARCH" && -n "$CROSSCOMPILE_ARCH" && "$PROJECT_CROSSCOMPILE_ARCH" != "$CROSSCOMPILE_ARCH" ]]; then
         error 1 "Artefact $app_name arch '$PROJECT_CROSSCOMPILE_ARCH' does not match '$CROSSCOMPILE_ARCH'"
     fi
@@ -789,10 +804,13 @@ mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
     echo "    \"firmware_profile\": \"${GLB_FIRMWARE_PROFILE}\",";
     echo "    \"firmware_provisioning_mode\": \"${GLB_FIRMWARE_PROVISIONING_MODE}\",";
     echo "    \"target\": \"${GLB_TARGET_NAME}\",";
+    echo "    \"target_source\": \"${GLB_TARGET_SYSTEM_SOURCE}\",";
     echo "    \"system_common_version\": \"${GLB_COMMON_SYSTEM_VER}\",";
     echo "    \"system_common_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"system_common_tree_sha256\": \"${GLB_COMMON_SYSTEM_TREE_SHA256}\",";
     echo "    \"system_target_version\": \"${GLB_TARGET_SYSTEM_VER}\",";
     echo "    \"system_target_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"system_target_tree_sha256\": \"${GLB_TARGET_SYSTEM_TREE_SHA256}\",";
     echo "    \"firmware_name\": \"${FIRMWARE_NAME}\",";
     echo "    \"firmware_ver\": \"${FIRMWARE_VER}\",";
     echo "    \"projects\": {";
