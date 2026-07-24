@@ -277,6 +277,7 @@ Vagrant.configure('2') do |config|
     config.vm.provision 'file', source: "build-project.sh", destination: "/home/vagrant/build-project.sh"
     config.vm.provision 'file', source: "build-firmware.sh", destination: "/home/vagrant/build-firmware.sh"
     config.vm.provision 'file', source: "build-ramfs.sh", destination: "/home/vagrant/build-ramfs.sh"
+    config.vm.provision 'file', source: "flash-firmware.sh", destination: "/home/vagrant/flash-firmware.sh"
     config.vm.provision 'file', source: "scripts", destination: "/home/vagrant/scripts"
     config.vm.provision 'file', source: "toolchain", destination: "/home/vagrant/toolchain"
     config.vm.provision 'file', source: "system_common", destination: "/home/vagrant/system_common"
