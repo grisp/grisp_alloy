@@ -223,6 +223,14 @@ alloy_target_markers_present() {
         [[ -f "$dir/external.mk" ]]
 }
 
+alloy_ramfs_markers_present() {
+    local dir="$1"
+
+    [[ -f "$dir/VERSION" ]] &&
+        [[ -f "$dir/Config.in" ]] &&
+        [[ -f "$dir/defconfig" ]]
+}
+
 alloy_component_candidate() {
     local candidates_var="$1"
     local bundle_roots_var="$2"
@@ -235,6 +243,30 @@ alloy_component_candidate() {
     dir="$(alloy_abspath "$dir")" || return 0
     bundle_root="$(alloy_abspath "$bundle_root")" || return 0
     if ! alloy_target_markers_present "$dir"; then
+        return 0
+    fi
+    eval 'for existing in "${'"$candidates_var"'[@]}"; do
+        if [[ "$existing" == "$dir" ]]; then
+            return 0
+        fi
+    done'
+    eval "$candidates_var+=(\"\$dir\")"
+    eval "$bundle_roots_var+=(\"\$bundle_root\")"
+    eval "$sources_var+=(\"\$source\")"
+}
+
+alloy_ramfs_candidate() {
+    local candidates_var="$1"
+    local bundle_roots_var="$2"
+    local sources_var="$3"
+    local dir="$4"
+    local bundle_root="$5"
+    local source="$6"
+    local existing
+
+    dir="$(alloy_abspath "$dir")" || return 0
+    bundle_root="$(alloy_abspath "$bundle_root")" || return 0
+    if ! alloy_ramfs_markers_present "$dir"; then
         return 0
     fi
     eval 'for existing in "${'"$candidates_var"'[@]}"; do
@@ -322,6 +354,78 @@ alloy_resolve_target_context() {
     fi
 }
 
+alloy_resolve_ramfs_context() {
+    local flavour="$1"
+    local ramfs_dir_name="ramfs_${flavour}"
+    local external_roots=( )
+    local candidates=( )
+    local candidate_bundles=( )
+    local candidate_sources=( )
+    local root
+    local count
+    local i
+    local in_tree_dir
+
+    if ! alloy_valid_name "$flavour"; then
+        error 1 "Invalid ramfs flavour name: $flavour"
+    fi
+
+    alloy_external_roots external_roots
+    GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE=""
+    for root in "${external_roots[@]}"; do
+        if [[ -z "$GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE" ]]; then
+            GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE="$root"
+        else
+            GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE="${GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE}:$root"
+        fi
+
+        if [[ "$( basename "$root" )" == "$ramfs_dir_name" ]]; then
+            alloy_ramfs_candidate candidates candidate_bundles candidate_sources \
+                "$root" "$( dirname "$root" )" external
+        fi
+        alloy_ramfs_candidate candidates candidate_bundles candidate_sources \
+            "$root/$ramfs_dir_name" "$root" external
+    done
+
+    count="${#candidates[@]}"
+    if [[ "$count" -gt 1 ]]; then
+        echo "ERROR: Multiple external ramfs matches for '${flavour}':" 1>&2
+        for ((i = 0; i < count; i += 1)); do
+            echo "  ${candidates[$i]}" 1>&2
+        done
+        error 1 "Refusing ambiguous external ramfs resolution"
+    fi
+
+    if [[ "$count" -eq 1 ]]; then
+        GLB_RAMFS_FLAVOUR="$flavour"
+        GLB_RAMFS_FLAVOUR_DIR="${candidates[0]}"
+        GLB_RAMFS_BUNDLE_ROOT="${candidate_bundles[0]}"
+        GLB_RAMFS_FLAVOUR_SOURCE="${candidate_sources[0]}"
+    else
+        in_tree_dir="$GLB_TOP_DIR/$ramfs_dir_name"
+        if [[ -d "$in_tree_dir" ]] && alloy_ramfs_markers_present "$in_tree_dir"; then
+            GLB_RAMFS_FLAVOUR="$flavour"
+            GLB_RAMFS_FLAVOUR_DIR="$in_tree_dir"
+            GLB_RAMFS_BUNDLE_ROOT="$GLB_TOP_DIR"
+            GLB_RAMFS_FLAVOUR_SOURCE=in-tree
+        else
+            error 1 "Ramfs flavour ${flavour} not supported; no ${ramfs_dir_name} found"
+        fi
+    fi
+
+    GLB_RAMFS_COMMON_DIR="$GLB_TOP_DIR/ramfs_common"
+    GLB_RAMFS_COMMON_VER="$( cat "${GLB_RAMFS_COMMON_DIR}/VERSION" )"
+    GLB_RAMFS_FLAVOUR_VER="$( cat "${GLB_RAMFS_FLAVOUR_DIR}/VERSION" )"
+    GLB_RAMFS_COMMON_VCS="$(alloy_git_vcs_tag "$GLB_RAMFS_COMMON_DIR")"
+    GLB_RAMFS_FLAVOUR_VCS="$(alloy_git_vcs_tag "$GLB_RAMFS_FLAVOUR_DIR")"
+
+    if [[ "${GLB_DEBUG:-0}" -gt 0 ]]; then
+        echo "Resolved ramfs ${GLB_RAMFS_FLAVOUR}: ${GLB_RAMFS_FLAVOUR_DIR} (${GLB_RAMFS_FLAVOUR_SOURCE})"
+        echo "Ramfs bundle root: ${GLB_RAMFS_BUNDLE_ROOT}"
+        echo "External path: ${GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE:-<none>}"
+    fi
+}
+
 alloy_resolve_toolchain_defconfig() {
     local out_var="$1"
     local target="$2"
@@ -381,6 +485,14 @@ alloy_write_external_context() {
         printf 'GLB_TARGET_SYSTEM_VCS=%q\n' "${GLB_TARGET_SYSTEM_VCS:-}"
         printf 'GLB_COMMON_SYSTEM_VER=%q\n' "${GLB_COMMON_SYSTEM_VER:-}"
         printf 'GLB_COMMON_SYSTEM_VCS=%q\n' "${GLB_COMMON_SYSTEM_VCS:-}"
+        printf 'GLB_RAMFS_FLAVOUR=%q\n' "${GLB_RAMFS_FLAVOUR:-}"
+        printf 'GLB_RAMFS_FLAVOUR_DIR=%q\n' "${GLB_RAMFS_FLAVOUR_DIR:-}"
+        printf 'GLB_RAMFS_BUNDLE_ROOT=%q\n' "${GLB_RAMFS_BUNDLE_ROOT:-}"
+        printf 'GLB_RAMFS_FLAVOUR_SOURCE=%q\n' "${GLB_RAMFS_FLAVOUR_SOURCE:-}"
+        printf 'GLB_RAMFS_FLAVOUR_VER=%q\n' "${GLB_RAMFS_FLAVOUR_VER:-}"
+        printf 'GLB_RAMFS_FLAVOUR_VCS=%q\n' "${GLB_RAMFS_FLAVOUR_VCS:-}"
+        printf 'GLB_RAMFS_COMMON_VER=%q\n' "${GLB_RAMFS_COMMON_VER:-}"
+        printf 'GLB_RAMFS_COMMON_VCS=%q\n' "${GLB_RAMFS_COMMON_VCS:-}"
         printf 'GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE=%q\n' "${GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE:-}"
         printf 'GLB_TOOLCHAIN_DEFCONFIG=%q\n' "${GLB_TOOLCHAIN_DEFCONFIG:-}"
         printf 'GLB_TOOLCHAIN_CONFIG_SOURCE=%q\n' "${GLB_TOOLCHAIN_CONFIG_SOURCE:-}"
