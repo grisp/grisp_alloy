@@ -60,7 +60,9 @@ show_usage()
     echo " -s | --serial <SERIAL>"
     echo "    Device serial number (default: 00000000)"
     echo " -p | --profile <NAME>"
-    echo "    Security profile (default: default)"
+    echo "    Firmware/security-pack profile (default: target-defined or default)"
+    echo " -M | --provisioning-mode <NAME>"
+    echo "    Firmware provisioning mode (default: target-defined or normal)"
     echo " -U | --sign-update"
     echo "    Enable grisp_updater package signing (requires --security-pack)"
     echo " --external <DIR>"
@@ -90,6 +92,7 @@ args_add o overlay ARG_OVERLAY_DIR value ""
 args_add R ramfs ARG_RAMFS_FILE value ""
 args_add S security-pack ARG_SECPACK_DIR value ""
 args_add p profile ARG_PROFILE value "default"
+args_add M provisioning-mode ARG_PROVISIONING_MODE value "normal"
 args_add U sign-update ARG_SIGN_UPDATE flag true false
 args_add "" external ARG_EXTERNAL_DIRS accum
 
@@ -139,6 +142,81 @@ OVERLAY_DIR=""
 VCS_TAG_FILE=".alloy_vcs_tag"
 
 set_debug_level "${ARG_DEBUG}"
+
+# BUILD CONFIGURATION SETUP
+# Initialize variables that can be set by crucible.sh.
+BOOTSCHEME=NONE
+BOOTSCHEME_KERNEL_RAMFS=none
+BOOTSCHEME_KERNEL_RAMFS_FLAVOUR=
+BOOTSCHEME_KERNEL_USE_RAMFS=false
+BOOTSCHEME_KERNEL_RAMFS_FILE=
+SQUASHFS_PRIORITIES=()
+FWUP_IMAGE_TARGETS=()
+GSU_KERNEL_PATH=
+GSU_PARTITIONS=
+FIRMWARE_PROFILES=()
+FIRMWARE_DEFAULT_PROFILE=default
+FIRMWARE_PROVISIONING_MODES=()
+FIRMWARE_DEFAULT_PROVISIONING_MODE=normal
+
+# CRUCIBLE: Target-specific build configuration.
+CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
+if [[ ! -f "$CRUCIBLE_FILE" ]]; then
+    error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
+fi
+source "$CRUCIBLE_FILE"
+
+validate_firmware_profile() {
+    local selected="$1"
+    local profile
+
+    if [[ ${#FIRMWARE_PROFILES[@]} -eq 0 ]]; then
+        if [[ "$selected" != "default" ]]; then
+            error 1 "Target ${GLB_TARGET_NAME} does not declare firmware profiles; only --profile default is valid"
+        fi
+        return 0
+    fi
+
+    for profile in "${FIRMWARE_PROFILES[@]}"; do
+        if [[ "$profile" == "$selected" ]]; then
+            return 0
+        fi
+    done
+
+    error 1 "Invalid firmware profile '${selected}' for target ${GLB_TARGET_NAME}; expected one of: ${FIRMWARE_PROFILES[*]}"
+}
+
+validate_firmware_provisioning_mode() {
+    local selected="$1"
+    local mode
+
+    if [[ ${#FIRMWARE_PROVISIONING_MODES[@]} -eq 0 ]]; then
+        if [[ "$selected" != "normal" ]]; then
+            error 1 "Target ${GLB_TARGET_NAME} does not declare firmware provisioning modes; only --provisioning-mode normal is valid"
+        fi
+        return 0
+    fi
+
+    for mode in "${FIRMWARE_PROVISIONING_MODES[@]}"; do
+        if [[ "$mode" == "$selected" ]]; then
+            return 0
+        fi
+    done
+
+    error 1 "Invalid firmware provisioning mode '${selected}' for target ${GLB_TARGET_NAME}; expected one of: ${FIRMWARE_PROVISIONING_MODES[*]}"
+}
+
+if [[ ${ARG_PROFILE_OPT} -eq 0 ]]; then
+    ARG_PROFILE="${FIRMWARE_DEFAULT_PROFILE:-default}"
+fi
+validate_firmware_profile "$ARG_PROFILE"
+export GLB_FIRMWARE_PROFILE="$ARG_PROFILE"
+
+if [[ ${ARG_PROVISIONING_MODE_OPT} -eq 0 ]]; then
+    ARG_PROVISIONING_MODE="${FIRMWARE_DEFAULT_PROVISIONING_MODE:-normal}"
+fi
+validate_firmware_provisioning_mode "$ARG_PROVISIONING_MODE"
+export GLB_FIRMWARE_PROVISIONING_MODE="$ARG_PROVISIONING_MODE"
 
 # Arrays describing projects to stage
 PROJECT_NAMES=( )
@@ -348,12 +426,15 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
             fi
         done
         NEW_ARGS=( ${NEW_ARGS[@]} "--security-pack" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/secpack" )
-        if [[ ${ARG_PROFILE_OPT} -gt 0 ]]; then
-            NEW_ARGS=( ${NEW_ARGS[@]} "--profile" "$ARG_PROFILE" )
-        fi
         if [[ $ARG_SIGN_UPDATE == true ]]; then
             NEW_ARGS=( ${NEW_ARGS[@]} "--sign-update" )
         fi
+    fi
+    if [[ ${ARG_PROFILE_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--profile" "$ARG_PROFILE" )
+    fi
+    if [[ ${ARG_PROVISIONING_MODE_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--provisioning-mode" "$ARG_PROVISIONING_MODE" )
     fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
 
@@ -397,27 +478,6 @@ fi
 
 # SDK INSTALLATION
 install_sdk
-
-# BUILD CONFIGURATION SETUP
-# Initialize variables that will be set by crucible.sh and boot scheme plugin
-BOOTSCHEME=NONE
-BOOTSCHEME_KERNEL_RAMFS=none
-BOOTSCHEME_KERNEL_RAMFS_FLAVOUR=
-BOOTSCHEME_KERNEL_USE_RAMFS=false
-BOOTSCHEME_KERNEL_RAMFS_FILE=
-SQUASHFS_PRIORITIES=()
-FWUP_IMAGE_TARGETS=()
-GSU_KERNEL_PATH=
-GSU_PARTITIONS=
-
-
-# CRUCIBLE: Target-specific build configuration
-# Contains target-specific settings like boot scheme, kernel config, etc.
-CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
-if [[ ! -f "$CRUCIBLE_FILE" ]]; then
-    error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
-fi
-source "$CRUCIBLE_FILE"
 
 resolve_ramfs_artifact() {
     local flavour="$1"
@@ -708,6 +768,8 @@ mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
     echo "{";
     echo "    \"architecture\": \"${CROSSCOMPILE_ARCH}\",";
     echo "    \"serial\": \"${ARG_SERIAL}\",";
+    echo "    \"firmware_profile\": \"${GLB_FIRMWARE_PROFILE}\",";
+    echo "    \"firmware_provisioning_mode\": \"${GLB_FIRMWARE_PROVISIONING_MODE}\",";
     echo "    \"target\": \"${GLB_TARGET_NAME}\",";
     echo "    \"system_common_version\": \"${GLB_COMMON_SYSTEM_VER}\",";
     echo "    \"system_common_vcs\": \"${GLB_VCS_TAG}\",";
