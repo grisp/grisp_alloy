@@ -126,6 +126,8 @@ fi
 
 # Load common variables and functions (GLB_* globals, error handling, etc.)
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
+# shellcheck source=scripts/sdk-artifacts.sh
+source "$GLB_SCRIPT_DIR/sdk-artifacts.sh"
 
 # Validate host architecture - only modern 64-bit architectures supported
 if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64" ]]; then
@@ -158,6 +160,7 @@ FIRMWARE_PROFILES=()
 FIRMWARE_DEFAULT_PROFILE=default
 FIRMWARE_PROVISIONING_MODES=()
 FIRMWARE_DEFAULT_PROVISIONING_MODE=normal
+sdk_artifacts_init_defaults
 
 # CRUCIBLE: Target-specific build configuration.
 CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
@@ -217,6 +220,9 @@ if [[ ${ARG_PROVISIONING_MODE_OPT} -eq 0 ]]; then
 fi
 validate_firmware_provisioning_mode "$ARG_PROVISIONING_MODE"
 export GLB_FIRMWARE_PROVISIONING_MODE="$ARG_PROVISIONING_MODE"
+
+sdk_validate_artifact_config
+sdk_validate_firmware_artifact_profile "$GLB_FIRMWARE_PROFILE"
 
 # Arrays describing projects to stage
 PROJECT_NAMES=( )
@@ -538,8 +544,14 @@ bootscheme_setup ${BOOTSCHEME}
 
 # PROJECT ARTEFACT PREPARATION
 PROJECTS_BASE_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects"
-SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
-SDK_FWUP_CONFIG="$GLB_SDK_DIR/images/fwup.conf"
+SDK_IMAGES_DIR="$GLB_SDK_DIR/images"
+
+sdk_image_path() {
+    sdk_resolve_image_artifact "$SDK_IMAGES_DIR" "$GLB_FIRMWARE_PROFILE" "$1"
+}
+
+SDK_ROOTFS="$(sdk_image_path rootfs.squashfs)"
+SDK_FWUP_CONFIG="$(sdk_image_path fwup.conf)"
 GLB_VCS_TAG="unknown"
 if [[ -d "${GLB_TOP_DIR}/.git" ]]; then
     GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"

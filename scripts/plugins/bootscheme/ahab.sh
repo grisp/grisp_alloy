@@ -9,10 +9,15 @@ bootscheme_package_kernel() {
     local USE_RAMFS=${1:-false}
     local RAMFS_FILE=${2:-}
     local MKIMAGE="${GLB_SDK_HOST_DIR}/bin/mkimage"
-    local ITS_WITH_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITH_RAMFS}"
-    local ITS_WITHOUT_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITHOUT_RAMFS}"
-    local KERNEL_FILE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_FILENAME}"
-    local DTB_FILE="${GLB_SDK_DIR}/images/${BOOTSCHEME_DTB_FILENAME}"
+    local ITS_WITH_RAMFS_TEMPLATE
+    local ITS_WITHOUT_RAMFS_TEMPLATE
+    local KERNEL_FILE
+    local DTB_FILE
+
+    ITS_WITH_RAMFS_TEMPLATE="$(sdk_image_path "${BOOTSCHEME_KERNEL_ITS_WITH_RAMFS}")"
+    ITS_WITHOUT_RAMFS_TEMPLATE="$(sdk_image_path "${BOOTSCHEME_KERNEL_ITS_WITHOUT_RAMFS}")"
+    KERNEL_FILE="$(sdk_image_path "${BOOTSCHEME_KERNEL_FILENAME}")"
+    DTB_FILE="$(sdk_image_path "${BOOTSCHEME_DTB_FILENAME}")"
 
     if [[ ! -f "${MKIMAGE}" ]]; then
         error 1 "mkimage not found at ${MKIMAGE}"
@@ -55,8 +60,10 @@ bootscheme_package_firmware() {
     # TODO: Add support for ramdisk if disk encryption is enabled
     local FWUP="${GLB_SDK_HOST_DIR}/bin/fwup"
     local ROOTFS_FILE="${FIRMWARE_DIR}/combined.squashfs"
-    local UBOOT_FILE="${GLB_SDK_DIR}/images/flash.bin"
+    local UBOOT_FILE
     local KERNEL_FILE="${FIRMWARE_DIR}/fitImage"
+
+    UBOOT_FILE="$(sdk_image_path flash.bin)"
 
     if [[ ! -f "${FWUP}" ]]; then
         error 1 "fwup not found at ${FWUP}"
