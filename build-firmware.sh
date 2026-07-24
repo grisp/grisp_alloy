@@ -53,6 +53,8 @@ show_usage()
     echo "    Firmware version (defaults to first artefact's version)"
     echo " -o | --overlay <OVERLAY_DIR>"
     echo "    Overlay directory to merge into rootfs before packaging"
+    echo " -R | --ramfs <CPIO_GZ>"
+    echo "    Initramfs artifact to include in the kernel image"
     echo " -S | --security-pack <DIR>"
     echo "    Security pack root directory"
     echo " -s | --serial <SERIAL>"
@@ -85,6 +87,7 @@ args_add s serial ARG_SERIAL value "00000000"
 args_add n name ARG_FIRMWARE_NAME value ""
 args_add v version ARG_FIRMWARE_VER value ""
 args_add o overlay ARG_OVERLAY_DIR value ""
+args_add R ramfs ARG_RAMFS_FILE value ""
 args_add S security-pack ARG_SECPACK_DIR value ""
 args_add p profile ARG_PROFILE value "default"
 args_add U sign-update ARG_SIGN_UPDATE flag true false
@@ -298,6 +301,20 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
         NEW_ARGS=( ${NEW_ARGS[@]} "--overlay" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
     fi
+    if [[ ${ARG_RAMFS_FILE_OPT} -gt 0 ]]; then
+        if [[ ! -f "$ARG_RAMFS_FILE" ]]; then
+            error 1 "Ramfs artifact not found: $ARG_RAMFS_FILE"
+        fi
+        if [[ "$ARG_RAMFS_FILE" == ${GLB_ARTEFACTS_DIR}/* ]]; then
+            REL_PATH="${ARG_RAMFS_FILE#"${GLB_ARTEFACTS_DIR}"/}"
+            NEW_ARGS+=( "--ramfs" "${GLB_VAGRANT_ARTEFACTS_DIR}/${REL_PATH}" )
+        else
+            vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/uploads/ramfs"
+            rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
+                "$ARG_RAMFS_FILE" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads/ramfs/"
+            NEW_ARGS+=( "--ramfs" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads/ramfs/$( basename "$ARG_RAMFS_FILE" )" )
+        fi
+    fi
     VAGRANT_EXTERNAL_DIRS=( )
     alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
     for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
@@ -384,7 +401,10 @@ install_sdk
 # BUILD CONFIGURATION SETUP
 # Initialize variables that will be set by crucible.sh and boot scheme plugin
 BOOTSCHEME=NONE
-BOOTSCHEME_KERNEL_RAMFS=false
+BOOTSCHEME_KERNEL_RAMFS=none
+BOOTSCHEME_KERNEL_RAMFS_FLAVOUR=
+BOOTSCHEME_KERNEL_USE_RAMFS=false
+BOOTSCHEME_KERNEL_RAMFS_FILE=
 SQUASHFS_PRIORITIES=()
 FWUP_IMAGE_TARGETS=()
 GSU_KERNEL_PATH=
@@ -398,6 +418,58 @@ if [[ ! -f "$CRUCIBLE_FILE" ]]; then
     error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
 fi
 source "$CRUCIBLE_FILE"
+
+resolve_ramfs_artifact() {
+    local flavour="$1"
+    local latest
+
+    if [[ -z "$flavour" ]]; then
+        error 1 "Target requires an initramfs but did not set BOOTSCHEME_KERNEL_RAMFS_FLAVOUR"
+    fi
+
+    latest="$(
+        find "$GLB_ARTEFACTS_DIR" -maxdepth 1 -type f \
+            -name "grisp_alloy_ramfs-${flavour}-*.cpio.gz" \
+            -printf '%T@ %p\n' 2>/dev/null | \
+            sort -nr | \
+            sed -n '1s/^[^ ]* //p'
+    )"
+
+    if [[ -z "$latest" ]]; then
+        error 1 "No ramfs artifact found for flavour '${flavour}' in ${GLB_ARTEFACTS_DIR}; build one with ./build-ramfs.sh ${flavour} or pass --ramfs"
+    fi
+
+    echo "$latest"
+}
+
+case "${BOOTSCHEME_KERNEL_RAMFS}" in
+    false)
+        BOOTSCHEME_KERNEL_RAMFS=none
+        ;;
+    true)
+        BOOTSCHEME_KERNEL_RAMFS=optional
+        ;;
+    none|optional|required)
+        ;;
+    *)
+        error 1 "Invalid BOOTSCHEME_KERNEL_RAMFS policy '${BOOTSCHEME_KERNEL_RAMFS}' for target ${GLB_TARGET_NAME}; expected none, optional, or required"
+        ;;
+esac
+
+if [[ ${ARG_RAMFS_FILE_OPT} -gt 0 ]]; then
+    if [[ ! -f "$ARG_RAMFS_FILE" ]]; then
+        error 1 "Ramfs artifact not found: $ARG_RAMFS_FILE"
+    fi
+    BOOTSCHEME_KERNEL_USE_RAMFS=true
+    BOOTSCHEME_KERNEL_RAMFS_FILE="$( cd "$( dirname "$ARG_RAMFS_FILE" )" && pwd )/$( basename "$ARG_RAMFS_FILE" )"
+elif [[ "${BOOTSCHEME_KERNEL_RAMFS}" == "required" ]]; then
+    BOOTSCHEME_KERNEL_USE_RAMFS=true
+    BOOTSCHEME_KERNEL_RAMFS_FILE="$( resolve_ramfs_artifact "${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}" )"
+fi
+
+if [[ "${BOOTSCHEME_KERNEL_USE_RAMFS}" == "true" ]]; then
+    echo "Using ramfs artifact: ${BOOTSCHEME_KERNEL_RAMFS_FILE}"
+fi
 
 # BOOT SCHEME PLUGIN: Platform-specific packaging logic
 # Each target uses different boot methods (AHAB for i.MX8, etc.)
@@ -678,7 +750,7 @@ cat $ALLOY_FIRMWARE_FILE
 bootscheme_package_bootloader
 
 # Package kernel (with or without initramfs)
-bootscheme_package_kernel
+bootscheme_package_kernel "${BOOTSCHEME_KERNEL_USE_RAMFS}" "${BOOTSCHEME_KERNEL_RAMFS_FILE}"
 
 # FIRMWARE IMAGE CREATION
 # Create final .fw file using FWUP configuration and boot scheme logic

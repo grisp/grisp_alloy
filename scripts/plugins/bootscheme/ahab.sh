@@ -7,6 +7,7 @@ bootscheme_package_kernel() {
     # TODO: Sign the kernel if secureboot is enabled
     # TODO: Add support for encrypted disk via ramdisk
     local USE_RAMFS=${1:-false}
+    local RAMFS_FILE=${2:-}
     local MKIMAGE="${GLB_SDK_HOST_DIR}/bin/mkimage"
     local ITS_WITH_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITH_RAMFS}"
     local ITS_WITHOUT_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITHOUT_RAMFS}"
@@ -21,9 +22,12 @@ bootscheme_package_kernel() {
     fi
     if [[ "${USE_RAMFS}" == "true" ]]; then
         local ITS_TEMPLATE="${ITS_WITH_RAMFS_TEMPLATE}"
-        local INITRAMFS_FILE="${GLB_SDK_DIR}/images/${RAMFS_FILENAME}"
+        local INITRAMFS_FILE="${RAMFS_FILE}"
+        if [[ -z "${INITRAMFS_FILE}" ]]; then
+            error 1 "Ramfs packaging requested but no ramfs artifact path was provided"
+        fi
         if [[ ! -f "${INITRAMFS_FILE}" ]]; then
-            error 1 "initramfs file ${INITRAMFS_FILENAME} not found at $INITRAMFS_FILE"
+            error 1 "Ramfs artifact not found at ${INITRAMFS_FILE}"
         fi
     else
         local ITS_TEMPLATE="$ITS_WITHOUT_RAMFS_TEMPLATE"

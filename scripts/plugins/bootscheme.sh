@@ -13,12 +13,13 @@
 #   This may be a no-op for schemes that don't need explicit bootloader
 #   packaging at this step.
 #
-# bootscheme_package_kernel [USE_INITRAMFS=false]
+# bootscheme_package_kernel [USE_INITRAMFS=false] [INITRAMFS_FILE]
 #   Role: stage or prepare kernel-related artifacts (kernel image, device tree,
 #   and optionally an initramfs). Accepts one optional boolean argument to
-#   request inclusion of an initramfs; default is false. Expected to read any
-#   required inputs from the SDK and/or build tree and write outputs under
-#   ${FIRMWARE_DIR} for later consumption by bootscheme_package_firmware.
+#   request inclusion of an initramfs and an optional initramfs artifact path.
+#   Expected to read any required inputs from the SDK and/or build tree and
+#   write outputs under ${FIRMWARE_DIR} for later consumption by
+#   bootscheme_package_firmware.
 #
 # bootscheme_package_firmware()
 #   Role: produce the final firmware artifact for the selected scheme.
