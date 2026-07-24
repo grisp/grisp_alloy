@@ -143,7 +143,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ ${ARG_PROJECT_PROFILE_OPT} -gt 0 ]]; then
         NEW_ARGS+=( "--profile" "$ARG_PROJECT_PROFILE" )
     fi
-    for external_dir in "${ARG_EXTERNAL_DIRS[@]}"; do
+    VAGRANT_EXTERNAL_DIRS=( )
+    alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
+    for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
         NEW_ARGS+=( "--external" "$external_dir" )
     done
     NEW_ARGS+=( "$ARG_TARGET" )

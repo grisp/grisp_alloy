@@ -118,7 +118,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     for p in "${ARG_CLEAN_PACKAGES[@]}"; do
         NEW_ARGS+=( "--clean-package" "$p" )
     done
-    for external_dir in "${ARG_EXTERNAL_DIRS[@]}"; do
+    VAGRANT_EXTERNAL_DIRS=( )
+    alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
+    for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
         NEW_ARGS+=( "--external" "$external_dir" )
     done
     NEW_ARGS+=( "$ARG_TARGET" )

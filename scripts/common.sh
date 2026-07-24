@@ -387,6 +387,61 @@ alloy_write_external_context() {
     } > "$output"
 }
 
+alloy_sanitize_path_component() {
+    local name="$1"
+
+    name="$( printf '%s' "$name" | sed -e 's/[^A-Za-z0-9_.-]/_/g' )"
+    if [[ -n "$name" ]]; then
+        printf '%s\n' "$name"
+    else
+        printf '%s\n' external
+    fi
+}
+
+alloy_vagrant_sync_external_roots() {
+    local out_var="$1"
+    local external_roots=( )
+    local root
+    local index
+    local guest_parent
+    local guest_dir
+    local guest_basename
+    local rsync_excludes
+
+    eval "$out_var=()"
+    alloy_external_roots external_roots
+    if [[ "${#external_roots[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    vagrant ssh-config > "${GLB_TOP_DIR}/.vagrant.ssh_config"
+    vagrant exec mkdir -p "$GLB_VAGRANT_EXTERNAL_BUILD_DIR"
+    rsync_excludes=(
+        --exclude='.git/'
+        --exclude='.vagrant/'
+        --exclude='_build/'
+        --exclude='_cache/'
+        --exclude='artefacts/'
+    )
+
+    index=0
+    for root in "${external_roots[@]}"; do
+        guest_parent="${GLB_VAGRANT_EXTERNAL_BUILD_DIR}/$( printf '%02d' "$index" )"
+        guest_basename="$( alloy_sanitize_path_component "$( basename "$root" )" )"
+        guest_dir="${guest_parent}/${guest_basename}"
+
+        vagrant exec mkdir -p "$guest_parent"
+        vagrant exec rm -rf "$guest_dir"
+        vagrant exec mkdir -p "$guest_dir"
+        rsync -qaz --delete "${rsync_excludes[@]}" \
+            -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
+            "${root}/" "vagrant@default:${guest_dir}/"
+
+        append_unique "$out_var" "$guest_dir"
+        index=$(( index + 1 ))
+    done
+}
+
 # OS and architecture detection
 BUILD_ARCH="$(uname -m)"
 BUILD_OS="$(uname -s)"
@@ -446,6 +501,7 @@ else
     GLB_CACHE_DIR="${GLB_TOP_DIR}/_cache"
     GLB_BUILD_DIR="${GLB_TOP_DIR}/_build"
     GLB_VAGRANT_BUILD_DIR="${GLB_VAGRANT_TOP_DIR}/_build"
+    GLB_VAGRANT_EXTERNAL_BUILD_DIR="${GLB_VAGRANT_BUILD_DIR}/external"
     GLB_TOOLCHAIN_DIR="${GLB_TOP_DIR}/toolchain"
     GLB_TOOLCHAIN_CACHE_DIR="${GLB_CACHE_DIR}/toolchain"
     GLB_TOOLCHAIN_SCRIPT_DIR="${GLB_TOOLCHAIN_DIR}/scripts"

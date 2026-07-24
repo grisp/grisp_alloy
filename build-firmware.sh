@@ -298,7 +298,9 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
         NEW_ARGS=( ${NEW_ARGS[@]} "--overlay" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
     fi
-    for external_dir in "${ARG_EXTERNAL_DIRS[@]}"; do
+    VAGRANT_EXTERNAL_DIRS=( )
+    alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
+    for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
         NEW_ARGS+=( "--external" "$external_dir" )
     done
 
