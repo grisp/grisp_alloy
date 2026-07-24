@@ -90,11 +90,15 @@ if [[ ! -d $ARG_PROJECT ]]; then
     error 1 "cannot find Erlang project $ARG_PROJECT"
 fi
 
-SOURCE_PROJECT_DIR="$( cd $ARG_PROJECT; pwd )"
+SOURCE_PROJECT_DIR="$( cd "$ARG_PROJECT"; pwd )"
 PROJECT_NAME="$( basename "$SOURCE_PROJECT_DIR" )"
 VCS_TAG_FILE=".alloy_vcs_tag"
+PROJECT_EXCLUDE_FILE=".grisp_alloy_exclude"
 RSYNC_CMD=( rsync -aqH --copy-links --delete --exclude='_build/' --exclude='*.beam' \
             --exclude='*.o' --exclude='*.so' )
+if [[ -f "$SOURCE_PROJECT_DIR/$PROJECT_EXCLUDE_FILE" ]]; then
+    RSYNC_CMD+=( --exclude-from="$SOURCE_PROJECT_DIR/$PROJECT_EXCLUDE_FILE" )
+fi
 
 set_debug_level "$ARG_DEBUG"
 
@@ -112,7 +116,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     vagrant exec mkdir -p "$VAGRANT_PROJECT_BUILD_DIR"
     vagrant ssh-config > .vagrant.ssh_config
 
-    ${RSYNC_CMD[@]} -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
+    "${RSYNC_CMD[@]}" -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
         "$SOURCE_PROJECT_DIR"/. "vagrant@default:${VAGRANT_PROJECT_BUILD_DIR}"
 
     # Keep track of the project VCS tag
@@ -155,7 +159,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
     cd "$GLB_TOP_DIR"
-    vagrant exec "${GLB_VAGRANT_TOP_DIR}/build-project.sh" "${NEW_ARGS[@]}"
+    vagrant exec -- "${GLB_VAGRANT_TOP_DIR}/build-project.sh" "${NEW_ARGS[@]}"
     exit $?
 fi
 
@@ -195,8 +199,9 @@ project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
 # Copy source project to build directory and prepare for compilation
 echo "Building $PROJECT_TYPE project..."
 mkdir -p "$PROJECT_DIR"
-echo ${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
-${RSYNC_CMD[@]} -v "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
+printf '%q ' "${RSYNC_CMD[@]}" "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
+printf '\n'
+"${RSYNC_CMD[@]}" "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
 if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
         && [[ -d "$PROJECT_DIR/.git" ]]; then
     "${GLB_SCRIPT_DIR}/git-info.sh" -c "$PROJECT_DIR" \
