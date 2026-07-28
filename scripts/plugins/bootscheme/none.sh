@@ -22,6 +22,7 @@ bootscheme_package_firmware() {
     GRISP_FW_PLATFORM="${GLB_TARGET_NAME}" \
     GRISP_FW_ARCHITECTURE="${CROSSCOMPILE_ARCH}" \
     GRISP_FW_VCS_IDENTIFIER="${GLB_VCS_TAG}${PROJECT_VCS_TAG:+/${PROJECT_VCS_TAG}}" \
+    GRISP_FW_MISC="${GRISP_FW_MISC:-$(alloy_firmware_misc_provenance)}" \
     GRISP_SYSTEM="${GLB_SDK_DIR}" \
     ROOTFS="${ROOTFS_FILE}" \
         "${FWUP}" -c -f "${SDK_FWUP_CONFIG}" -o "${FIRMWARE_FILE}"

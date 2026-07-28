@@ -36,6 +36,25 @@ Supported targets in this repository:
 - `grisp2`
 - `kontron-albl-imx8mm`
 
+External target bundles can add private `system_*`, `ramfs_*`, and
+`toolchain/configs/*_defconfig` files without modifying this repository. Pass
+external bundle roots with repeated `--external <DIR>` flags or set
+`GRISP_ALLOY_EXTERNAL_PATH` to a colon-separated list:
+
+```sh
+GRISP_ALLOY_EXTERNAL_PATH=/path/to/private-bundle ./build-sdk.sh private-target
+./build-firmware.sh --external /path/to/private-bundle private-target app
+```
+
+An external bundle root may contain multiple target systems and ramfs flavours:
+
+```text
+private-bundle/
+  system_private-target/
+  ramfs_private-target/
+  toolchain/configs/private-target_linux_x86_64_defconfig
+```
+
 ## Getting Started
 
 ### Prerequisites (Linux)
@@ -136,8 +155,11 @@ Target-specific end-to-end guides:
 ### 1. Build Toolchain
 
 ```sh
-./build-toolchain.sh [-h] [-d] [-c] [-V] [-P] [-K] <TARGET>
+./build-toolchain.sh [OPTIONS] <TARGET>
 ```
+
+Use `--print-config` to inspect the resolved toolchain defconfig without
+building.
 
 ### 2. Build SDK
 
@@ -154,6 +176,7 @@ Common options:
 - `-V | --force-vagrant`: run in Vagrant even on Linux
 - `-P | --provision`: reprovision Vagrant VM
 - `-K | --keep-vagrant`: keep VM running when script exits
+- `--external <DIR>`: add an external bundle root
 
 ### 3. Build Project Artefact
 
@@ -166,6 +189,9 @@ This packages a project tarball containing:
 - `ALLOY-PROJECT` manifest
 - `ALLOY-FS-PRIORITIES` (optional)
 - `release/` (OTP release)
+
+If the project directory contains `.grisp_alloy_exclude`, its patterns are
+passed to `rsync --exclude-from` when copying the project into the build area.
 
 ### 4. Build Firmware
 
@@ -182,7 +208,53 @@ Useful options:
 - `-U | --sign-update`: sign update package (requires `--security-pack`)
 - `-s | --serial <SERIAL>`: device serial (default `00000000`)
 - `-p | --profile <PROFILE>`: security profile (default `default`)
+- `-M | --provisioning-mode <MODE>`: target-declared provisioning mode
+- `-R | --ramfs <CPIO_GZ>`: package an explicit initramfs artefact
 - `-n | --name <NAME>` / `-v | --version <VER>`: override firmware metadata
+- `--external <DIR>`: add an external bundle root
+
+Targets may declare firmware profiles, provisioning modes, SDK artefact
+profiles, and initramfs policy in `system_<target>/crucible.sh`. Targets that do
+not declare profiles keep the previous default behavior.
+
+SDKs built from this branch include `ALLOY-RESOLVER-CONTEXT` provenance with
+target/common source hashes, bundle source type, toolchain config source, and
+external path metadata. Downstream commands reject external-target SDKs and
+project artefacts whose provenance does not match the currently resolved target
+context. Firmware archives for external targets also carry the same provenance
+in FWUP metadata so `flash-firmware.sh` can reject stale or cross-bundle images
+before conversion or hardware probing.
+
+### Optional Ramfs Artefact
+
+```sh
+./build-ramfs.sh [OPTIONS] <FLAVOUR>
+```
+
+`build-ramfs.sh` builds `ramfs_<flavour>` from in-tree or external bundle
+sources. Use `--print-buildroot` for a resolver smoke test that does not build.
+
+### Security Pack Generation
+
+```sh
+./gen-secpack.sh [OPTIONS] <TARGET> <ABSOLUTE_OUTPUT_DIR>
+```
+
+Targets with `secpack.conf` can generate a generic development security pack.
+Target-local `secpack.sh` hooks may add target-specific secure-boot material.
+The output directory must be absolute and must not be inside the Alloy checkout
+or target source tree.
+
+### Firmware Flashing
+
+```sh
+./flash-firmware.sh [OPTIONS] <TARGET> <FIRMWARE_PREFIX_OR_PATH>
+```
+
+`flash-firmware.sh` is capability based. A target must provide `uuu.conf`; if it
+does not, the command fails before SDK installation or hardware access with a
+clear `Flashing not supported` error. Use `--dry-run` to inspect generated UUU
+commands without flashing.
 
 ## Disk Images & Deployment
 

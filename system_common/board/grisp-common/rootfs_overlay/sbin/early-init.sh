@@ -2,7 +2,13 @@
 
 set -efu
 
-log() { echo "[early-init] $*"; }
+log() {
+  if [ -w /dev/kmsg ]; then
+    printf '<5>[early-init] %s\n' "$*" > /dev/kmsg 2>/dev/null || true
+  else
+    echo "[early-init] $*"
+  fi
+}
 
 # -------- settings (override with kernel cmdline: data_dev=/dev/XYZ) --------
 
@@ -11,9 +17,16 @@ DATA_MNT="/data"
 DATA_FS="f2fs"
 # Security/wear-friendly mount opts; adjust as needed.
 DATA_OPTS="rw,nosuid,nodev,noexec,noatime,lazytime"
+MOUNT_DATA=yes
+
+if [ "${1:-}" = "--runtime-only" ]; then
+  MOUNT_DATA=no
+  shift
+fi
 
 # Parse kernel cmdline override
-for tok in $(cat /proc/cmdline); do
+cmdline="$(cat /proc/cmdline 2>/dev/null || true)"
+for tok in $cmdline; do
   case "$tok" in
     data_dev=*) DATA_DEV="${tok#data_dev=}" ;;
   esac
@@ -42,6 +55,11 @@ fi
 [ -L /var/cache ] || ln -sfn /run/cache /var/cache
 [ -L /var/spool ] || ln -sfn /run/spool /var/spool
 [ -L /var/tmp ]  || ln -sfn /tmp /var/tmp
+
+if [ "$MOUNT_DATA" = "no" ]; then
+  log "Runtime setup complete; /data mounting is owned by initramfs"
+  exit 0
+fi
 
 # -------- wait for the block device --------
 

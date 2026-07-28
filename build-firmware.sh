@@ -53,14 +53,20 @@ show_usage()
     echo "    Firmware version (defaults to first artefact's version)"
     echo " -o | --overlay <OVERLAY_DIR>"
     echo "    Overlay directory to merge into rootfs before packaging"
+    echo " -R | --ramfs <CPIO_GZ>"
+    echo "    Initramfs artifact to include in the kernel image"
     echo " -S | --security-pack <DIR>"
     echo "    Security pack root directory"
     echo " -s | --serial <SERIAL>"
     echo "    Device serial number (default: 00000000)"
     echo " -p | --profile <NAME>"
-    echo "    Security profile (default: default)"
+    echo "    Firmware/security-pack profile (default: target-defined or default)"
+    echo " -M | --provisioning-mode <NAME>"
+    echo "    Firmware provisioning mode (default: target-defined or normal)"
     echo " -U | --sign-update"
     echo "    Enable grisp_updater package signing (requires --security-pack)"
+    echo " --external <DIR>"
+    echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
     echo "Examples:"
     echo "  build-firmware.sh grisp2 projA"
@@ -83,9 +89,12 @@ args_add s serial ARG_SERIAL value "00000000"
 args_add n name ARG_FIRMWARE_NAME value ""
 args_add v version ARG_FIRMWARE_VER value ""
 args_add o overlay ARG_OVERLAY_DIR value ""
+args_add R ramfs ARG_RAMFS_FILE value ""
 args_add S security-pack ARG_SECPACK_DIR value ""
 args_add p profile ARG_PROFILE value "default"
+args_add M provisioning-mode ARG_PROVISIONING_MODE value "normal"
 args_add U sign-update ARG_SIGN_UPDATE flag true false
+args_add "" external ARG_EXTERNAL_DIRS accum
 
 if ! args_parse "$@"; then
     exit 1
@@ -117,6 +126,8 @@ fi
 
 # Load common variables and functions (GLB_* globals, error handling, etc.)
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
+# shellcheck source=scripts/sdk-artifacts.sh
+source "$GLB_SCRIPT_DIR/sdk-artifacts.sh"
 
 # Validate host architecture - only modern 64-bit architectures supported
 if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64" ]]; then
@@ -133,6 +144,86 @@ OVERLAY_DIR=""
 VCS_TAG_FILE=".alloy_vcs_tag"
 
 set_debug_level "${ARG_DEBUG}"
+
+# BUILD CONFIGURATION SETUP
+# Initialize variables that can be set by crucible.sh.
+BOOTSCHEME=NONE
+BOOTSCHEME_KERNEL_RAMFS=none
+BOOTSCHEME_KERNEL_RAMFS_FLAVOUR=
+BOOTSCHEME_KERNEL_USE_RAMFS=false
+BOOTSCHEME_KERNEL_RAMFS_FILE=
+SQUASHFS_PRIORITIES=()
+FWUP_IMAGE_TARGETS=()
+GSU_KERNEL_PATH=
+GSU_PARTITIONS=
+FIRMWARE_PROFILES=()
+FIRMWARE_DEFAULT_PROFILE=default
+FIRMWARE_PROVISIONING_MODES=()
+FIRMWARE_DEFAULT_PROVISIONING_MODE=normal
+ALLOY_STRICT_EXTERNAL_BUNDLE=false
+sdk_artifacts_init_defaults
+
+# CRUCIBLE: Target-specific build configuration.
+CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
+if [[ ! -f "$CRUCIBLE_FILE" ]]; then
+    error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
+fi
+source "$CRUCIBLE_FILE"
+
+validate_firmware_profile() {
+    local selected="$1"
+    local profile
+
+    if [[ ${#FIRMWARE_PROFILES[@]} -eq 0 ]]; then
+        if [[ "$selected" != "default" ]]; then
+            error 1 "Target ${GLB_TARGET_NAME} does not declare firmware profiles; only --profile default is valid"
+        fi
+        return 0
+    fi
+
+    for profile in "${FIRMWARE_PROFILES[@]}"; do
+        if [[ "$profile" == "$selected" ]]; then
+            return 0
+        fi
+    done
+
+    error 1 "Invalid firmware profile '${selected}' for target ${GLB_TARGET_NAME}; expected one of: ${FIRMWARE_PROFILES[*]}"
+}
+
+validate_firmware_provisioning_mode() {
+    local selected="$1"
+    local mode
+
+    if [[ ${#FIRMWARE_PROVISIONING_MODES[@]} -eq 0 ]]; then
+        if [[ "$selected" != "normal" ]]; then
+            error 1 "Target ${GLB_TARGET_NAME} does not declare firmware provisioning modes; only --provisioning-mode normal is valid"
+        fi
+        return 0
+    fi
+
+    for mode in "${FIRMWARE_PROVISIONING_MODES[@]}"; do
+        if [[ "$mode" == "$selected" ]]; then
+            return 0
+        fi
+    done
+
+    error 1 "Invalid firmware provisioning mode '${selected}' for target ${GLB_TARGET_NAME}; expected one of: ${FIRMWARE_PROVISIONING_MODES[*]}"
+}
+
+if [[ ${ARG_PROFILE_OPT} -eq 0 ]]; then
+    ARG_PROFILE="${FIRMWARE_DEFAULT_PROFILE:-default}"
+fi
+validate_firmware_profile "$ARG_PROFILE"
+export GLB_FIRMWARE_PROFILE="$ARG_PROFILE"
+
+if [[ ${ARG_PROVISIONING_MODE_OPT} -eq 0 ]]; then
+    ARG_PROVISIONING_MODE="${FIRMWARE_DEFAULT_PROVISIONING_MODE:-normal}"
+fi
+validate_firmware_provisioning_mode "$ARG_PROVISIONING_MODE"
+export GLB_FIRMWARE_PROVISIONING_MODE="$ARG_PROVISIONING_MODE"
+
+sdk_validate_artifact_config
+sdk_validate_firmware_artifact_profile "$GLB_FIRMWARE_PROFILE"
 
 # Arrays describing projects to stage
 PROJECT_NAMES=( )
@@ -295,6 +386,25 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" "$ARG_OVERLAY_DIR/" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay/"
         NEW_ARGS=( ${NEW_ARGS[@]} "--overlay" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/overlay" )
     fi
+    if [[ ${ARG_RAMFS_FILE_OPT} -gt 0 ]]; then
+        if [[ ! -f "$ARG_RAMFS_FILE" ]]; then
+            error 1 "Ramfs artifact not found: $ARG_RAMFS_FILE"
+        fi
+        if [[ "$ARG_RAMFS_FILE" == ${GLB_ARTEFACTS_DIR}/* ]]; then
+            REL_PATH="${ARG_RAMFS_FILE#"${GLB_ARTEFACTS_DIR}"/}"
+            NEW_ARGS+=( "--ramfs" "${GLB_VAGRANT_ARTEFACTS_DIR}/${REL_PATH}" )
+        else
+            vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/uploads/ramfs"
+            rsync -qav -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
+                "$ARG_RAMFS_FILE" "vagrant@default:${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads/ramfs/"
+            NEW_ARGS+=( "--ramfs" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/uploads/ramfs/$( basename "$ARG_RAMFS_FILE" )" )
+        fi
+    fi
+    VAGRANT_EXTERNAL_DIRS=( )
+    alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
+    for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
+        NEW_ARGS+=( "--external" "$external_dir" )
+    done
 
     # Security pack handling in VM: copy minimal content and pass path
     if [[ ${ARG_SECPACK_DIR_OPT} -gt 0 ]]; then
@@ -311,7 +421,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         fi
         vagrant exec rm -rf "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack"
         vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack"
-        SECPACK_COPY_ITEMS=( secpack scripts overlay grisp_updater )
+        SECPACK_COPY_ITEMS=( secpack scripts overlay grisp_updater secureboot SECURITY-PACK )
         for item in "${SECPACK_COPY_ITEMS[@]}"; do
             local_src="${ARG_SECPACK_DIR}/${item}"
             if [[ -e "$local_src" ]]; then
@@ -323,12 +433,15 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
             fi
         done
         NEW_ARGS=( ${NEW_ARGS[@]} "--security-pack" "${GLB_VAGRANT_FIRMWARE_BUILD_DIR}/secpack" )
-        if [[ ${ARG_PROFILE_OPT} -gt 0 ]]; then
-            NEW_ARGS=( ${NEW_ARGS[@]} "--profile" "$ARG_PROFILE" )
-        fi
         if [[ $ARG_SIGN_UPDATE == true ]]; then
             NEW_ARGS=( ${NEW_ARGS[@]} "--sign-update" )
         fi
+    fi
+    if [[ ${ARG_PROFILE_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--profile" "$ARG_PROFILE" )
+    fi
+    if [[ ${ARG_PROVISIONING_MODE_OPT} -gt 0 ]]; then
+        NEW_ARGS+=( "--provisioning-mode" "$ARG_PROVISIONING_MODE" )
     fi
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
 
@@ -372,24 +485,64 @@ fi
 
 # SDK INSTALLATION
 install_sdk
+alloy_verify_sdk_context_strict
 
-# BUILD CONFIGURATION SETUP
-# Initialize variables that will be set by crucible.sh and boot scheme plugin
-BOOTSCHEME=NONE
-BOOTSCHEME_KERNEL_RAMFS=false
-SQUASHFS_PRIORITIES=()
-FWUP_IMAGE_TARGETS=()
-GSU_KERNEL_PATH=
-GSU_PARTITIONS=
+resolve_ramfs_artifact() {
+    local flavour="$1"
+    local latest
 
+    if [[ -z "$flavour" ]]; then
+        error 1 "Target requires an initramfs but did not set BOOTSCHEME_KERNEL_RAMFS_FLAVOUR"
+    fi
 
-# CRUCIBLE: Target-specific build configuration
-# Contains target-specific settings like boot scheme, kernel config, etc.
-CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
-if [[ ! -f "$CRUCIBLE_FILE" ]]; then
-    error 1 "Crucible file for system ${GLB_TARGET_NAME} not found"
+    latest="$(
+        find "$GLB_ARTEFACTS_DIR" -maxdepth 1 -type f \
+            -name "grisp_alloy_ramfs-${flavour}-*.cpio.gz" \
+            -printf '%T@ %p\n' 2>/dev/null | \
+            sort -nr | \
+            sed -n '1s/^[^ ]* //p'
+    )"
+
+    if [[ -z "$latest" ]]; then
+        error 1 "No ramfs artifact found for flavour '${flavour}' in ${GLB_ARTEFACTS_DIR}; build one with ./build-ramfs.sh ${flavour} or pass --ramfs"
+    fi
+
+    echo "$latest"
+}
+
+case "${BOOTSCHEME_KERNEL_RAMFS}" in
+    false)
+        BOOTSCHEME_KERNEL_RAMFS=none
+        ;;
+    true)
+        BOOTSCHEME_KERNEL_RAMFS=optional
+        ;;
+    none|optional|required)
+        ;;
+    *)
+        error 1 "Invalid BOOTSCHEME_KERNEL_RAMFS policy '${BOOTSCHEME_KERNEL_RAMFS}' for target ${GLB_TARGET_NAME}; expected none, optional, or required"
+        ;;
+esac
+
+if [[ "${BOOTSCHEME_KERNEL_RAMFS}" != "none" && -n "${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}" ]]; then
+    alloy_resolve_ramfs_context "${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}"
+    alloy_require_target_bundle_component "ramfs_${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}" "$GLB_RAMFS_BUNDLE_ROOT"
 fi
-source "$CRUCIBLE_FILE"
+
+if [[ ${ARG_RAMFS_FILE_OPT} -gt 0 ]]; then
+    if [[ ! -f "$ARG_RAMFS_FILE" ]]; then
+        error 1 "Ramfs artifact not found: $ARG_RAMFS_FILE"
+    fi
+    BOOTSCHEME_KERNEL_USE_RAMFS=true
+    BOOTSCHEME_KERNEL_RAMFS_FILE="$( cd "$( dirname "$ARG_RAMFS_FILE" )" && pwd )/$( basename "$ARG_RAMFS_FILE" )"
+elif [[ "${BOOTSCHEME_KERNEL_RAMFS}" == "required" ]]; then
+    BOOTSCHEME_KERNEL_USE_RAMFS=true
+    BOOTSCHEME_KERNEL_RAMFS_FILE="$( resolve_ramfs_artifact "${BOOTSCHEME_KERNEL_RAMFS_FLAVOUR}" )"
+fi
+
+if [[ "${BOOTSCHEME_KERNEL_USE_RAMFS}" == "true" ]]; then
+    echo "Using ramfs artifact: ${BOOTSCHEME_KERNEL_RAMFS_FILE}"
+fi
 
 # BOOT SCHEME PLUGIN: Platform-specific packaging logic
 # Each target uses different boot methods (AHAB for i.MX8, etc.)
@@ -398,8 +551,14 @@ bootscheme_setup ${BOOTSCHEME}
 
 # PROJECT ARTEFACT PREPARATION
 PROJECTS_BASE_DIR="${GLB_FIRMWARE_BUILD_DIR}/projects"
-SDK_ROOTFS="$GLB_SDK_DIR/images/rootfs.squashfs"
-SDK_FWUP_CONFIG="$GLB_SDK_DIR/images/fwup.conf"
+SDK_IMAGES_DIR="$GLB_SDK_DIR/images"
+
+sdk_image_path() {
+    sdk_resolve_image_artifact "$SDK_IMAGES_DIR" "$GLB_FIRMWARE_PROFILE" "$1"
+}
+
+SDK_ROOTFS="$(sdk_image_path rootfs.squashfs)"
+SDK_FWUP_CONFIG="$(sdk_image_path fwup.conf)"
 GLB_VCS_TAG="unknown"
 if [[ -d "${GLB_TOP_DIR}/.git" ]]; then
     GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"
@@ -450,6 +609,21 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
     fi
     if [[ -n "$PROJECT_TARGET_SYSTEM_VER" && -n "$GLB_TARGET_SYSTEM_VER" && "$PROJECT_TARGET_SYSTEM_VER" != "$GLB_TARGET_SYSTEM_VER" ]]; then
         error 1 "Artefact $app_name target system version '$PROJECT_TARGET_SYSTEM_VER' does not match '$GLB_TARGET_SYSTEM_VER'"
+    fi
+    if [[ -n "${PROJECT_TARGET_SYSTEM_SOURCE:-}" && "$PROJECT_TARGET_SYSTEM_SOURCE" != "$GLB_TARGET_SYSTEM_SOURCE" ]]; then
+        error 1 "Artefact $app_name target source '$PROJECT_TARGET_SYSTEM_SOURCE' does not match '$GLB_TARGET_SYSTEM_SOURCE'"
+    elif [[ -z "${PROJECT_TARGET_SYSTEM_SOURCE:-}" && "$GLB_TARGET_SYSTEM_SOURCE" == "external" ]]; then
+        error 1 "Artefact $app_name is missing target source provenance for external target '$GLB_TARGET_NAME'"
+    fi
+    if [[ -n "${PROJECT_COMMON_SYSTEM_TREE_SHA256:-}" && "$PROJECT_COMMON_SYSTEM_TREE_SHA256" != "$GLB_COMMON_SYSTEM_TREE_SHA256" ]]; then
+        error 1 "Artefact $app_name common system hash '$PROJECT_COMMON_SYSTEM_TREE_SHA256' does not match '$GLB_COMMON_SYSTEM_TREE_SHA256'"
+    elif [[ -z "${PROJECT_COMMON_SYSTEM_TREE_SHA256:-}" && "$GLB_TARGET_SYSTEM_SOURCE" == "external" ]]; then
+        error 1 "Artefact $app_name is missing common system hash provenance for external target '$GLB_TARGET_NAME'"
+    fi
+    if [[ -n "${PROJECT_TARGET_SYSTEM_TREE_SHA256:-}" && "$PROJECT_TARGET_SYSTEM_TREE_SHA256" != "$GLB_TARGET_SYSTEM_TREE_SHA256" ]]; then
+        error 1 "Artefact $app_name target system hash '$PROJECT_TARGET_SYSTEM_TREE_SHA256' does not match '$GLB_TARGET_SYSTEM_TREE_SHA256'"
+    elif [[ -z "${PROJECT_TARGET_SYSTEM_TREE_SHA256:-}" && "$GLB_TARGET_SYSTEM_SOURCE" == "external" ]]; then
+        error 1 "Artefact $app_name is missing target system hash provenance for external target '$GLB_TARGET_NAME'"
     fi
     if [[ -n "$PROJECT_CROSSCOMPILE_ARCH" && -n "$CROSSCOMPILE_ARCH" && "$PROJECT_CROSSCOMPILE_ARCH" != "$CROSSCOMPILE_ARCH" ]]; then
         error 1 "Artefact $app_name arch '$PROJECT_CROSSCOMPILE_ARCH' does not match '$CROSSCOMPILE_ARCH'"
@@ -628,11 +802,16 @@ mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
     echo "{";
     echo "    \"architecture\": \"${CROSSCOMPILE_ARCH}\",";
     echo "    \"serial\": \"${ARG_SERIAL}\",";
+    echo "    \"firmware_profile\": \"${GLB_FIRMWARE_PROFILE}\",";
+    echo "    \"firmware_provisioning_mode\": \"${GLB_FIRMWARE_PROVISIONING_MODE}\",";
     echo "    \"target\": \"${GLB_TARGET_NAME}\",";
+    echo "    \"target_source\": \"${GLB_TARGET_SYSTEM_SOURCE}\",";
     echo "    \"system_common_version\": \"${GLB_COMMON_SYSTEM_VER}\",";
     echo "    \"system_common_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"system_common_tree_sha256\": \"${GLB_COMMON_SYSTEM_TREE_SHA256}\",";
     echo "    \"system_target_version\": \"${GLB_TARGET_SYSTEM_VER}\",";
     echo "    \"system_target_vcs\": \"${GLB_VCS_TAG}\",";
+    echo "    \"system_target_tree_sha256\": \"${GLB_TARGET_SYSTEM_TREE_SHA256}\",";
     echo "    \"firmware_name\": \"${FIRMWARE_NAME}\",";
     echo "    \"firmware_ver\": \"${FIRMWARE_VER}\",";
     echo "    \"projects\": {";
@@ -670,7 +849,7 @@ cat $ALLOY_FIRMWARE_FILE
 bootscheme_package_bootloader
 
 # Package kernel (with or without initramfs)
-bootscheme_package_kernel
+bootscheme_package_kernel "${BOOTSCHEME_KERNEL_USE_RAMFS}" "${BOOTSCHEME_KERNEL_RAMFS_FILE}"
 
 # FIRMWARE IMAGE CREATION
 # Create final .fw file using FWUP configuration and boot scheme logic

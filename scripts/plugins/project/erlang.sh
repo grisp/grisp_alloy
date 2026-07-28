@@ -8,6 +8,7 @@ project_build_erlang() {
 	local project_dir="$2"
 	local profile="$3"
 	local target_erlang="$4"
+	local target_erlang_lib="${target_erlang}/lib"
 
     local rebar3_cmd="${GLB_SDK_HOST_DIR}/usr/bin/rebar3"
     if [[ ! -x "$rebar3_cmd" ]]; then
@@ -19,7 +20,7 @@ project_build_erlang() {
 		# First retrieve the dependencies without using the target ERTS
 		env -u ERL_LIBS "$rebar3_cmd" as "$profile" get-deps
 		# Then build the release using the target ERTS
-		"$rebar3_cmd" as "$profile" release --system_libs "$target_erlang" --include-erts "$target_erlang"
+		"$rebar3_cmd" as "$profile" release --system_libs "$target_erlang_lib" --include-erts "$target_erlang"
 	)
 
 	resref="$( cd "$project_dir/_build/${profile}/rel"/* && pwd )"

@@ -26,6 +26,12 @@ fi
 source "$( dirname "$0" )/../../scripts/common.sh" "$GRISP_TARGET_NAME"
 
 BUILD_DIR="${GLB_SYSTEM_BUILD_DIR}/build"
+ALLOY_STRICT_EXTERNAL_BUNDLE=false
+CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
+if [[ -f "$CRUCIBLE_FILE" ]]; then
+    source "$CRUCIBLE_FILE"
+fi
+alloy_resolve_toolchain_defconfig SDK_TOOLCHAIN_DEFCONFIG "$GLB_TARGET_NAME" "$BUILD_OS" "$BUILD_ARCH"
 
 if [[ ! -x "${GLB_SDK_HOST_DIR}/bin/erlc" ]]; then
 	echo "ERROR: erlang wasn't build for the host"
@@ -50,6 +56,7 @@ GRISP_TARGET_SYSTEM_VER="${GLB_TARGET_SYSTEM_VER}"
 EOT
 
 ${GLB_SCRIPT_DIR}/git-info.sh -d -o "${GLB_SDK_DIR}/GIT"
+alloy_write_external_context "${GLB_SDK_DIR}/ALLOY-RESOLVER-CONTEXT"
 
 # Copy the built configuration over
 cp "$BUILD_DIR/defconfig" "$GLB_SDK_DIR"

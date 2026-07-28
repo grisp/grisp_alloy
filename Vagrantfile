@@ -276,11 +276,16 @@ Vagrant.configure('2') do |config|
     config.vm.provision 'file', source: "build-sdk.sh", destination: "/home/vagrant/build-sdk.sh"
     config.vm.provision 'file', source: "build-project.sh", destination: "/home/vagrant/build-project.sh"
     config.vm.provision 'file', source: "build-firmware.sh", destination: "/home/vagrant/build-firmware.sh"
+    config.vm.provision 'file', source: "build-ramfs.sh", destination: "/home/vagrant/build-ramfs.sh"
+    config.vm.provision 'file', source: "flash-firmware.sh", destination: "/home/vagrant/flash-firmware.sh"
+    config.vm.provision 'file', source: "gen-secpack.sh", destination: "/home/vagrant/gen-secpack.sh"
     config.vm.provision 'file', source: "scripts", destination: "/home/vagrant/scripts"
     config.vm.provision 'file', source: "toolchain", destination: "/home/vagrant/toolchain"
     config.vm.provision 'file', source: "system_common", destination: "/home/vagrant/system_common"
     config.vm.provision 'file', source: "system_grisp2", destination: "/home/vagrant/system_grisp2"
     config.vm.provision 'file', source: "system_kontron-albl-imx8mm", destination: "/home/vagrant/system_kontron-albl-imx8mm"
+    config.vm.provision 'file', source: "ramfs_common", destination: "/home/vagrant/ramfs_common"
+    config.vm.provision 'file', source: "ramfs_kontron-albl-imx8mm-shell", destination: "/home/vagrant/ramfs_kontron-albl-imx8mm-shell"
 
     config.vm.provider :vmware_desktop do |v, override|
         # On MacOS, NFS sometimes freezes, use vmware GHFS instead.

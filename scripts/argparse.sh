@@ -56,8 +56,17 @@ args_add() {
     local long="$1"; shift
     local var="$1"; shift
     local type="$1"; shift
-    local def_a="$1"; shift || true
-    local def_b="$1"; shift || true
+    local def_a=""
+    local def_b=""
+
+    if [[ $# -gt 0 ]]; then
+        def_a="$1"
+        shift
+    fi
+    if [[ $# -gt 0 ]]; then
+        def_b="$1"
+        shift
+    fi
 
     case "$type" in
         flag|value|accum) : ;;
@@ -136,6 +145,7 @@ _args_assign_value() {
     local var="${ARGS_VARS[$i]}"
     local type="${ARGS_TYPES[$i]}"
     local seen_var="${var}_OPT"
+    local quoted_val
     case "$type" in
         flag)
             eval "$var=\"${ARGS_FLAG_SET[$i]}\""
@@ -145,7 +155,8 @@ _args_assign_value() {
             eval "$seen_var=$__count"
             ;;
         value)
-            eval "$var=\"$val\""
+            printf -v quoted_val '%q' "$val"
+            eval "$var=$quoted_val"
             local __count
             eval "__count=\${$seen_var:-0}"
             __count=$(( __count + 1 ))
@@ -153,7 +164,8 @@ _args_assign_value() {
             ;;
         accum)
             # append preserving order
-            eval "$var+=(\"$val\")"
+            printf -v quoted_val '%q' "$val"
+            eval "$var+=( $quoted_val )"
             local __count
             eval "__count=\${$seen_var:-0}"
             __count=$(( __count + 1 ))

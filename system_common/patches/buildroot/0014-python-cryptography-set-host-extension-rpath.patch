@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Tue, 30 Jun 2026 15:48:00 +0200
+Subject: [PATCH] python-cryptography: set host extension rpath
+
+The host cryptography Rust extension links against host-openssl. When the
+extension is installed into a relocated SDK host directory its RUNPATH can be
+empty, causing Python helpers to load the system libcrypto.so.3 instead of the
+Buildroot host OpenSSL.
+
+Set an explicit host-library rpath after installing the host package.
+---
+ package/python-cryptography/python-cryptography.mk | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/package/python-cryptography/python-cryptography.mk b/package/python-cryptography/python-cryptography.mk
+index 4fa6ddc1cf..6cae9a7c37 100644
+--- a/package/python-cryptography/python-cryptography.mk
++++ b/package/python-cryptography/python-cryptography.mk
+@@ -21,9 +21,17 @@ HOST_PYTHON_CRYPTOGRAPHY_DEPENDENCIES = \
+ HOST_PYTHON_CRYPTOGRAPHY_DEPENDENCIES = \
+ 	host-python-cffi \
+ 	host-python-setuptools \
++	host-patchelf \
+ 	host-openssl
+ PYTHON_CRYPTOGRAPHY_BUILD_OPTS = --skip-dependency-check
+ HOST_PYTHON_CRYPTOGRAPHY_BUILD_OPTS = --skip-dependency-check
+
++define HOST_PYTHON_CRYPTOGRAPHY_SET_RPATH
++	$(HOST_DIR)/bin/patchelf --set-rpath '$(HOST_DIR)/lib' \
++		$(HOST_DIR)/lib/python*/site-packages/cryptography/hazmat/bindings/_rust*.so
++endef
++
++HOST_PYTHON_CRYPTOGRAPHY_POST_INSTALL_HOOKS += HOST_PYTHON_CRYPTOGRAPHY_SET_RPATH
++
+ $(eval $(python-package))
+ $(eval $(host-python-package))

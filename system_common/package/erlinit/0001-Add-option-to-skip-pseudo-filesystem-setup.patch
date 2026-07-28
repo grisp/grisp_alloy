@@ -1,0 +1,189 @@
+From 91ca7e4a311aeb4c026777b9e8c8e12c077be15a Mon Sep 17 00:00:00 2001
+From: Sebastien Merle <sebastien.merle@stritzinger.com>
+Date: Thu, 9 Jul 2026 18:14:27 +0200
+Subject: [PATCH] Add option to skip pseudo-filesystem setup
+
+Systems that start erlinit after an initramfs may already have moved /proc, /sys, /dev, and /dev/pts into the final root filesystem before execing erlinit. In that boot flow, erlinit default pseudo-filesystem mounts duplicate initramfs ownership and can produce misleading warnings such as "Cannot mount /sys".
+
+Add --skip-pseudo-filesystems so those systems can explicitly keep the initramfs-provided pseudo-filesystems. Leave the default behavior unchanged.
+---
+ README.md                         |  6 +++
+ src/erlinit.c                     |  5 +-
+ src/erlinit.h                     |  1 +
+ src/options.c                     |  6 +++
+ tests/072_skip_pseudo_filesystems | 81 +++++++++++++++++++++++++++++++
+ 5 files changed, 97 insertions(+), 2 deletions(-)
+ create mode 100755 tests/072_skip_pseudo_filesystems
+
+diff --git a/README.md b/README.md
+index ef17f80..43cb0ba 100644
+--- a/README.md
++++ b/README.md
+@@ -182,6 +182,12 @@ The following lists the options:
+ --shutdown-report <path>
+     Before shutting down or rebooting, save a report to the specified path.
+
++--skip-pseudo-filesystems
++    Skip mounting the pseudo-filesystems that erlinit normally prepares
++    during startup: /proc, /sys, /dev, and /dev/pts. This is intended for
++    systems where an initramfs has already mounted those filesystems and
++    moved them into the final root filesystem before starting erlinit.
++
+ -t, --print-timing
+     Print out when erlinit starts and when it launches Erlang (for
+     benchmarking)
+diff --git a/src/erlinit.c b/src/erlinit.c
+index 822cc63..56a257d 100644
+--- a/src/erlinit.c
++++ b/src/erlinit.c
+@@ -1048,8 +1048,9 @@ int main(int argc, char *argv[])
+     if (options.x_pivot_root_on_overlayfs)
+         pivot_root_on_overlayfs();
+
+-    // Mount /dev, /proc and /sys
+-    setup_pseudo_filesystems();
++    // Mount /dev, /proc and /sys unless they were prepared by an initramfs.
++    if (!options.skip_pseudo_filesystems)
++        setup_pseudo_filesystems();
+
+     // Create symlinks for partitions on the drive containing the
+     // root filesystem.
+diff --git a/src/erlinit.h b/src/erlinit.h
+index ba3a0b6..6375186 100644
+--- a/src/erlinit.h
++++ b/src/erlinit.h
+@@ -89,6 +89,7 @@ struct erlinit_options {
+     int uid;
+     int gid;
+     int graceful_shutdown_timeout_ms;
++    int skip_pseudo_filesystems;
+     int update_clock;
+     char *tty_options;
+     char *shutdown_report;
+diff --git a/src/options.c b/src/options.c
+index 3438928..307307a 100644
+--- a/src/options.c
++++ b/src/options.c
+@@ -37,6 +37,7 @@ struct erlinit_options options = {
+     .gid = 0,
+     .uid = 0,
+     .graceful_shutdown_timeout_ms = 10000,
++    .skip_pseudo_filesystems = 0,
+     .update_clock = 0,
+     .shutdown_report = NULL,
+     .limits = NULL,
+@@ -77,6 +78,7 @@ enum erlinit_option_value {
+     OPT_UPDATE_CLOCK,
+     OPT_RELEASE_INCLUDE_ERTS,
+     OPT_TTY_OPTIONS,
++    OPT_SKIP_PSEUDO_FILESYSTEMS,
+     OPT_SHUTDOWN_REPORT,
+     OPT_CORE_PATTERN,
+
+@@ -112,6 +114,7 @@ static struct option long_options[] = {
+     {"update-clock", no_argument, 0, OPT_UPDATE_CLOCK },
+     {"tty-options", required_argument, 0, OPT_TTY_OPTIONS},
+     {"shutdown-report", required_argument, 0, OPT_SHUTDOWN_REPORT},
++    {"skip-pseudo-filesystems", no_argument, 0, OPT_SKIP_PSEUDO_FILESYSTEMS},
+     {"limits", required_argument, 0, OPT_LIMIT},
+     {"x-pivot-root-on-overlayfs", no_argument, 0, OPT_X_PIVOT_ROOT_ON_OVERLAYFS},
+     {"core-pattern", required_argument, 0, OPT_CORE_PATTERN},
+@@ -224,6 +227,9 @@ void parse_args(int argc, char *argv[])
+         case OPT_TTY_OPTIONS: // --tty-options 115200n8
+             SET_STRING_OPTION(options.tty_options);
+             break;
++        case OPT_SKIP_PSEUDO_FILESYSTEMS: // --skip-pseudo-filesystems
++            options.skip_pseudo_filesystems = 1;
++            break;
+         case OPT_SHUTDOWN_REPORT: // --shutdown-report /root/shutdown.txt
+             SET_STRING_OPTION(options.shutdown_report);
+             break;
+diff --git a/tests/072_skip_pseudo_filesystems b/tests/072_skip_pseudo_filesystems
+new file mode 100755
+index 0000000..16c941e
+--- /dev/null
++++ b/tests/072_skip_pseudo_filesystems
+@@ -0,0 +1,81 @@
++#!/usr/bin/env bash
++# SPDX-FileCopyrightText: 2026 Peer Stritzinger GmbH
++#
++# SPDX-License-Identifier: MIT
++#
++
++#
++# Test that --skip-pseudo-filesystems leaves pseudo-filesystem setup to
++# earlier init stages such as an initramfs, while normal erlinit startup
++# continues.
++#
++
++cat >"$CMDLINE_FILE" <<EOF
++-v --skip-pseudo-filesystems
++EOF
++
++cat >"$EXPECTED" <<EOF
++erlinit: cmdline argc=3, merged argc=3
++erlinit: merged argv[0]=/sbin/init
++erlinit: merged argv[1]=-v
++erlinit: merged argv[2]=--skip-pseudo-filesystems
++fixture: symlink("/dev/mmcblk0","/dev/rootdisk0")
++fixture: symlink("/dev/mmcblk0p4","/dev/rootdisk0p4")
++fixture: symlink("/dev/mmcblk0p3","/dev/rootdisk0p3")
++fixture: symlink("/dev/mmcblk0p2","/dev/rootdisk0p2")
++fixture: symlink("/dev/mmcblk0p1","/dev/rootdisk0p1")
++erlinit: set_ctty
++fixture: setsid()
++fixture: mount("tmpfs", "/tmp", "tmpfs", 14, data)
++fixture: mount("tmpfs", "/run", "tmpfs", 14, data)
++erlinit: find_release
++erlinit: No release found in /srv/erlang.
++erlinit: find_erts_directory
++erlinit: setup_environment
++erlinit: setup_networking
++fixture: ioctl(SIOCGIFFLAGS)
++fixture: ioctl(SIOCSIFFLAGS)
++fixture: ioctl(SIOCGIFINDEX)
++erlinit: configure_hostname
++erlinit: /etc/hostname not found
++fixture: mkdir("/root/seedrng", 700)
++erlinit: Saving 256 bits of creditable seed for next boot
++erlinit: Env: 'HOME=/home/user0'
++erlinit: Env: 'PATH=/usr/sbin:/usr/bin:/sbin:/bin'
++erlinit: Env: 'TERM=xterm-256color'
++erlinit: Env: 'ROOTDIR=/usr/lib/erlang'
++erlinit: Env: 'BINDIR=/usr/lib/erlang/erts-6.0/bin'
++erlinit: Env: 'EMU=beam'
++erlinit: Env: 'PROGNAME=erlexec'
++erlinit: Arg: 'erlexec'
++erlinit: Arg: '-boot_var'
++erlinit: Arg: 'RELEASE_LIB'
++erlinit: Arg: '/usr/lib/erlang/lib'
++erlinit: Launching erl...
++Hello from erlexec
++erlinit: Erlang VM exited
++erlinit: kill_all
++erlinit: Set core pattern to '|/bin/false'
++erlinit: Sending SIGTERM to all processes
++fixture: kill(-1, 15)
++fixture: sleep(1)
++erlinit: Sending SIGKILL to all processes
++fixture: kill(-1, 9)
++fixture: mkdir("/root/seedrng", 700)
++erlinit: Seeding 256 bits and crediting
++fixture: ioctl(RNDADDENTROPY)
++erlinit: Saving 256 bits of creditable seed for next boot
++erlinit: unmount_all
++erlinit: unmounting tmpfs at /sys/fs/cgroup...
++fixture: umount("/sys/fs/cgroup")
++erlinit: unmounting tmpfs at /dev/shm...
++fixture: umount("/dev/shm")
++erlinit: unmounting devpts at /dev/pts...
++fixture: umount("/dev/pts")
++erlinit: unmounting proc at /proc...
++fixture: umount("/proc")
++erlinit: unmounting sysfs at /sys...
++fixture: umount("/sys")
++erlinit: Calling reboot(0x1234567)
++fixture: reboot(0x01234567)
++EOF
+--
+2.43.0

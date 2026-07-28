@@ -1,0 +1,19 @@
+# Configure GRiSP ramfs builds.
+
+config GRISP_TOP_DIR
+	string
+	option env="GRISP_TOP_DIR"
+
+config GRISP_RAMFS_COMMON_DIR
+	string
+	option env="GRISP_RAMFS_COMMON_DIR"
+
+config GRISP_RAMFS_FLAVOUR_DIR
+	string
+	option env="GRISP_RAMFS_FLAVOUR_DIR"
+
+config GRISP_RAMFS_FLAVOUR
+	string
+	option env="GRISP_RAMFS_FLAVOUR"
+
+source "$GRISP_RAMFS_FLAVOUR_DIR/Config.in"

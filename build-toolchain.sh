@@ -22,59 +22,56 @@ ARGS=( "$@" )
 
 show_usage()
 {
-    echo "USAGE: build-toolchain.sh [-h] [-d] [-c] [-V] [-P] [-K] TARGET"
+    echo "USAGE: build-toolchain.sh OPTIONS TARGET"
     echo "OPTIONS:"
-    echo " -h Show this"
-    echo " -d Print scripts debug information"
-    echo " -c Cleanup the curent state and start building from scratch"
-    echo " -V Using the Vagrant VM even on Linux"
-    echo " -P Re-provision the vagrant VM; use to reflect some changes to the VM"
-    echo " -K Keep the vagrant VM running after exiting"
+    echo " -h | --help"
+    echo "    Show this."
+    echo " -d | --debug"
+    echo "    Print scripts debug information."
+    echo " -c | --clean"
+    echo "    Cleanup the curent state and start building from scratch."
+    echo " -V | --force-vagrant"
+    echo "    Using the Vagrant VM even on Linux."
+    echo " -P | --provision"
+    echo "    Re-provision the vagrant VM; use to reflect some changes to the VM."
+    echo " -K | --keep-vagrant"
+    echo "    Keep the vagrant VM running after exiting."
+    echo " -b | --print-config"
+    echo "    Print the resolved toolchain config and exit."
+    echo " --external <DIR>"
+    echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
     echo "e.g. build-toolchain.sh grisp2"
 }
 
 # Parse script's arguments
-OPTIND=1
-ARG_TARGET=""
-ARG_DEBUG="${DEBUG:-0}"
-ARG_CLEAN=false
-ARG_FORCE_VAGRANT=false
-ARG_PROVISION_VAGRANT=false
-ARG_KEEP_VAGRANT=false
-while getopts "hdcVPK" opt; do
-    case "$opt" in
-    d)
-        ARG_DEBUG=1
-        ;;
-    c)
-        ARG_CLEAN=true
-        ;;
-    V)
-        ARG_FORCE_VAGRANT=true
-        ;;
-    P)
-        ARG_PROVISION_VAGRANT=true
-        ;;
-    K)
-        ARG_KEEP_VAGRANT=true
-        ;;
-    *)
-        show_usage
-        exit 0
-        ;;
-    esac
-done
-shift $((OPTIND-1))
-[[ "${1:-}" == "--" ]] && shift
-if [[ $# -eq 0 ]]; then
-    echo "ERROR: Missing arguments"
+source "$( dirname "$0" )/scripts/argparse.sh"
+args_init
+args_add h help ARG_SHOW_HELP flag true false
+args_add d debug ARG_DEBUG flag 1 "${DEBUG:-0}"
+args_add c clean ARG_CLEAN flag true false
+args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
+args_add P provision ARG_PROVISION_VAGRANT flag true false
+args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
+args_add b print-config ARG_PRINT_CONFIG flag true false
+args_add "" external ARG_EXTERNAL_DIRS accum
+
+if ! args_parse "$@"; then
+    exit 1
+fi
+if [[ $ARG_SHOW_HELP == true ]]; then
+    show_usage
+    exit 0
+fi
+
+POSITIONALS=( "${POSITIONAL[@]}" )
+if [[ ${#POSITIONALS[@]} -eq 0 ]]; then
+    echo "ERROR: Missing TARGET"
     show_usage
     exit 1
 fi
-ARG_TARGET="$1"
-shift
-if [[ $# > 0 ]]; then
+ARG_TARGET="${POSITIONALS[0]}"
+if [[ ${#POSITIONALS[@]} -gt 1 ]]; then
     echo "ERROR: Too many arguments"
     show_usage
     exit 1
@@ -99,6 +96,14 @@ if [[ $ARG_FORCE_VAGRANT = true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ $ARG_CLEAN == true ]]; then
         NEW_ARGS=( ${NEW_ARGS[@]} "-c" )
     fi
+    if [[ $ARG_PRINT_CONFIG == true ]]; then
+        NEW_ARGS+=( "--print-config" )
+    fi
+    VAGRANT_EXTERNAL_DIRS=( )
+    alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
+    for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
+        NEW_ARGS+=( "--external" "$external_dir" )
+    done
     NEW_ARGS=( ${NEW_ARGS[@]} "$ARG_TARGET" )
     if [[ $ARG_KEEP_VAGRANT == false ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
@@ -109,10 +114,23 @@ fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
 # Load target-specific toolchain configuration
-TOOLCHAIN_DEFCONFIG="$GLB_TOOLCHAIN_DIR/configs/${GLB_TARGET_NAME}_${BUILD_OS}_${BUILD_ARCH}_defconfig"
+ALLOY_STRICT_EXTERNAL_BUNDLE=false
+CRUCIBLE_FILE="${GLB_TARGET_SYSTEM_DIR}/crucible.sh"
+if [[ -f "$CRUCIBLE_FILE" ]]; then
+    source "$CRUCIBLE_FILE"
+fi
+alloy_resolve_toolchain_defconfig TOOLCHAIN_DEFCONFIG "$GLB_TARGET_NAME" "$BUILD_OS" "$BUILD_ARCH"
 
 if [[ ! -e $TOOLCHAIN_DEFCONFIG ]]; then
     error 1 "Cannot find toolchain configuration $TOOLCHAIN_DEFCONFIG"
+fi
+
+if [[ $ARG_PRINT_CONFIG == true ]]; then
+    echo "Toolchain config: $TOOLCHAIN_DEFCONFIG"
+    echo "Toolchain config source: ${GLB_TOOLCHAIN_CONFIG_SOURCE:-unknown}"
+    echo "Target system: $GLB_TARGET_SYSTEM_DIR"
+    echo "Target bundle root: ${GLB_TARGET_BUNDLE_ROOT:-}"
+    exit 0
 fi
 
 # Extract toolchain type from config (e.g., "crosstool-ng")
@@ -125,4 +143,7 @@ if [[ ! -x $TOOLCHAIN_BUILD_SCRIPT ]]; then
 fi
 
 # Execute toolchain-specific build script with configuration
-CLEAN=$ARG_CLEAN GLB_TOP_DIR="${GLB_TOP_DIR}" $TOOLCHAIN_BUILD_SCRIPT "$GLB_TARGET_NAME" "$TOOLCHAIN_DEFCONFIG"
+CLEAN="$ARG_CLEAN" \
+GRISP_ALLOY_EXTERNAL_PATH="$GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE" \
+GLB_TOP_DIR="$GLB_TOP_DIR" \
+"$TOOLCHAIN_BUILD_SCRIPT" "$GLB_TARGET_NAME" "$TOOLCHAIN_DEFCONFIG"

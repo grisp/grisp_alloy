@@ -38,6 +38,8 @@ show_usage()
     echo "    Keep the vagrant VM running after exiting"
     echo " -p | --profile <PROFILE>"
     echo "    Project profile to build (default: default)"
+    echo " --external <DIR>"
+    echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
     echo "e.g. build-project.sh grisp2 ~/my_project"
 }
@@ -52,6 +54,7 @@ args_add V force-vagrant ARG_FORCE_VAGRANT flag true false
 args_add P provision ARG_PROVISION_VAGRANT flag true false
 args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
 args_add p profile ARG_PROJECT_PROFILE value "default"
+args_add "" external ARG_EXTERNAL_DIRS accum
 
 if ! args_parse "$@"; then
     exit 1
@@ -87,11 +90,15 @@ if [[ ! -d $ARG_PROJECT ]]; then
     error 1 "cannot find Erlang project $ARG_PROJECT"
 fi
 
-SOURCE_PROJECT_DIR="$( cd $ARG_PROJECT; pwd )"
+SOURCE_PROJECT_DIR="$( cd "$ARG_PROJECT"; pwd )"
 PROJECT_NAME="$( basename "$SOURCE_PROJECT_DIR" )"
 VCS_TAG_FILE=".alloy_vcs_tag"
+PROJECT_EXCLUDE_FILE=".grisp_alloy_exclude"
 RSYNC_CMD=( rsync -aqH --copy-links --delete --exclude='_build/' --exclude='*.beam' \
             --exclude='*.o' --exclude='*.so' )
+if [[ -f "$SOURCE_PROJECT_DIR/$PROJECT_EXCLUDE_FILE" ]]; then
+    RSYNC_CMD+=( --exclude-from="$SOURCE_PROJECT_DIR/$PROJECT_EXCLUDE_FILE" )
+fi
 
 set_debug_level "$ARG_DEBUG"
 
@@ -109,7 +116,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     vagrant exec mkdir -p "$VAGRANT_PROJECT_BUILD_DIR"
     vagrant ssh-config > .vagrant.ssh_config
 
-    ${RSYNC_CMD[@]} -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
+    "${RSYNC_CMD[@]}" -e "ssh -F ${GLB_TOP_DIR}/.vagrant.ssh_config" \
         "$SOURCE_PROJECT_DIR"/. "vagrant@default:${VAGRANT_PROJECT_BUILD_DIR}"
 
     # Keep track of the project VCS tag
@@ -140,6 +147,11 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     if [[ ${ARG_PROJECT_PROFILE_OPT} -gt 0 ]]; then
         NEW_ARGS+=( "--profile" "$ARG_PROJECT_PROFILE" )
     fi
+    VAGRANT_EXTERNAL_DIRS=( )
+    alloy_vagrant_sync_external_roots VAGRANT_EXTERNAL_DIRS
+    for external_dir in "${VAGRANT_EXTERNAL_DIRS[@]}"; do
+        NEW_ARGS+=( "--external" "$external_dir" )
+    done
     NEW_ARGS+=( "$ARG_TARGET" )
     NEW_ARGS+=( "$VAGRANT_PROJECT_BUILD_DIR" )
 
@@ -147,7 +159,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         trap "cd '$GLB_TOP_DIR'; vagrant halt" EXIT
     fi
     cd "$GLB_TOP_DIR"
-    vagrant exec "${GLB_VAGRANT_TOP_DIR}/build-project.sh" "${NEW_ARGS[@]}"
+    vagrant exec -- "${GLB_VAGRANT_TOP_DIR}/build-project.sh" "${NEW_ARGS[@]}"
     exit $?
 fi
 
@@ -187,8 +199,9 @@ project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
 # Copy source project to build directory and prepare for compilation
 echo "Building $PROJECT_TYPE project..."
 mkdir -p "$PROJECT_DIR"
-echo ${RSYNC_CMD[@]} "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
-${RSYNC_CMD[@]} -v "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
+printf '%q ' "${RSYNC_CMD[@]}" "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
+printf '\n'
+"${RSYNC_CMD[@]}" "$SOURCE_PROJECT_DIR"/. "$PROJECT_DIR"
 if [[ ! -f "$PROJECT_DIR/${VCS_TAG_FILE}" ]] \
         && [[ -d "$PROJECT_DIR/.git" ]]; then
     "${GLB_SCRIPT_DIR}/git-info.sh" -c "$PROJECT_DIR" \
@@ -274,6 +287,9 @@ PROJECT_PROFILE="${ARG_PROJECT_PROFILE}"
 PROJECT_TARGET_NAME="${GLB_TARGET_NAME}"
 PROJECT_COMMON_SYSTEM_VER="${GLB_COMMON_SYSTEM_VER}"
 PROJECT_TARGET_SYSTEM_VER="${GLB_TARGET_SYSTEM_VER}"
+PROJECT_TARGET_SYSTEM_SOURCE="${GLB_TARGET_SYSTEM_SOURCE}"
+PROJECT_COMMON_SYSTEM_TREE_SHA256="${GLB_COMMON_SYSTEM_TREE_SHA256}"
+PROJECT_TARGET_SYSTEM_TREE_SHA256="${GLB_TARGET_SYSTEM_TREE_SHA256}"
 PROJECT_CROSSCOMPILE_ARCH="${CROSSCOMPILE_ARCH}"
 PROJECT_ERTS_VERSION="${RELEASE_ERTS_VERSION}"
 PROJECT_RELEASE_NAME="${RELEASE_NAME}"

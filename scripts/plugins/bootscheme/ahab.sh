@@ -7,11 +7,17 @@ bootscheme_package_kernel() {
     # TODO: Sign the kernel if secureboot is enabled
     # TODO: Add support for encrypted disk via ramdisk
     local USE_RAMFS=${1:-false}
+    local RAMFS_FILE=${2:-}
     local MKIMAGE="${GLB_SDK_HOST_DIR}/bin/mkimage"
-    local ITS_WITH_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITH_RAMFS}"
-    local ITS_WITHOUT_RAMFS_TEMPLATE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_ITS_WITHOUT_RAMFS}"
-    local KERNEL_FILE="${GLB_SDK_DIR}/images/${BOOTSCHEME_KERNEL_FILENAME}"
-    local DTB_FILE="${GLB_SDK_DIR}/images/${BOOTSCHEME_DTB_FILENAME}"
+    local ITS_WITH_RAMFS_TEMPLATE
+    local ITS_WITHOUT_RAMFS_TEMPLATE
+    local KERNEL_FILE
+    local DTB_FILE
+
+    ITS_WITH_RAMFS_TEMPLATE="$(sdk_image_path "${BOOTSCHEME_KERNEL_ITS_WITH_RAMFS}")"
+    ITS_WITHOUT_RAMFS_TEMPLATE="$(sdk_image_path "${BOOTSCHEME_KERNEL_ITS_WITHOUT_RAMFS}")"
+    KERNEL_FILE="$(sdk_image_path "${BOOTSCHEME_KERNEL_FILENAME}")"
+    DTB_FILE="$(sdk_image_path "${BOOTSCHEME_DTB_FILENAME}")"
 
     if [[ ! -f "${MKIMAGE}" ]]; then
         error 1 "mkimage not found at ${MKIMAGE}"
@@ -21,9 +27,12 @@ bootscheme_package_kernel() {
     fi
     if [[ "${USE_RAMFS}" == "true" ]]; then
         local ITS_TEMPLATE="${ITS_WITH_RAMFS_TEMPLATE}"
-        local INITRAMFS_FILE="${GLB_SDK_DIR}/images/${RAMFS_FILENAME}"
+        local INITRAMFS_FILE="${RAMFS_FILE}"
+        if [[ -z "${INITRAMFS_FILE}" ]]; then
+            error 1 "Ramfs packaging requested but no ramfs artifact path was provided"
+        fi
         if [[ ! -f "${INITRAMFS_FILE}" ]]; then
-            error 1 "initramfs file ${INITRAMFS_FILENAME} not found at $INITRAMFS_FILE"
+            error 1 "Ramfs artifact not found at ${INITRAMFS_FILE}"
         fi
     else
         local ITS_TEMPLATE="$ITS_WITHOUT_RAMFS_TEMPLATE"
@@ -51,8 +60,10 @@ bootscheme_package_firmware() {
     # TODO: Add support for ramdisk if disk encryption is enabled
     local FWUP="${GLB_SDK_HOST_DIR}/bin/fwup"
     local ROOTFS_FILE="${FIRMWARE_DIR}/combined.squashfs"
-    local UBOOT_FILE="${GLB_SDK_DIR}/images/flash.bin"
+    local UBOOT_FILE
     local KERNEL_FILE="${FIRMWARE_DIR}/fitImage"
+
+    UBOOT_FILE="$(sdk_image_path flash.bin)"
 
     if [[ ! -f "${FWUP}" ]]; then
         error 1 "fwup not found at ${FWUP}"
@@ -72,6 +83,7 @@ bootscheme_package_firmware() {
     GRISP_FW_PLATFORM="${GLB_TARGET_NAME}" \
     GRISP_FW_ARCHITECTURE="${CROSSCOMPILE_ARCH}" \
     GRISP_FW_VCS_IDENTIFIER="${GLB_VCS_TAG}${PROJECT_VCS_TAG:+/${PROJECT_VCS_TAG}}" \
+    GRISP_FW_MISC="${GRISP_FW_MISC:-$(alloy_firmware_misc_provenance)}" \
     GRISP_SYSTEM="${GLB_SDK_DIR}" \
     UBOOT="${UBOOT_FILE}" \
     ROOTFS="${ROOTFS_FILE}" \

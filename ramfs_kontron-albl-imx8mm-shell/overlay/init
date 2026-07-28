@@ -1,0 +1,17 @@
+#!/bin/sh
+
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+mkdir -p /dev /proc /sys /run /tmp
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t tmpfs tmpfs /run 2>/dev/null || true
+
+echo "GRiSP Alloy Kontron AL/BL i.MX8MM shell ramfs"
+echo "cmdline: $(cat /proc/cmdline 2>/dev/null)"
+echo "available block devices:"
+ls -1 /sys/class/block 2>/dev/null || true
+echo "dropping to shell"
+
+exec sh
