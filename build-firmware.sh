@@ -421,7 +421,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         fi
         vagrant exec rm -rf "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack"
         vagrant exec mkdir -p "$GLB_VAGRANT_FIRMWARE_BUILD_DIR/secpack"
-        SECPACK_COPY_ITEMS=( secpack scripts overlay grisp_updater )
+        SECPACK_COPY_ITEMS=( secpack scripts overlay grisp_updater secureboot SECURITY-PACK )
         for item in "${SECPACK_COPY_ITEMS[@]}"; do
             local_src="${ARG_SECPACK_DIR}/${item}"
             if [[ -e "$local_src" ]]; then
