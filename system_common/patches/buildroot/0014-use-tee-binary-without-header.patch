@@ -1,0 +1,13 @@
+diff --git a/boot/uboot/uboot.mk b/boot/uboot/uboot.mk
+index 2796b0a310..4d86167af1 100644
+--- a/boot/uboot/uboot.mk
++++ b/boot/uboot/uboot.mk
+@@ -205,7 +205,7 @@ UBOOT_DEPENDENCIES += optee-os
+ ifeq ($(BR2_TARGET_UBOOT_NEEDS_OPTEE_TEE_ELF),y)
+ UBOOT_MAKE_OPTS += TEE=$(BINARIES_DIR)/tee.elf
+ else ifeq ($(BR2_TARGET_UBOOT_NEEDS_OPTEE_TEE_BIN),y)
+-UBOOT_MAKE_OPTS += TEE=$(BINARIES_DIR)/tee.bin
++UBOOT_MAKE_OPTS += TEE=$(BINARIES_DIR)/tee-raw.bin
+ endif
+ endif
+ 
