@@ -19,8 +19,8 @@
 #    type name is returned via the provided reference variable.
 #
 # Build dispatch
-#  - project_build internally calls project_detect, then invokes
-#    project_build_<type> with the same arguments.
+#  - The driver selects PROJECT_TYPE once; build/metadata/runtime dispatch
+#    use that selection consistently, even after generated files appear.
 #
 # Plugin contract (for a plugin file plugins/project/<type>.sh)
 #  - project_detect_<type> project_dir
@@ -32,6 +32,12 @@
 #                           release_version_ref release_dir project_dir
 #      Populate the provided refs with the main app name/version and the
 #      release name/version for the built artefacts.
+#  - project_runtime_<type> runtime_ref entrypoint_ref release_dir project_dir
+#      Return beam/native and a payload-relative entrypoint (empty for beam).
+#  - project_require_sdk_<type> (optional)
+#      Call sdk_requirements_add for required SDK capabilities. By default the
+#      source type is the required language. A future C adapter can require
+#      only erlang (Alloy's baseline), since every SDK includes a C toolchain.
 #
 # Notes
 #  - Detectors should only check for their own type; they must not modify
@@ -41,7 +47,7 @@
 
 project_setup() {
     PROJECT_TYPES=()
-    for p in $(ls "${GLB_SCRIPT_DIR}/plugins/project/"*.sh); do
+    for p in "${GLB_SCRIPT_DIR}"/plugins/project/*.sh; do
         source "$p"
         PROJECT_TYPES+=("$(basename "$p" | sed 's/\.sh$//')")
     done
@@ -59,16 +65,27 @@ project_detect() {
     error 1 "Unknown project type for $(basename "$project_dir")"
 }
 
+project_require_sdk() {
+    if declare -F "project_require_sdk_${PROJECT_TYPE}" >/dev/null; then
+        "project_require_sdk_${PROJECT_TYPE}"
+    else
+        sdk_requirements_add "$PROJECT_TYPE"
+    fi
+}
+
 project_build() {
     local project_dir="$2"
-    local project_type
-    project_detect project_type "$project_dir"
+    local project_type="${PROJECT_TYPE:?Project type must be selected before dispatch}"
     project_build_${project_type} "$@"
 }
 
 project_metadata() {
     local project_dir="$6"
-    local project_type
-    project_detect project_type "$project_dir"
+    local project_type="${PROJECT_TYPE:?Project type must be selected before dispatch}"
     project_metadata_${project_type} "$@"
+}
+
+# Runtime is independent of the source-language adapter.
+project_runtime() {
+    "project_runtime_${PROJECT_TYPE}" "$@"
 }

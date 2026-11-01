@@ -49,6 +49,10 @@ show_usage()
     echo "    Keep the vagrant VM running after exiting."
     echo " -p | --clean-package <PACKAGE_PREFIX>"
     echo "    Clean given package prefix; can be used with --rebuild to rebuild a package."
+    echo " --enable-elixir | --disable-elixir"
+    echo "    Include/exclude Elixir (default: enabled; Erlang is always included)."
+    echo " --enable-rust | --disable-rust"
+    echo "    Include/exclude SDK Cargo/rustc (default: disabled)."
     echo " --external <DIR>"
     echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
@@ -68,6 +72,10 @@ args_add P provision ARG_PROVISION_VAGRANT flag true false
 args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
 args_add p clean-package ARG_CLEAN_PACKAGES accum
 args_add "" external ARG_EXTERNAL_DIRS accum
+args_add "" enable-elixir ARG_ENABLE_ELIXIR flag true false
+args_add "" disable-elixir ARG_DISABLE_ELIXIR flag true false
+args_add "" enable-rust ARG_ENABLE_RUST flag true false
+args_add "" disable-rust ARG_DISABLE_RUST flag true false
 
 if ! args_parse "$@"; then
     exit 1
@@ -90,6 +98,16 @@ if [[ ${#POSITIONALS[@]} -gt 1 ]]; then
     exit 1
 fi
 
+# Resolve optional languages before common.sh chooses SDK paths.
+if [[ $ARG_ENABLE_ELIXIR == true && $ARG_DISABLE_ELIXIR == true ]] ||
+   [[ $ARG_ENABLE_RUST == true && $ARG_DISABLE_RUST == true ]]; then
+    echo "ERROR: Conflicting enable/disable language options" >&2
+    exit 1
+fi
+ARG_SDK_LANGUAGES=erlang
+[[ $ARG_DISABLE_ELIXIR == true ]] || ARG_SDK_LANGUAGES+=,elixir
+[[ $ARG_ENABLE_RUST != true ]] || ARG_SDK_LANGUAGES+=,rust
+
 # Load common variables and functions
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
 # shellcheck source=scripts/sdk-artifacts.sh
@@ -105,6 +123,16 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
         vagrant provision
     fi
     NEW_ARGS=( )
+    if sdk_language_enabled elixir; then
+        NEW_ARGS+=( --enable-elixir )
+    else
+        NEW_ARGS+=( --disable-elixir )
+    fi
+    if sdk_language_enabled rust; then
+        NEW_ARGS+=( --enable-rust )
+    else
+        NEW_ARGS+=( --disable-rust )
+    fi
     if [[ ${ARG_DEBUG_OPT} -gt 0 ]]; then
         NEW_ARGS+=( "--debug" )
     fi
@@ -134,6 +162,7 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
 fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
+echo "SDK languages: $GRISP_SDK_LANGUAGES"
 # Validate host environment - buildroot needs Linux with supported architecture
 if [[ $HOST_OS != "linux" ]]; then
     error 1 "${HOST_OS} is not support, only linux"
@@ -314,7 +343,7 @@ prepare_environment()
         error 1 "USER environment variable is not set"
     fi
     rm -rf "$GLB_SYSTEM_BUILD_DIR"
-    rm -rf "$GLB_SDK_BASE_DIR"/*
+    rm -rf "$GLB_SDK_DIR"
     mkdir -p "$GLB_ARTEFACTS_DIR"
     mkdir -p "$GLB_SYSTEM_BUILD_DIR"
     mkdir -p "$GLB_SYSTEM_CACHE_DIR"
@@ -411,6 +440,9 @@ EOF
         } >> "$FINAL_DEFCONFIG"
     fi
 
+    # Apply language capabilities after all target/profile fragments.
+    sdk_language_config >> "$FINAL_DEFCONFIG"
+
     # Generate final buildroot .config from merged defconfig
     if [[ -n "$profile" ]]; then
         echo "Configuring buildroot for $GLB_TARGET_NAME SDK artifact profile $profile..."
@@ -420,6 +452,22 @@ EOF
         echo "Configuring buildroot for $GLB_TARGET_NAME..."
     fi
     make "${BUILDROOT_MAKE_PARAMS[@]}" defconfig
+    sdk_check_language_config "$BUILD_DIR/.config"
+
+    # Target defconfigs use a local file:// URL for the external compiler
+    # archive. Fail here with the producer command instead of letting
+    # Buildroot retry the missing filename against sources.buildroot.net.
+    local toolchain_url
+    local toolchain_archive
+    toolchain_url="$(sed -n 's/^BR2_TOOLCHAIN_EXTERNAL_URL="\([^"]*\)"/\1/p' "$BUILD_DIR/.config" | tail -n 1)"
+    if [[ "$toolchain_url" == file://* ]]; then
+        toolchain_archive="${toolchain_url#file://}"
+        toolchain_archive="${toolchain_archive//\$\{GRISP_TOP_DIR\}/$GLB_TOP_DIR}"
+        toolchain_archive="${toolchain_archive//\$\{GRISP_BUILD_HOST_ARCH\}/$HOST_ARCH}"
+        if [[ ! -f "$toolchain_archive" ]]; then
+            error 1 "External toolchain archive is missing: $toolchain_archive. Build it first with: ./build-toolchain.sh $GLB_TARGET_NAME"
+        fi
+    fi
 }
 
 run_buildroot()

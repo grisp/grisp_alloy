@@ -42,7 +42,12 @@ if [[ -z $CTNG_TAG ]]; then
     error 1 "Cannot find Crosstool-NG tag GLB_CTNG_TAG in toolchain configuration file $SOURCE_DEFCONFIG"
 fi
 
-ROOT_DIR="${GLB_TOOLCHAIN_BUILD_DIR}/crosstool-ng"
+# Crosstool-NG checkpoints describe completed steps but do not include their
+# arguments. Keep each target/host/configuration in a separate directory so a
+# previous build cannot make a new target reuse a stale .config or toolchain.
+TOOLCHAIN_CONFIG_HASH="$(alloy_file_hash "$SOURCE_DEFCONFIG")"
+TOOLCHAIN_BUILD_KEY="${TARGET}-${BUILD_OS}-${BUILD_ARCH}-${TOOLCHAIN_VERSION}-${TOOLCHAIN_CONFIG_HASH:0:12}"
+ROOT_DIR="${GLB_TOOLCHAIN_BUILD_DIR}/${TOOLCHAIN_BUILD_KEY}/crosstool-ng"
 WORK_DIR="${ROOT_DIR}"
 INSTALL_DIR="${ROOT_DIR}/x-tools"
 BUILD_DIR="${ROOT_DIR}/build"

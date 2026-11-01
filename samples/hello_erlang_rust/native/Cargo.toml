@@ -1,0 +1,12 @@
+[package]
+name = "hello_rust_nif"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.86"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "=0.36.2"

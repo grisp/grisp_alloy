@@ -15,7 +15,7 @@
 #   Archive tarball
 #
 
-set -e
+set -eo pipefail
 
 if [[ -z "$GRISP_TARGET_NAME" ]]; then
     echo "ERROR: environment variable GRISP_TARGET_NAME must be defined"
@@ -56,17 +56,32 @@ GRISP_TARGET_SYSTEM_VER="${GLB_TARGET_SYSTEM_VER}"
 EOT
 
 ${GLB_SCRIPT_DIR}/git-info.sh -d -o "${GLB_SDK_DIR}/GIT"
-alloy_write_external_context "${GLB_SDK_DIR}/ALLOY-RESOLVER-CONTEXT"
+rm -f "$GLB_SDK_DIR/ALLOY-RESOLVER-CONTEXT"
 
 # Copy the built configuration over
 cp "$BUILD_DIR/defconfig" "$GLB_SDK_DIR"
 cp "$BUILD_DIR/.config" "$GLB_SDK_DIR"
 
 # Copy the images directories over
-cp -R "$BUILD_DIR/images" "$GLB_SDK_DIR"
+rm -rf "$GLB_SDK_DIR/images"
+cp -a "$BUILD_DIR/images" "$GLB_SDK_DIR"
 # Copy the staging link that should point to the host directory
-cp -R "$BUILD_DIR/staging" "$GLB_SDK_DIR"
+rm -f "$GLB_SDK_DIR/staging"
+cp -a "$BUILD_DIR/staging" "$GLB_SDK_DIR"
 
-tar -C "${GLB_SDK_BASE_DIR}/.." -cf - "$GLB_SDK_NAME" \
-    | pv -s $( du -sb "$GLB_SDK_BASE_DIR" | awk '{print $1}' ) \
-    | gzip > "$GLB_ARTEFACTS_DIR/${GLB_SDK_FILENAME}"
+sdk_write_manifest
+
+# Put metadata first so capability discovery does not decompress the toolchain.
+# Archive only this variant, retaining install_sdk's single leading component.
+SDK_ARCHIVE_ROOT="${GLB_SDK_DIR#"$GLB_SDK_PARENT_DIR/"}"
+SDK_ARCHIVE_CONTENTS=( "$SDK_ARCHIVE_ROOT/ALLOY-SDK" )
+for item in "$GLB_SDK_DIR"/* "$GLB_SDK_DIR"/.[!.]* "$GLB_SDK_DIR"/..?*; do
+    [[ -e "$item" || -L "$item" ]] || continue
+    case "${item##*/}" in
+        ALLOY-SDK|ALLOY-RESOLVER-CONTEXT) continue ;;
+    esac
+    SDK_ARCHIVE_CONTENTS+=( "$SDK_ARCHIVE_ROOT/${item##*/}" )
+done
+tar -C "$GLB_SDK_PARENT_DIR" -cf - "${SDK_ARCHIVE_CONTENTS[@]}" \
+    | pv -s "$(du -sb "$GLB_SDK_DIR" | awk '{print $1}')" \
+    | gzip > "$GLB_ARTEFACTS_DIR/$GLB_SDK_FILENAME"

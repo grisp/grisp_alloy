@@ -261,8 +261,7 @@ if [[ ($ARG_FORCE_VAGRANT == true || $HOST_OS != "linux") && -z "${GLB_FLASH_PRE
     exit 0
 fi
 
-install_sdk
-alloy_verify_sdk_context_strict
+install_sdk strict
 
 FWUP="${ARG_FWUP}"
 if [[ -z "$FWUP" ]]; then
