@@ -1,0 +1,9 @@
+{application, hello_erlang_rust,
+ [{description, "Erlang application with a Rust NIF"},
+  {vsn, "0.1.0"},
+  {registered, [hello_erlang_rust_sup]},
+  {mod, {hello_erlang_rust_app, []}},
+  {applications, [kernel, stdlib]},
+  {env, []},
+  {modules, []},
+  {licenses, ["Apache-2.0"]}]}.

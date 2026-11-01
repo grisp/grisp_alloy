@@ -38,6 +38,8 @@ show_usage()
     echo "    Keep the vagrant VM running after exiting"
     echo " -p | --profile <PROFILE>"
     echo "    Project profile to build (default: default)"
+    echo " --sdk-lang <LANGUAGE>"
+    echo "    Require an additional SDK language (repeatable; project language is detected)."
     echo " --external <DIR>"
     echo "    Add external Alloy bundle root containing system_*, ramfs_*, or toolchain/configs."
     echo
@@ -55,6 +57,7 @@ args_add P provision ARG_PROVISION_VAGRANT flag true false
 args_add K keep-vagrant ARG_KEEP_VAGRANT flag true false
 args_add p profile ARG_PROJECT_PROFILE value "default"
 args_add "" external ARG_EXTERNAL_DIRS accum
+args_add "" sdk-lang ARG_SDK_LANGS accum
 
 if ! args_parse "$@"; then
     exit 1
@@ -87,14 +90,14 @@ if [[ $HOST_ARCH != "x86_64" && $HOST_ARCH != "aarch64" && $HOST_ARCH != "arm64"
 fi
 
 if [[ ! -d $ARG_PROJECT ]]; then
-    error 1 "cannot find Erlang project $ARG_PROJECT"
+    error 1 "cannot find project $ARG_PROJECT"
 fi
 
 SOURCE_PROJECT_DIR="$( cd "$ARG_PROJECT"; pwd )"
 PROJECT_NAME="$( basename "$SOURCE_PROJECT_DIR" )"
 VCS_TAG_FILE=".alloy_vcs_tag"
 PROJECT_EXCLUDE_FILE=".grisp_alloy_exclude"
-RSYNC_CMD=( rsync -aqH --copy-links --delete --exclude='_build/' --exclude='*.beam' \
+RSYNC_CMD=( rsync -aqH --copy-links --delete --exclude='_build/' --exclude='target/' --exclude='*.beam' \
             --exclude='*.o' --exclude='*.so' )
 if [[ -f "$SOURCE_PROJECT_DIR/$PROJECT_EXCLUDE_FILE" ]]; then
     RSYNC_CMD+=( --exclude-from="$SOURCE_PROJECT_DIR/$PROJECT_EXCLUDE_FILE" )
@@ -138,6 +141,10 @@ if [[ $ARG_FORCE_VAGRANT == true ]] || [[ $HOST_OS != "linux" ]]; then
     fi
 
     NEW_ARGS=( )
+    # Resolve installed SDKs in the Linux guest, where their tools run.
+    for sdk_language in "${ARG_SDK_LANGS[@]}"; do
+        NEW_ARGS+=( "--sdk-lang" "$sdk_language" )
+    done
     if [[ ${ARG_DEBUG_OPT} -gt 0 ]]; then
         NEW_ARGS+=( "--debug" )
     fi
@@ -165,21 +172,23 @@ fi
 
 # NATIVE LINUX EXECUTION STARTS HERE
 
-# Clean SDK if requested (forces full rebuild)
-if [[ $ARG_CLEAN == true ]]; then
-    rm -rf "$GLB_SDK_BASE_DIR/*"
-fi
+# PROJECT MANAGMENT PLUGIN: Loads and sets up project management plugins
+source "${GLB_SCRIPT_DIR}/plugins/project.sh"
+project_setup
+project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
+
+# Project requirements add to explicit --sdk-lang requirements. An SDK may
+# supply additional languages, but there must be exactly one matching build.
+project_require_sdk
 
 # SDK INSTALLATION
 install_sdk
 
-# PROJECT MANAGMENT PLUGIN: Loads and sets up project management plugins
-source "${GLB_SCRIPT_DIR}/plugins/project.sh"
-project_setup
+source "$GLB_SCRIPT_DIR/project-artifacts.sh"
 
 # PROJECT BUILD PREPARATION
-PROJECT_DIR="${GLB_PROJECT_BUILD_DIR}/builds/${PROJECT_NAME}"
-PACKAGE_DIR="${GLB_PROJECT_BUILD_DIR}/packages/${PROJECT_NAME}"
+PROJECT_DIR="${GLB_PROJECT_BUILD_DIR}/${GLB_TARGET_NAME}/${SDK_LANGUAGE_SET}/builds/${PROJECT_NAME}"
+PACKAGE_DIR="${GLB_PROJECT_BUILD_DIR}/${GLB_TARGET_NAME}/${SDK_LANGUAGE_SET}/packages/${PROJECT_NAME}"
 GLB_VCS_TAG="unknown"
 if [[ -d "${GLB_TOP_DIR}/.git" ]]; then
     GLB_VCS_TAG="$( "${GLB_SCRIPT_DIR}/git-info.sh" -D -c "$GLB_TOP_DIR" )"
@@ -193,8 +202,6 @@ if [[ $ARG_CLEAN == true ]]; then
     rm -rf "$PACKAGE_DIR"
 fi
 
-# PROJECT TYPE DETECTION
-project_detect PROJECT_TYPE "$SOURCE_PROJECT_DIR"
 
 # Copy source project to build directory and prepare for compilation
 echo "Building $PROJECT_TYPE project..."
@@ -215,12 +222,12 @@ PROJECT_VCS_TAG="unknown"
 if [[ -f "$VCS_TAG_FILE" ]]; then
     PROJECT_VCS_TAG="$( cat "$VCS_TAG_FILE" )"
 fi
-# Set up cross-compilation environment (TARGET_ERLANG, etc.)
-source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
+# Bind the selected SDK/C baseline; each plugin requests its language environment.
+source "${GLB_SCRIPT_DIR}/cross-env.sh" "$GLB_TARGET_NAME"
 rm -rf "_build/"
 
 # build project using plugin
-project_build RELEASE_DIR "$PROJECT_DIR" "$ARG_PROJECT_PROFILE" "$TARGET_ERLANG"
+project_build RELEASE_DIR "$PROJECT_DIR" "$ARG_PROJECT_PROFILE" "$GRISP_SDK_SYSROOT/usr/lib/erlang"
 if [[ ! -d "$RELEASE_DIR" ]]; then
     error 1 "Failed to build $PROJECT_TYPE project in $RELEASE_DIR"
 fi
@@ -230,73 +237,61 @@ RELEASE_NAME=""
 RELEASE_VERSION=""
 project_metadata APP_NAME APP_VER RELEASE_NAME RELEASE_VERSION "$RELEASE_DIR" "$PROJECT_DIR"
 
-TARBALL_BASENAME="${RELEASE_NAME}-${RELEASE_VERSION}-${GLB_TARGET_NAME}"
-if [[ -n "${ARG_PROJECT_PROFILE:-}" ]] && [[ "$ARG_PROJECT_PROFILE" != "default" ]]; then
-    PROFILE_SEGMENT="$( echo "$ARG_PROJECT_PROFILE" | tr ',;:/ ' '-' | sed 's/--\+/-/g; s/^-//; s/-$//' )"
-    if [[ -n "$PROFILE_SEGMENT" ]]; then
-        TARBALL_BASENAME="${TARBALL_BASENAME}-${PROFILE_SEGMENT}"
-    fi
-fi
+TARBALL_BASENAME="$(project_archive_basename \
+    "$RELEASE_NAME" "$RELEASE_VERSION" "$GLB_TARGET_NAME" "$ARG_PROJECT_PROFILE")"
 TARBALL_FILE="${GLB_ARTEFACTS_DIR}/${TARBALL_BASENAME}.tgz"
 
 ###############################################################################
 # Release validations
 ###############################################################################
 
-# Validate ERTS directory exists
-ERTS_DIR_CANDIDATE=$( echo "${RELEASE_DIR}/erts-"* )
-if [[ ! -d "$ERTS_DIR_CANDIDATE" ]] || [[ "$ERTS_DIR_CANDIDATE" == "${RELEASE_DIR}/erts-*" ]]; then
-    echo "ERROR: Missing release erts directory"
-    echo "To be compatible with GRiSP Alloy, the project must release the ERTS runtime"
-    echo "e.g."
-    echo "    rebar.config:"
-    echo "        {relx, [{release, {...}, [...]}, {include_erts, true}, ...]}"
-    echo "    mix.exs:"
-    echo "        releases: [foobar: [..., include_erts: true, ...]]"
-    echo
-    exit 1
-fi
-
-# Validate lib/<APP>-<VERSION>
-if [[ -z "$APP_VER" ]] || [[ ! -d "${RELEASE_DIR}/lib/${APP_NAME}-${APP_VER}" ]]; then
-    error 1 "Missing release path lib/${APP_NAME}-${APP_VER}"
-fi
-
-# Validate releases/<RELEASE_NAME> (any string)
-RELEASES_DIR_CANDIDATE="$( find "${RELEASE_DIR}/releases" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n1 )"
-if [[ -z "$RELEASES_DIR_CANDIDATE" ]] || [[ ! -d "$RELEASES_DIR_CANDIDATE" ]]; then
-    error 1 "Missing release path under releases/"
-fi
-
-# Extract ERTS version (strip leading 'erts-')
-RELEASE_ERTS_VERSION="$( basename "$ERTS_DIR_CANDIDATE" | sed 's/^erts-//' )"
-if [[ -z "$RELEASE_ERTS_VERSION" ]]; then
-    error 1 "Missing release erts directory"
-fi
+PROJECT_APP_NAME="$APP_NAME"
+PROJECT_APP_VERSION="$APP_VER"
+PROJECT_RELEASE_NAME="$RELEASE_NAME"
+PROJECT_RELEASE_VERSION="$RELEASE_VERSION"
+PROJECT_MANIFEST_VERSION=2
+# Compatibility with SDK common-system 0.2.0; remove when support ends.
+[[ ${SDK_COMPAT_V020:-false} != true ]] || PROJECT_MANIFEST_VERSION=1
+PROJECT_SDK_BUILD_ID="$SDK_BUILD_ID"
+project_runtime PROJECT_RUNTIME PROJECT_ENTRYPOINT "$RELEASE_DIR" "$PROJECT_DIR"
+project_manifest_normalize
+project_validate_payload "$RELEASE_DIR"
+RELEASE_ERTS_VERSION="$PROJECT_ERTS_VERSION"
 
 rm -rf "$PACKAGE_DIR" && mkdir -p "$PACKAGE_DIR/release"
 cp -R "$RELEASE_DIR"/. "$PACKAGE_DIR/release/"
 
 # Emit ALLOY-PROJECT manifest (bash-friendly)
 MANIFEST_FILE="$PACKAGE_DIR/ALLOY-PROJECT"
-cat << EOF > "$MANIFEST_FILE"
-PROJECT_APP_NAME="${APP_NAME}"
-PROJECT_APP_VERSION="${APP_VER}"
-PROJECT_TYPE="${PROJECT_TYPE}"
-PROJECT_PROFILE="${ARG_PROJECT_PROFILE}"
-PROJECT_TARGET_NAME="${GLB_TARGET_NAME}"
-PROJECT_COMMON_SYSTEM_VER="${GLB_COMMON_SYSTEM_VER}"
-PROJECT_TARGET_SYSTEM_VER="${GLB_TARGET_SYSTEM_VER}"
-PROJECT_TARGET_SYSTEM_SOURCE="${GLB_TARGET_SYSTEM_SOURCE}"
-PROJECT_COMMON_SYSTEM_TREE_SHA256="${GLB_COMMON_SYSTEM_TREE_SHA256}"
-PROJECT_TARGET_SYSTEM_TREE_SHA256="${GLB_TARGET_SYSTEM_TREE_SHA256}"
-PROJECT_CROSSCOMPILE_ARCH="${CROSSCOMPILE_ARCH}"
-PROJECT_ERTS_VERSION="${RELEASE_ERTS_VERSION}"
-PROJECT_RELEASE_NAME="${RELEASE_NAME}"
-PROJECT_RELEASE_VERSION="${RELEASE_VERSION}"
-PROJECT_VCS_PROJECT="${PROJECT_VCS_TAG}"
-PROJECT_VCS_ALLOY="${GLB_VCS_TAG}"
-EOF
+{
+    printf 'PROJECT_MANIFEST_VERSION=%s\n' "$PROJECT_MANIFEST_VERSION"
+    printf 'PROJECT_RUNTIME=%q\n' "$PROJECT_RUNTIME"
+    printf 'PROJECT_ENTRYPOINT=%q\n' "$PROJECT_ENTRYPOINT"
+    printf 'PROJECT_SDK_BUILD_ID=%q\n' "$SDK_BUILD_ID"
+    printf 'PROJECT_SDK_LANGUAGE_SET=%q\n' "$SDK_LANGUAGE_SET"
+    printf 'PROJECT_BUILD_PROFILE=%q\n' "${PROJECT_BUILD_PROFILE:-$ARG_PROJECT_PROFILE}"
+    if [[ $PROJECT_TYPE == rust ]]; then
+        printf 'PROJECT_RUST_TARGET=%q\n' "$SDK_RUST_TARGET"
+        printf 'PROJECT_RUST_VERSION=%q\n' "$SDK_RUST_VERSION"
+        printf 'PROJECT_CARGO_VERSION=%q\n' "$SDK_CARGO_VERSION"
+    fi
+    printf 'PROJECT_APP_NAME=%q\n' "${APP_NAME}"
+    printf 'PROJECT_APP_VERSION=%q\n' "${APP_VER}"
+    printf 'PROJECT_TYPE=%q\n' "${PROJECT_TYPE}"
+    printf 'PROJECT_PROFILE=%q\n' "${ARG_PROJECT_PROFILE}"
+    printf 'PROJECT_TARGET_NAME=%q\n' "${GLB_TARGET_NAME}"
+    printf 'PROJECT_COMMON_SYSTEM_VER=%q\n' "${GLB_COMMON_SYSTEM_VER}"
+    printf 'PROJECT_TARGET_SYSTEM_VER=%q\n' "${GLB_TARGET_SYSTEM_VER}"
+    printf 'PROJECT_TARGET_SYSTEM_SOURCE=%q\n' "${GLB_TARGET_SYSTEM_SOURCE}"
+    printf 'PROJECT_COMMON_SYSTEM_TREE_SHA256=%q\n' "${GLB_COMMON_SYSTEM_TREE_SHA256}"
+    printf 'PROJECT_TARGET_SYSTEM_TREE_SHA256=%q\n' "${GLB_TARGET_SYSTEM_TREE_SHA256}"
+    printf 'PROJECT_CROSSCOMPILE_ARCH=%q\n' "${CROSSCOMPILE_ARCH}"
+    printf 'PROJECT_ERTS_VERSION=%q\n' "${RELEASE_ERTS_VERSION}"
+    printf 'PROJECT_RELEASE_NAME=%q\n' "${RELEASE_NAME}"
+    printf 'PROJECT_RELEASE_VERSION=%q\n' "${RELEASE_VERSION}"
+    printf 'PROJECT_VCS_PROJECT=%q\n' "${PROJECT_VCS_TAG}"
+    printf 'PROJECT_VCS_ALLOY=%q\n' "${GLB_VCS_TAG}"
+} > "$MANIFEST_FILE"
 
 # Emit ALLOY-FS-PRIORITIES (empty for now)
 touch "$PACKAGE_DIR/ALLOY-FS-PRIORITIES"

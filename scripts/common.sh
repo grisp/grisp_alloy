@@ -138,30 +138,51 @@ checkpoint()
     shift
     local args=("${@}")
     if [[ ! -f "${dir}/${name}" ]]; then
-        $name "${arg[@]}"
+        "$name" "${args[@]}"
     fi
     touch "${dir}/${name}"
 }
 
-# Ensure SDK is installed (rootfs, toolchain, base packages)
+# Ensure SDK is installed (rootfs, toolchain, base packages).
+# Pass `strict` to require exact source-tree provenance for the current checkout.
 install_sdk() {
+    local context_mode="${1:-}"
+    case "$context_mode" in
+        "" | strict) ;;
+        *) error 1 "Invalid SDK context mode '$context_mode' (expected strict or omitted)" ;;
+    esac
+    if [[ ${GLB_IS_SDK:-false} != true ]]; then
+        sdk_select "$context_mode"
+    fi
     if [[ ! -d $GLB_SDK_DIR ]]; then
         echo "SDK not installed, trying to install it from artefacts..."
-        if [[ ! -f "${GLB_ARTEFACTS_DIR}/${GLB_SDK_FILENAME}" ]]; then
-            error 1 "SDK ${GLB_SDK_FILENAME} not found in ${GLB_ARTEFACTS_DIR}"
+        if [[ ! -f "${SDK_SELECTED_ARCHIVE:-}" ]]; then
+            error 1 "Selected SDK archive not found: ${SDK_SELECTED_ARCHIVE:-}"
         fi
         if [[ ! -d $GLB_SDK_BASE_DIR ]]; then
             mkdir -p "$GLB_SDK_BASE_DIR"
             chgrp "$USER" "$GLB_SDK_BASE_DIR"
             chmod 775 "$GLB_SDK_BASE_DIR"
         fi
+        local members=( )
+        if [[ -n ${SDK_SELECTED_ARCHIVE_ROOT:-} ]]; then
+            members=( --wildcards "$SDK_SELECTED_ARCHIVE_ROOT/*" )
+        fi
         tar -C "$GLB_SDK_BASE_DIR" --strip-components=1 -xzf \
-            "${GLB_ARTEFACTS_DIR}/${GLB_SDK_FILENAME}"
+            "$SDK_SELECTED_ARCHIVE" "${members[@]}"
         if [[ ! -d $GLB_SDK_DIR ]]; then
-            error 1 "SDK ${GLB_SDK_FILENAME} is invalid"
+            error 1 "Selected SDK archive did not install the expected directory: $GLB_SDK_DIR"
         fi
     fi
-    alloy_verify_sdk_context
+    sdk_load_manifest "$context_mode"
+    sdk_verify_context "$context_mode"
+    if [[ -n ${SDK_SELECTED_BUILD_ID:-} && $SDK_BUILD_ID != "$SDK_SELECTED_BUILD_ID" ]]; then
+        error 1 "Installed SDK identity differs from selected SDK; remove the incomplete installation and retry"
+    fi
+    local language
+    for language in ${SDK_REQUIRED_LANGUAGES:-erlang}; do
+        sdk_require_language "$language"
+    done
 }
 
 alloy_git_vcs_tag() {
@@ -351,6 +372,14 @@ alloy_ramfs_candidate() {
     eval "$sources_var+=(\"\$source\")"
 }
 
+alloy_resolve_sdk_paths() {
+    local version_path="${GLB_COMMON_SYSTEM_VER}/${GLB_TARGET_NAME}/${GLB_TARGET_SYSTEM_VER}"
+    GLB_SDK_DIR="${GLB_SDK_BASE_DIR}/${version_path}${SDK_VARIANT_SUFFIX}"
+    GLB_SDK_HOST_DIR="${GLB_SDK_DIR}/host"
+    GLB_SDK_FILENAME="${GLB_SDK_NAME}-${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_NAME}-${GLB_TARGET_SYSTEM_VER}-${HOST_OS}-${HOST_ARCH}${SDK_ARCHIVE_SUFFIX}.tar.gz"
+    GLB_SYSTEM_BUILD_DIR="${GLB_BUILD_DIR}/system/${version_path}/${SDK_LANGUAGE_SET}"
+}
+
 alloy_resolve_target_context() {
     local target="$1"
     local target_dir_name="system_${target}"
@@ -417,9 +446,7 @@ alloy_resolve_target_context() {
     GLB_TARGET_SYSTEM_VCS="$(alloy_git_vcs_tag "$GLB_TARGET_SYSTEM_DIR")"
     GLB_COMMON_SYSTEM_TREE_SHA256="$(alloy_tree_hash "$GLB_COMMON_SYSTEM_DIR")"
     GLB_TARGET_SYSTEM_TREE_SHA256="$(alloy_tree_hash "$GLB_TARGET_SYSTEM_DIR")"
-    GLB_SDK_DIR="${GLB_SDK_BASE_DIR}/${GLB_COMMON_SYSTEM_VER}/${GLB_TARGET_NAME}/${GLB_TARGET_SYSTEM_VER}"
-    GLB_SDK_HOST_DIR="${GLB_SDK_DIR}/host"
-    GLB_SDK_FILENAME="${GLB_SDK_NAME}-${GLB_COMMON_SYSTEM_VER}-${GLB_TARGET_NAME}-${GLB_TARGET_SYSTEM_VER}-${HOST_OS}-${HOST_ARCH}.tar.gz"
+    alloy_resolve_sdk_paths
 
     if [[ "${GLB_DEBUG:-0}" -gt 0 ]]; then
         echo "Resolved target ${GLB_TARGET_NAME}: ${GLB_TARGET_SYSTEM_DIR} (${GLB_TARGET_SYSTEM_SOURCE})"
@@ -572,87 +599,6 @@ alloy_require_target_bundle_component() {
     fi
 }
 
-alloy_write_external_context() {
-    local output="$1"
-
-    mkdir -p "$( dirname "$output" )"
-    {
-        printf 'GLB_TARGET_NAME=%q\n' "${GLB_TARGET_NAME:-}"
-        printf 'GLB_TARGET_SYSTEM_DIR=%q\n' "${GLB_TARGET_SYSTEM_DIR:-}"
-        printf 'GLB_TARGET_BUNDLE_ROOT=%q\n' "${GLB_TARGET_BUNDLE_ROOT:-}"
-        printf 'GLB_TARGET_SYSTEM_SOURCE=%q\n' "${GLB_TARGET_SYSTEM_SOURCE:-}"
-        printf 'GLB_TARGET_SYSTEM_VER=%q\n' "${GLB_TARGET_SYSTEM_VER:-}"
-        printf 'GLB_TARGET_SYSTEM_VCS=%q\n' "${GLB_TARGET_SYSTEM_VCS:-}"
-        printf 'GLB_TARGET_SYSTEM_TREE_SHA256=%q\n' "${GLB_TARGET_SYSTEM_TREE_SHA256:-}"
-        printf 'GLB_COMMON_SYSTEM_VER=%q\n' "${GLB_COMMON_SYSTEM_VER:-}"
-        printf 'GLB_COMMON_SYSTEM_VCS=%q\n' "${GLB_COMMON_SYSTEM_VCS:-}"
-        printf 'GLB_COMMON_SYSTEM_TREE_SHA256=%q\n' "${GLB_COMMON_SYSTEM_TREE_SHA256:-}"
-        printf 'GLB_RAMFS_FLAVOUR=%q\n' "${GLB_RAMFS_FLAVOUR:-}"
-        printf 'GLB_RAMFS_FLAVOUR_DIR=%q\n' "${GLB_RAMFS_FLAVOUR_DIR:-}"
-        printf 'GLB_RAMFS_BUNDLE_ROOT=%q\n' "${GLB_RAMFS_BUNDLE_ROOT:-}"
-        printf 'GLB_RAMFS_FLAVOUR_SOURCE=%q\n' "${GLB_RAMFS_FLAVOUR_SOURCE:-}"
-        printf 'GLB_RAMFS_FLAVOUR_VER=%q\n' "${GLB_RAMFS_FLAVOUR_VER:-}"
-        printf 'GLB_RAMFS_FLAVOUR_VCS=%q\n' "${GLB_RAMFS_FLAVOUR_VCS:-}"
-        printf 'GLB_RAMFS_FLAVOUR_TREE_SHA256=%q\n' "${GLB_RAMFS_FLAVOUR_TREE_SHA256:-}"
-        printf 'GLB_RAMFS_COMMON_VER=%q\n' "${GLB_RAMFS_COMMON_VER:-}"
-        printf 'GLB_RAMFS_COMMON_VCS=%q\n' "${GLB_RAMFS_COMMON_VCS:-}"
-        printf 'GLB_RAMFS_COMMON_TREE_SHA256=%q\n' "${GLB_RAMFS_COMMON_TREE_SHA256:-}"
-        printf 'GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE=%q\n' "${GLB_ALLOY_EXTERNAL_PATH_EFFECTIVE:-}"
-        printf 'GLB_TOOLCHAIN_DEFCONFIG=%q\n' "${GLB_TOOLCHAIN_DEFCONFIG:-}"
-        printf 'GLB_TOOLCHAIN_CONFIG_SOURCE=%q\n' "${GLB_TOOLCHAIN_CONFIG_SOURCE:-}"
-        printf 'GLB_TOOLCHAIN_DEFCONFIG_SHA256=%q\n' "${GLB_TOOLCHAIN_DEFCONFIG_SHA256:-}"
-        printf 'ALLOY_STRICT_EXTERNAL_BUNDLE=%q\n' "${ALLOY_STRICT_EXTERNAL_BUNDLE:-false}"
-    } > "$output"
-}
-
-alloy_context_raw_value() {
-    local file="$1"
-    local key="$2"
-
-    awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); found = 1; exit } END { exit found ? 0 : 1 }' "$file"
-}
-
-alloy_context_expect() {
-    local file="$1"
-    local key="$2"
-    local expected="$3"
-    local expected_raw
-    local actual_raw
-
-    expected_raw="$(printf '%q' "$expected")"
-    actual_raw="$(alloy_context_raw_value "$file" "$key" || true)"
-    if [[ -z "$actual_raw" ]]; then
-        error 1 "SDK provenance ${file} is missing ${key}"
-    fi
-    if [[ "$actual_raw" != "$expected_raw" ]]; then
-        error 1 "SDK provenance mismatch for ${key}: expected ${expected}, got ${actual_raw}"
-    fi
-}
-
-alloy_verify_sdk_context() {
-    local metadata="${GLB_SDK_DIR}/ALLOY-RESOLVER-CONTEXT"
-
-    if [[ ! -f "$metadata" ]]; then
-        if [[ "${GLB_TARGET_SYSTEM_SOURCE:-}" == "external" ]]; then
-            error 1 "SDK provenance metadata missing for external target ${GLB_TARGET_NAME}: ${metadata}; rebuild the SDK with the same --external or GRISP_ALLOY_EXTERNAL_PATH context"
-        fi
-        return 0
-    fi
-
-    alloy_context_expect "$metadata" GLB_TARGET_NAME "${GLB_TARGET_NAME:-}"
-    alloy_context_expect "$metadata" GLB_COMMON_SYSTEM_VER "${GLB_COMMON_SYSTEM_VER:-}"
-    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_VER "${GLB_TARGET_SYSTEM_VER:-}"
-    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_SOURCE "${GLB_TARGET_SYSTEM_SOURCE:-}"
-}
-
-alloy_verify_sdk_context_strict() {
-    local metadata="${GLB_SDK_DIR}/ALLOY-RESOLVER-CONTEXT"
-
-    alloy_verify_sdk_context
-    alloy_context_expect "$metadata" GLB_COMMON_SYSTEM_TREE_SHA256 "${GLB_COMMON_SYSTEM_TREE_SHA256:-}"
-    alloy_context_expect "$metadata" GLB_TARGET_SYSTEM_TREE_SHA256 "${GLB_TARGET_SYSTEM_TREE_SHA256:-}"
-}
-
 alloy_firmware_misc_provenance() {
     printf 'alloy-provenance-v1:target-source=%s;common-tree-sha256=%s;target-tree-sha256=%s' \
         "${GLB_TARGET_SYSTEM_SOURCE:-}" \
@@ -750,6 +696,12 @@ esac
 GLB_SCRIPT_DIR="$(readlink_f "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" )"
 GLB_TOP_DIR="$( cd "$GLB_SCRIPT_DIR" && cd .. && pwd )"
 GLB_VAGRANT_TOP_DIR="/home/vagrant"
+source "$GLB_SCRIPT_DIR/sdk-languages.sh"
+sdk_languages_init "${ARG_SDK_LANGUAGES:-${GRISP_SDK_LANGUAGES:-erlang,elixir}}" || exit 1
+SDK_REQUIRED_LANGUAGES=erlang
+if declare -p ARG_SDK_LANGS >/dev/null 2>&1; then
+    sdk_requirements_add "${ARG_SDK_LANGS[@]}"
+fi
 GLB_SDK_NAME="grisp_alloy_sdk"
 GLB_SDK_PARENT_DIR="/opt"
 GLB_SDK_BASE_DIR="${GLB_SDK_PARENT_DIR}/${GLB_SDK_NAME}"
@@ -757,15 +709,21 @@ GLB_SDK_BASE_DIR="${GLB_SDK_PARENT_DIR}/${GLB_SDK_NAME}"
 if [[ $GLB_TOP_DIR == ${GLB_SDK_BASE_DIR}* ]]; then
     # running the sdk version
     GLB_IS_SDK=true
-    SDK_DIR_REGEX="${GLB_SDK_BASE_DIR}/\([0-9.]*\)/\([0-9a-z_]*\)/\([0-9.]*\)"
-    GLB_COMMON_SYSTEM_VER=$( echo "$GLB_TOP_DIR" | sed "s|${SDK_DIR_REGEX}|\1|" )
-    [[ ! -z $GLB_COMMON_SYSTEM_VER ]]
-    GLB_TARGET_NAME=$( echo "$GLB_TOP_DIR" | sed "s|${SDK_DIR_REGEX}|\2|" )
-    [[ ! -z $GLB_TARGET_NAME ]]
-    GLB_TARGET_SYSTEM_VER=$( echo "$GLB_TOP_DIR" | sed "s|${SDK_DIR_REGEX}|\3|" )
-    [[ ! -z $GLB_TARGET_SYSTEM_VER ]]
-    GLB_SDK_DIR="${GLB_TOP_DIR}"
-    GLB_SDK_HOST_DIR="${GLB_SDK_DIR}/host"
+    GLB_SDK_DIR="$GLB_TOP_DIR"
+    GLB_SDK_HOST_DIR="$GLB_SDK_DIR/host"
+    if [[ -f "$GLB_SDK_DIR/ALLOY-SDK" ]]; then
+        source "$GLB_SDK_DIR/ALLOY-SDK"
+        GLB_TARGET_NAME="$SDK_TARGET_NAME"
+        GLB_COMMON_SYSTEM_VER="$SDK_COMMON_SYSTEM_VERSION"
+        GLB_TARGET_SYSTEM_VER="$SDK_TARGET_SYSTEM_VERSION"
+        GLB_TARGET_SYSTEM_SOURCE="$SDK_TARGET_SYSTEM_SOURCE"
+        GLB_COMMON_SYSTEM_TREE_SHA256="$SDK_COMMON_SYSTEM_TREE_SHA256"
+        GLB_TARGET_SYSTEM_TREE_SHA256="$SDK_TARGET_SYSTEM_TREE_SHA256"
+        sdk_languages_init "${SDK_LANGUAGES// /,}" || exit 1
+    else
+        SDK_RELATIVE_PATH="${GLB_TOP_DIR#"$GLB_SDK_BASE_DIR/"}"
+        IFS=/ read -r GLB_COMMON_SYSTEM_VER GLB_TARGET_NAME GLB_TARGET_SYSTEM_VER <<< "$SDK_RELATIVE_PATH"
+    fi
 else
     # running the builder version
     GLB_IS_SDK=false

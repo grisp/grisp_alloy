@@ -1,3 +1,6 @@
+# shellcheck shell=bash
+source "$(dirname "${BASH_SOURCE[0]}")/../../project-env.sh"
+
 project_detect_erlang() {
     local project_dir="$1"
     [[ -f "$project_dir/rebar.config" ]]
@@ -9,6 +12,9 @@ project_build_erlang() {
 	local profile="$3"
 	local target_erlang="$4"
 	local target_erlang_lib="${target_erlang}/lib"
+	PROJECT_BUILD_PROFILE="$profile"
+    local build_env=( )
+    project_environment build_env erlang || return $?
 
     local rebar3_cmd="${GLB_SDK_HOST_DIR}/usr/bin/rebar3"
     if [[ ! -x "$rebar3_cmd" ]]; then
@@ -16,11 +22,11 @@ project_build_erlang() {
     fi
 
 	(
-		cd "$project_dir"
+		cd "$project_dir" || exit 1
 		# First retrieve the dependencies without using the target ERTS
-		env -u ERL_LIBS "$rebar3_cmd" as "$profile" get-deps
+		"${build_env[@]}" env -u ERL_LIBS "$rebar3_cmd" as "$profile" get-deps
 		# Then build the release using the target ERTS
-		"$rebar3_cmd" as "$profile" release --system_libs "$target_erlang_lib" --include-erts "$target_erlang"
+		"${build_env[@]}" "$rebar3_cmd" as "$profile" release --system_libs "$target_erlang_lib" --include-erts "$target_erlang"
 	)
 
 	resref="$( cd "$project_dir/_build/${profile}/rel"/* && pwd )"
@@ -68,4 +74,11 @@ project_metadata_erlang() {
     else
         app_version_ref=""
     fi
+}
+
+project_runtime_erlang() {
+    local -n beam_runtime="$1"
+    local -n beam_entrypoint="$2"
+    beam_runtime=beam
+    beam_entrypoint=""
 }

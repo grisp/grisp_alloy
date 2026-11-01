@@ -177,6 +177,19 @@ Common options:
 - `-P | --provision`: reprovision Vagrant VM
 - `-K | --keep-vagrant`: keep VM running when script exits
 - `--external <DIR>`: add an external bundle root
+- `--enable-elixir` / `--disable-elixir`: include/exclude Elixir (enabled by default)
+- `--enable-rust` / `--disable-rust`: include/exclude Cargo/rustc (disabled by default)
+
+Erlang is always included because Alloy's build/firmware tools use OTP and Rebar.
+Elixir and Rust support can be enabled or disabled independently. SDK archive
+names include the enabled languages, for example `-erlang_rust.tar.gz` or
+`-erlang_elixir_rust.tar.gz` (the default is `-erlang_elixir.tar.gz`).
+
+For an SDK with Erlang and Rust support, with Elixir disabled:
+
+```sh
+./build-sdk.sh --disable-elixir --enable-rust grisp2
+```
 
 ### 3. Build Project Artefact
 
@@ -184,11 +197,37 @@ Common options:
 ./build-project.sh [OPTIONS] <TARGET> <PROJECT_DIR>
 ```
 
+The project language determines the SDK requirements. Alloy searches installed
+SDKs and archives in `artefacts/` for a match. If several SDKs match, it lists
+them and stops. Add `--sdk-lang <LANG>` to require extra support; repeat the
+option for additional languages. SDKs may include extra languages. Project
+detection uses the main project type and does not inspect build hooks, so pass
+`--sdk-lang rust` for an Erlang or Elixir project that builds a Rust NIF.
+
+```sh
+./build-project.sh grisp2 samples/hello_rust
+./build-project.sh --sdk-lang rust grisp2 samples/hello_erlang_rust
+```
+
+Project archives use `<release>-<version>-<target>.tgz`, with `-<profile>` before
+`.tgz` when `--profile` is not `default`. Rebuilding the same
+release/version/target/profile replaces its archive.
+
+Profiles are passed to the project builder: Rebar profiles for Erlang, Mix
+environments for Elixir, and Cargo profiles for Rust. The default builds the
+Rebar `default` profile, Mix `prod` environment, or Cargo `release` profile.
+
 This packages a project tarball containing:
 
 - `ALLOY-PROJECT` manifest
 - `ALLOY-FS-PRIORITIES` (optional)
-- `release/` (OTP release)
+- `release/` (assembled BEAM or native payload)
+
+Native applications install under `/srv/alloy/<instance>/bin/`. The first
+project starts automatically; it is responsible for launching/supervising any
+additional projects. A native primary runs as erlinit's foreground child, with
+no ERTS/BEAM required in the image. Unexpected application exit reboots the
+system; intentional shutdown sends SIGTERM before the graceful timeout.
 
 If the project directory contains `.grisp_alloy_exclude`, its patterns are
 passed to `rsync --exclude-from` when copying the project into the build area.
@@ -213,17 +252,16 @@ Useful options:
 - `-n | --name <NAME>` / `-v | --version <VER>`: override firmware metadata
 - `--external <DIR>`: add an external bundle root
 
-Targets may declare firmware profiles, provisioning modes, SDK artefact
-profiles, and initramfs policy in `system_<target>/crucible.sh`. Targets that do
-not declare profiles keep the previous default behavior.
+Project artefacts record the SDK used to build them, and firmware uses that
+identity to select the SDK. Build all projects in a firmware with the same SDK.
+If an artefact prefix matches multiple project archives, pass the exact `.tgz` path.
 
-SDKs built from this branch include `ALLOY-RESOLVER-CONTEXT` provenance with
-target/common source hashes, bundle source type, toolchain config source, and
-external path metadata. Downstream commands reject external-target SDKs and
-project artefacts whose provenance does not match the currently resolved target
-context. Firmware archives for external targets also carry the same provenance
-in FWUP metadata so `flash-firmware.sh` can reject stale or cross-bundle images
-before conversion or hardware probing.
+```sh
+./build-firmware.sh -i grisp2 hello_grisp
+```
+
+Targets may declare firmware profiles, provisioning modes, SDK artefact
+profiles, and initramfs policy in `system_<target>/crucible.sh`.
 
 ### Optional Ramfs Artefact
 

@@ -126,6 +126,7 @@ fi
 
 # Load common variables and functions (GLB_* globals, error handling, etc.)
 source "$( dirname "$0" )/scripts/common.sh" "$ARG_TARGET"
+source "$GLB_SCRIPT_DIR/tools.sh"
 # shellcheck source=scripts/sdk-artifacts.sh
 source "$GLB_SCRIPT_DIR/sdk-artifacts.sh"
 
@@ -279,7 +280,11 @@ artefact_info() {
     val=$( ( set -a; source "$tmp_manifest"; echo "${!var_name}" ) 2>/dev/null )
     rm -f "$tmp_manifest"
     if [[ -z "$val" ]]; then
-        error 4 "Invalid project package: missing ${var_name} in $(basename "$tarfile")"
+        if [[ $# -gt 2 ]]; then
+            val="$3"
+        else
+            error 4 "Invalid project package: missing ${var_name} in $(basename "$tarfile")"
+        fi
     fi
     echo "$val"
 }
@@ -333,6 +338,47 @@ resolve_tarball() {
 }
 
 parse_projects
+
+# Version-2 projects pin an SDK build, independent of capability ambiguity.
+# Legacy projects can only contribute language requirements.
+PROJECT_SDK_LANGUAGE_SET=""
+SDK_REQUIRED_BUILD_ID=""
+SDK_REQUIRED_COMMON_VERSION=""
+for artefact_path in "${PROJECT_ARTEFACTS[@]}"; do
+    project_type="$(artefact_info PROJECT_TYPE "$artefact_path")"
+    case "$project_type" in
+        erlang|elixir|rust) sdk_requirements_add "$project_type" ;;
+    esac
+    manifest_version="$(artefact_info PROJECT_MANIFEST_VERSION "$artefact_path" 1)"
+    case "$manifest_version" in
+        1)
+            # Compatibility with SDK common-system 0.2.0; remove when support ends.
+            [[ $(artefact_info PROJECT_COMMON_SYSTEM_VER "$artefact_path") == 0.2.0 ]] || error 1 "Version-1 project requires a 0.2.0 SDK"
+            [[ -z $SDK_REQUIRED_BUILD_ID ]] || error 1 "Cannot mix 0.2.0 and new SDK project artefacts"
+            SDK_REQUIRED_COMMON_VERSION=0.2.0
+            continue
+            ;;
+
+        2) ;;
+        *) error 1 "Unsupported project manifest version '$manifest_version' in $(basename "$artefact_path")" ;;
+    esac
+    [[ -z $SDK_REQUIRED_COMMON_VERSION ]] || error 1 "Cannot mix 0.2.0 and new SDK project artefacts"
+    manifest_language_set="$(artefact_info PROJECT_SDK_LANGUAGE_SET "$artefact_path")"
+    manifest_languages="$(sdk_languages_canonical "${manifest_language_set//-/,}")" ||
+        error 1 "Invalid SDK language set '$manifest_language_set' in $(basename "$artefact_path")"
+    [[ "${manifest_languages//,/-}" == "$manifest_language_set" ]] ||
+        error 1 "Non-canonical SDK language set '$manifest_language_set' in $(basename "$artefact_path")"
+    if [[ -n "$PROJECT_SDK_LANGUAGE_SET" && "$PROJECT_SDK_LANGUAGE_SET" != "$manifest_language_set" ]]; then
+        error 1 "Project artefacts were built with different SDK language sets ('$PROJECT_SDK_LANGUAGE_SET' and '$manifest_language_set')"
+    fi
+    PROJECT_SDK_LANGUAGE_SET="$manifest_language_set"
+    project_sdk_id="$(artefact_info PROJECT_SDK_BUILD_ID "$artefact_path")"
+    [[ "$project_sdk_id" =~ ^[0-9a-f]{64}$ ]] || error 1 "Invalid project SDK build ID"
+    if [[ -n "$SDK_REQUIRED_BUILD_ID" && "$SDK_REQUIRED_BUILD_ID" != "$project_sdk_id" ]]; then
+        error 1 "Project artefacts were built with different SDK identities; rebuild them with the same SDK"
+    fi
+    SDK_REQUIRED_BUILD_ID="$project_sdk_id"
+done
 
 # VAGRANT VM EXECUTION BLOCK
 # Non-Linux hosts (macOS, etc.) or forced Vagrant mode require VM execution
@@ -478,14 +524,8 @@ if [[ -n "$ARG_OVERLAY_DIR" ]]; then
     OVERLAY_DIR="$ARG_OVERLAY_DIR"
 fi
 
-# Clean SDK if requested (forces full rebuild)
-if [[ $ARG_CLEAN == true ]]; then
-    rm -rf "$GLB_SDK_BASE_DIR/*"
-fi
-
 # SDK INSTALLATION
-install_sdk
-alloy_verify_sdk_context_strict
+install_sdk strict
 
 resolve_ramfs_artifact() {
     local flavour="$1"
@@ -571,7 +611,8 @@ if [[ $ARG_CLEAN == true ]]; then
 fi
 
 # Prepare cross-compile environment for scrub and packaging
-source "${GLB_SCRIPT_DIR}/grisp-env.sh" "$GLB_TARGET_NAME"
+source "${GLB_SCRIPT_DIR}/cross-env.sh" "$GLB_TARGET_NAME"
+source "$GLB_SCRIPT_DIR/project-artifacts.sh"
 
 # Unpack and validate all projects
 PROJECT_DIRS=( )
@@ -585,21 +626,35 @@ PROJ_PROFILES=( )
 PROJ_VCS_TAGS=( )
 ERTS_VERS=( )
 PROJECT_ROOTS=( )
+PROJ_RUNTIMES=( )
+PROJ_ENTRYPOINTS=( )
 
 for idx in "${!PROJECT_ARTEFACTS[@]}"; do
     tarball="${PROJECT_ARTEFACTS[$idx]}"
     app_name="$( artefact_info PROJECT_APP_NAME "$tarball" )"
+    if ! alloy_valid_name "${PROJECT_NAMES[$idx]}" || [[ ${PROJECT_NAMES[$idx]} != [A-Za-z0-9]* ]]; then
+        error 1 "Invalid project instance name"
+    fi
+    for previous in "${PROJECT_ROOTS[@]}"; do
+        [[ $previous != "/srv/alloy/${PROJECT_NAMES[$idx]}" ]] || error 1 "Duplicate project instance name: ${PROJECT_NAMES[$idx]}"
+    done
+    for previous in "${APP_NAMES[@]}"; do
+        [[ $previous != "$app_name" ]] || error 1 "Duplicate project application name: $app_name"
+    done
     proj_dir="${PROJECTS_BASE_DIR}/${PROJECT_NAMES[$idx]}"
     proj_root="/srv/alloy/${PROJECT_NAMES[$idx]}"
     rm -rf "$proj_dir"
     mkdir -p "$proj_dir"
+    alloy_tool_tar check-paths "$tarball"
     tar -xzf "$tarball" -C "$proj_dir"
 
     man_file="${proj_dir}/ALLOY-PROJECT"
     if [[ ! -f "$man_file" ]]; then
         error 1 "Missing manifest ALLOY-PROJECT in $app_name artefact"
     fi
+    project_manifest_reset
     source "$man_file"
+    project_manifest_normalize
 
     if [[ "$PROJECT_TARGET_NAME" != "$GLB_TARGET_NAME" ]]; then
         error 1 "Artefact $app_name target '$PROJECT_TARGET_NAME' does not match requested target '$GLB_TARGET_NAME'"
@@ -634,27 +689,11 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
         error 1 "Invalid $app_name artefact: missing 'release' directory"
     fi
 
-    # Require app version from manifest; do not guess
-    app_ver="${PROJECT_APP_VERSION:-}"
-    if [[ -z "$app_ver" ]]; then
-        error 1 "Invalid $app_name artefact: missing PROJECT_APP_VERSION in manifest"
-    fi
-
-    erts_dir_cand=$( echo "${rel_dir}/erts-"* )
-    if [[ ! -d "$erts_dir_cand" ]] || [[ "$erts_dir_cand" == "${rel_dir}/erts-*" ]]; then
-        error 1 "Missing release erts directory"
-    fi
-    if [[ -z "$app_ver" ]] || [[ ! -d "${rel_dir}/lib/${app_name}-${app_ver}" ]]; then
-        error 1 "Missing release path lib/${app_name}-${app_ver}"
-    fi
-    # Require release version from manifest; do not guess
-    rel_version="${PROJECT_RELEASE_VERSION:-}"
-    if [[ -z "$rel_version" ]]; then
-        error 1 "Invalid $app_name artefact: missing PROJECT_RELEASE_VERSION in manifest"
-    fi
-    if [[ -z "$rel_version" ]] || [[ ! -d "${rel_dir}/releases/${rel_version}" ]]; then
-        error 1 "Missing $app_name release path releases/${rel_version}"
-    fi
+    project_validate_payload "$rel_dir"
+    app_ver="$PROJECT_APP_VERSION"
+    rel_version="$PROJECT_RELEASE_VERSION"
+    PROJ_RUNTIMES+=( "$PROJECT_RUNTIME" )
+    PROJ_ENTRYPOINTS+=( "${PROJECT_ENTRYPOINT:-}" )
 
     PROJECT_DIRS+=( "$proj_dir" )
     RELEASE_DIRS+=( "$rel_dir" )
@@ -664,7 +703,7 @@ for idx in "${!PROJECT_ARTEFACTS[@]}"; do
     PROJ_TYPES+=( "${PROJECT_TYPE}" )
     PROJ_PROFILES+=( "${PROJECT_PROFILE}" )
     PROJ_VCS_TAGS+=( "${PROJECT_VCS_PROJECT:-unknown}" )
-    ERTS_VERS+=( "$( basename "$erts_dir_cand" | sed 's/^erts-//' )" )
+    ERTS_VERS+=( "$PROJECT_ERTS_VERSION" )
     REL_VERS+=( "$rel_version" )
     PROJECT_ROOTS+=( "$proj_root" )
 done
@@ -753,8 +792,20 @@ for i in "${!RELEASE_DIRS[@]}"; do
     fi
     mkdir -p "$node_dir"
     cp -R "${RELEASE_DIRS[$i]}/." "$node_dir"
-    "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" "$node_dir"
+    if [[ ${PROJ_RUNTIMES[$i]} == beam ]]; then
+        "${GLB_COMMON_SYSTEM_DIR}/scripts/scrub-otp-release.sh" "$node_dir"
+    fi
 done
+
+# Generate primary launch configuration from the selected SDK, then preserve overlay precedence.
+if [[ ${PROJ_RUNTIMES[0]} == native ]]; then
+    [[ $SDK_NATIVE_RUNTIME == erlinit-native-v1 ]] || error 1 "Selected SDK cannot boot a native primary; rebuild with the native erlinit package"
+    unsquashfs -cat "$SDK_ROOTFS" etc/erlinit.config > "$FIRMWARE_DIR/sdk-erlinit.config"
+    project_native_init_generate "$FIRMWARE_DIR/sdk-erlinit.config" \
+        "${PROJECT_ROOTS[0]}" "${PROJ_ENTRYPOINTS[0]}" "$FIRMWARE_DIR/rootfs_overlay/etc/erlinit.config"
+else
+    ln -sfn "${PROJECT_ROOTS[0]}" "${OVERLAY_ROOT}/erlang"
+fi
 
 # If an overlay directory is provided, merge it into the rootfs_overlay now
 if [[ -n "$OVERLAY_DIR" ]]; then
@@ -782,8 +833,16 @@ if [[ -n "$ARG_SECPACK_DIR" ]]; then
     fi
 fi
 
-# Create init symlink to first node's directory
-ln -sfn "${PROJECT_ROOTS[0]}" "${OVERLAY_ROOT}/erlang"
+if [[ ${PROJ_RUNTIMES[0]} == native ]]; then
+    project_native_init_validate "$FIRMWARE_DIR/rootfs_overlay/etc/erlinit.config" \
+        "${PROJECT_ROOTS[0]}" "${PROJ_ENTRYPOINTS[0]}"
+else
+    [[ $(readlink "${OVERLAY_ROOT}/erlang") == "${PROJECT_ROOTS[0]}" ]] || error 1 "Overlay changed the BEAM primary project"
+    if [[ -f "$FIRMWARE_DIR/rootfs_overlay/etc/erlinit.config" ]] &&
+        grep -q -- '--native-exec' "$FIRMWARE_DIR/rootfs_overlay/etc/erlinit.config"; then
+        error 1 "Native init configuration conflicts with BEAM primary"
+    fi
+fi
 
 # Update the os-release file
 OS_RELEASE_FILE="${FIRMWARE_DIR}/rootfs_overlay/usr/lib/os-release"
@@ -798,39 +857,7 @@ EOF
 # Generate alloy manifest
 ALLOY_FIRMWARE_FILE="${FIRMWARE_DIR}/rootfs_overlay/alloy-firmware.json"
 mkdir -p $( dirname $ALLOY_FIRMWARE_FILE )
-{
-    echo "{";
-    echo "    \"architecture\": \"${CROSSCOMPILE_ARCH}\",";
-    echo "    \"serial\": \"${ARG_SERIAL}\",";
-    echo "    \"firmware_profile\": \"${GLB_FIRMWARE_PROFILE}\",";
-    echo "    \"firmware_provisioning_mode\": \"${GLB_FIRMWARE_PROVISIONING_MODE}\",";
-    echo "    \"target\": \"${GLB_TARGET_NAME}\",";
-    echo "    \"target_source\": \"${GLB_TARGET_SYSTEM_SOURCE}\",";
-    echo "    \"system_common_version\": \"${GLB_COMMON_SYSTEM_VER}\",";
-    echo "    \"system_common_vcs\": \"${GLB_VCS_TAG}\",";
-    echo "    \"system_common_tree_sha256\": \"${GLB_COMMON_SYSTEM_TREE_SHA256}\",";
-    echo "    \"system_target_version\": \"${GLB_TARGET_SYSTEM_VER}\",";
-    echo "    \"system_target_vcs\": \"${GLB_VCS_TAG}\",";
-    echo "    \"system_target_tree_sha256\": \"${GLB_TARGET_SYSTEM_TREE_SHA256}\",";
-    echo "    \"firmware_name\": \"${FIRMWARE_NAME}\",";
-    echo "    \"firmware_ver\": \"${FIRMWARE_VER}\",";
-    echo "    \"projects\": {";
-    for pi in "${!APP_NAMES[@]}"; do
-        echo "        \"${APP_NAMES[$pi]}\": {";
-        echo "            \"root\": \"${PROJECT_ROOTS[$pi]}\",";
-        echo "            \"app_ver\": \"${APP_VERS[$pi]}\",";
-        echo "            \"rel_name\": \"${REL_NAMES[$pi]}\",";
-        echo "            \"rel_ver\": \"${REL_VERS[$pi]}\",";
-        echo "            \"type\": \"${PROJ_TYPES[$pi]}\",";
-        echo "            \"profile\": \"${PROJ_PROFILES[$pi]}\",";
-        echo "            \"erts_ver\": \"${ERTS_VERS[$pi]}\",";
-        echo "            \"vcs\": \"${PROJ_VCS_TAGS[$pi]}\"";
-        echo -n "        }";
-        if [[ $pi -lt $((${#APP_NAMES[@]}-1)) ]]; then echo ","; else echo; fi
-    done
-    echo "    }";
-    echo "}";
-} > "$ALLOY_FIRMWARE_FILE"
+project_write_firmware_metadata "$ALLOY_FIRMWARE_FILE"
 
 cat $OS_RELEASE_FILE
 cat $ALLOY_FIRMWARE_FILE
@@ -840,6 +867,26 @@ cat $ALLOY_FIRMWARE_FILE
 "${GLB_COMMON_SYSTEM_DIR}/scripts/merge-squashfs.sh" \
     "$SDK_ROOTFS" "${FIRMWARE_DIR}/combined.squashfs" \
     "${FIRMWARE_DIR}/rootfs_overlay" "$SQUASHFS_PRIORITIES_FILE"
+
+# Check the final merged image, including user/security overlays. Never run target ELF.
+NATIVE_CHECK_ROOT="$FIRMWARE_DIR/native-validation-root"
+for pi in "${!PROJ_RUNTIMES[@]}"; do
+    [[ ${PROJ_RUNTIMES[$pi]} == native ]] || continue
+    if [[ ! -d $NATIVE_CHECK_ROOT ]]; then
+        unsquashfs -no-progress -d "$NATIVE_CHECK_ROOT" "$FIRMWARE_DIR/combined.squashfs" > /dev/null
+    fi
+    alloy_tool_elf_check rootfs --root "$NATIVE_CHECK_ROOT" \
+        --readelf "$CROSSCOMPILE-readelf" --target-triple "$CROSSCOMPILE_ARCH" \
+        --scan-dir "${PROJECT_ROOTS[$pi]}" --allow-runpath-dir /srv/alloy \
+        --system-executable /sbin/init \
+        --entrypoint "${PROJECT_ROOTS[$pi]}/${PROJ_ENTRYPOINTS[$pi]}"
+    if [[ $pi == 0 && ${PROJ_RUNTIMES[0]} == native ]]; then
+        project_native_init_validate "$NATIVE_CHECK_ROOT/etc/erlinit.config" \
+            "${PROJECT_ROOTS[0]}" "${PROJ_ENTRYPOINTS[0]}" \
+            "$NATIVE_CHECK_ROOT/sbin/init"
+    fi
+done
+rm -rf "$NATIVE_CHECK_ROOT"
 
 # BOOT SCHEME PACKAGING
 # These functions are provided by the boot scheme plugin loaded earlier

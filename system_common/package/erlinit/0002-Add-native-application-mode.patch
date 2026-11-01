@@ -1,0 +1,262 @@
+From: Sebastien Merle <sebastien.merle@stritzinger.com>
+Subject: [PATCH] Add explicit native application launch and shutdown mode
+
+Keep the BEAM path and operating-system setup unchanged. Native mode skips
+ERTS discovery, launches one absolute executable, and signals it before a
+bounded graceful shutdown. Carry this as a local Alloy package extension.
+
+--- a/src/erlinit.c
++++ b/src/erlinit.c
+@@ -534,37 +534,40 @@
+     putenv("PATH=/usr/sbin:/usr/bin:/sbin:/bin");
+     putenv("TERM=xterm-256color");
+ 
+-    // Erlang environment
+-
+-    // ROOTDIR points to the release unless it wasn't found.
+-    char *envvar = NULL;
+-    erlinit_asprintf(&envvar, "ROOTDIR=%s", run_info->release_base_dir);
+-    putenv(envvar);
+-    envvar = NULL; // putenv owns memory
+-
+-    // BINDIR points to the erts bin directory.
+-    erlinit_asprintf(&envvar, "BINDIR=%s/bin", run_info->erts_dir);
+-    putenv(envvar);
+-    envvar = NULL; // putenv owns memory
+-
+-    putenv("EMU=beam");
+-    putenv("PROGNAME=erlexec");
+-
+-    // RELEASE_SYS_CONFIG points to the release's sys.config (but without the .config)
+-    // If using it, set other Elixir release environment variables
+-    if (run_info->sys_config) {
+-        int sys_config_len = strlen(run_info->sys_config);
+-        erlinit_asprintf(&envvar, "RELEASE_SYS_CONFIG=%.*s", sys_config_len - 7, run_info->sys_config);
++    if (run_info) {
++        // Erlang environment
++
++        // ROOTDIR points to the release unless it wasn't found.
++        char *envvar = NULL;
++        erlinit_asprintf(&envvar, "ROOTDIR=%s", run_info->release_base_dir);
+         putenv(envvar);
+         envvar = NULL; // putenv owns memory
+ 
+-        erlinit_asprintf(&envvar, "RELEASE_ROOT=%s", run_info->release_base_dir);
++        // BINDIR points to the erts bin directory.
++        erlinit_asprintf(&envvar, "BINDIR=%s/bin", run_info->erts_dir);
+         putenv(envvar);
+         envvar = NULL; // putenv owns memory
+ 
+-        erlinit_asprintf(&envvar, "RELEASE_TMP=/tmp");
+-        putenv(envvar);
+-        envvar = NULL; // putenv owns memory
++        putenv("EMU=beam");
++        putenv("PROGNAME=erlexec");
++
++        // RELEASE_SYS_CONFIG points to the release's sys.config (but without the .config)
++        // If using it, set other Elixir release environment variables
++        if (run_info->sys_config) {
++            int sys_config_len = strlen(run_info->sys_config);
++            erlinit_asprintf(&envvar, "RELEASE_SYS_CONFIG=%.*s", sys_config_len - 7, run_info->sys_config);
++            putenv(envvar);
++            envvar = NULL; // putenv owns memory
++
++            erlinit_asprintf(&envvar, "RELEASE_ROOT=%s", run_info->release_base_dir);
++            putenv(envvar);
++            envvar = NULL; // putenv owns memory
++
++            erlinit_asprintf(&envvar, "RELEASE_TMP=/tmp");
++            putenv(envvar);
++            envvar = NULL; // putenv owns memory
++        }
++
+     }
+ 
+     // Set any additional environment variables from the user
+@@ -683,15 +686,16 @@
+     struct erl_run_info run_info;
+     memset(&run_info, 0, sizeof(run_info));
+ 
+-    find_release(&run_info);
+-
+-    find_erts_directory(run_info.erts_version, run_info.release_base_dir, &run_info.erts_dir);
++    if (!options.native_exec) {
++        find_release(&run_info);
++        find_erts_directory(run_info.erts_version, run_info.release_base_dir, &run_info.erts_dir);
++    }
+ 
+     // Set up $HOME
+     setup_home_directory();
+ 
+     // Set up the environment for running erlang.
+-    setup_environment(&run_info);
++    setup_environment(options.native_exec ? NULL : &run_info);
+ 
+     // Set up the minimum networking we need for Erlang.
+     setup_networking();
+@@ -703,7 +707,10 @@
+     // Set the working directory. First try a directory specified
+     // in the options, but if that doesn't work, go to the root of
+     // the release.
+-    if (options.working_directory == NULL ||
++    if (options.native_exec) {
++        const char *directory = options.working_directory ? options.working_directory : "/";
++        OK_OR_FATAL(chdir(directory), "Cannot chdir to native directory (%s)", directory);
++    } else if (options.working_directory == NULL ||
+             chdir(options.working_directory) < 0) {
+         OK_OR_FATAL(chdir(run_info.release_base_dir), "Cannot chdir to release directory (%s)",
+                     run_info.release_base_dir);
+@@ -725,6 +732,15 @@
+ 
+     // Optionally drop privileges
+     drop_privileges();
++
++    if (options.native_exec) {
++        char *native_argv[] = {options.native_exec, NULL};
++        elog(ELOG_INFO | ELOG_PMSG, "Launching native application: %s", options.native_exec);
++        if (options.print_timing)
++            elog(ELOG_INFO, "stop");
++        execvp(options.native_exec, native_argv);
++        fatal("execvp failed to run native application %s: %s", options.native_exec, strerror(errno));
++    }
+ 
+     // Start Erlang up
+     char erlexec_path[ERLINIT_PATH_MAX];
+@@ -852,8 +868,66 @@
+     sync();
+ }
+ 
++/* Native programs receive SIGTERM, unlike BEAM which requests shutdown itself. */
++static void wait_for_native_shutdown(pid_t pid, struct erlinit_exit_info *exit_info)
++{
++    sigset_t mask;
++    sigemptyset(&mask);
++    sigaddset(&mask, SIGCHLD);
++    clock_gettime(CLOCK_MONOTONIC, &exit_info->shutdown_start);
++    exit_info->graceful_shutdown_ok = 0;
++    if (kill(pid, SIGTERM) < 0 && errno != ESRCH)
++        elog(ELOG_WARNING, "Cannot signal native application: %s", strerror(errno));
++
++    int milliseconds = options.graceful_shutdown_timeout_ms;
++    if (milliseconds <= 0)
++        milliseconds = 1;
++    struct timespec deadline = exit_info->shutdown_start;
++    deadline.tv_sec += milliseconds / 1000;
++    deadline.tv_nsec += (milliseconds % 1000) * 1000000L;
++    if (deadline.tv_nsec >= 1000000000L) {
++        deadline.tv_sec++;
++        deadline.tv_nsec -= 1000000000L;
++    }
++
++    for (;;) {
++        /* Drain exits before waiting: SIGCHLD can coalesce for several children. */
++        pid_t child_pid;
++        while ((child_pid = waitpid(-1, &exit_info->wait_status, WNOHANG)) > 0) {
++            if (child_pid == pid) {
++                exit_info->graceful_shutdown_ok = 1;
++                goto complete;
++            }
++        }
++        if (child_pid < 0 && errno != EINTR)
++            break;
++        struct timespec now, remaining;
++        clock_gettime(CLOCK_MONOTONIC, &now);
++        remaining.tv_sec = deadline.tv_sec - now.tv_sec;
++        remaining.tv_nsec = deadline.tv_nsec - now.tv_nsec;
++        if (remaining.tv_nsec < 0) {
++            remaining.tv_sec--;
++            remaining.tv_nsec += 1000000000L;
++        }
++        if (remaining.tv_sec < 0)
++            break;
++        int rc = sigtimedwait(&mask, NULL, &remaining);
++        if (rc < 0 && errno != EINTR)
++            break;
++    }
++    if (!exit_info->graceful_shutdown_ok)
++        elog(ELOG_WARNING, "Native application shutdown timed out; continuing system shutdown");
++complete:
++    clock_gettime(CLOCK_MONOTONIC, &exit_info->shutdown_complete);
++}
++
+ static void wait_for_graceful_shutdown(pid_t pid, struct erlinit_exit_info *exit_info)
+ {
++    if (options.native_exec) {
++        wait_for_native_shutdown(pid, exit_info);
++        return;
++    }
++
+     sigset_t mask;
+     sigemptyset(&mask);
+     sigaddset(&mask, SIGCHLD);
+@@ -1009,9 +1083,9 @@
+         exit_info->is_intentional_exit = 0;
+         exit_info->desired_reboot_cmd = options.unintentional_exit_cmd;
+         if (WIFSIGNALED(exit_info->wait_status))
+-            elog(ELOG_ERROR, "Erlang terminated due to signal %d", WTERMSIG(exit_info->wait_status));
++            elog(ELOG_ERROR, "%s terminated due to signal %d", options.native_exec ? "Native application" : "Erlang", WTERMSIG(exit_info->wait_status));
+         else
+-            elog(ELOG_INFO, "Erlang VM exited");
++            elog(ELOG_INFO, "%s exited", options.native_exec ? "Native application" : "Erlang VM");
+     }
+ }
+ 
+@@ -1033,6 +1107,12 @@
+     merge_config(argc, argv, &merged_argc, merged_argv);
+ 
+     parse_args(merged_argc, merged_argv);
++    if (options.native_exec) {
++        if (options.native_exec[0] != '/')
++            fatal("--native-exec requires an absolute executable path");
++        if (options.alternate_exec || options.release_search_path || options.boot_path || options.release_include_erts)
++            fatal("--native-exec conflicts with BEAM launch options");
++    }
+ 
+     if (options.print_timing)
+         elog(ELOG_INFO, "start");
+--- a/src/erlinit.h
++++ b/src/erlinit.h
+@@ -76,6 +76,7 @@
+     int warn_unused_tty;
+     char *controlling_terminal;
+     char *alternate_exec;
++    char *native_exec;
+     char *uniqueid_exec;
+     char *hostname_pattern;
+     char *additional_env;
+--- a/src/options.c
++++ b/src/options.c
+@@ -24,6 +24,7 @@
+     .warn_unused_tty = 0,
+     .controlling_terminal = NULL,
+     .alternate_exec = NULL,
++    .native_exec = NULL,
+     .uniqueid_exec = NULL,
+     .hostname_pattern = NULL,
+     .additional_env = NULL,
+@@ -79,6 +80,7 @@
+     OPT_RELEASE_INCLUDE_ERTS,
+     OPT_TTY_OPTIONS,
+     OPT_SKIP_PSEUDO_FILESYSTEMS,
++    OPT_NATIVE_EXEC,
+     OPT_SHUTDOWN_REPORT,
+     OPT_CORE_PATTERN,
+ 
+@@ -103,6 +105,7 @@
+     {"release-include-erts", no_argument, 0, OPT_RELEASE_INCLUDE_ERTS },
+     {"run-on-exit", required_argument, 0, OPT_RUN_ON_EXIT },
+     {"alternate-exec", required_argument, 0, OPT_ALTERNATE_EXEC },
++    {"native-exec", required_argument, 0, OPT_NATIVE_EXEC },
+     {"print-timing", no_argument, 0, OPT_PRINT_TIMING },
+     {"verbose", no_argument, 0, OPT_VERBOSE },
+     {"warn-unused-tty", no_argument, 0, OPT_WARN_UNUSED_TTY },
+@@ -194,6 +197,9 @@
+         case OPT_RUN_ON_EXIT: // --run-on-exit /bin/sh
+             SET_STRING_OPTION(options.run_on_exit);
+             break;
++        case OPT_NATIVE_EXEC:
++            SET_STRING_OPTION(options.native_exec);
++            break;
+         case OPT_ALTERNATE_EXEC: // --alternate-exec "/usr/bin/dtach -N /tmp/iex_prompt"
+             SET_STRING_OPTION(options.alternate_exec);
+             break;

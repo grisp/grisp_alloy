@@ -1,3 +1,6 @@
+# shellcheck shell=bash
+source "$(dirname "${BASH_SOURCE[0]}")/../../project-env.sh"
+
 project_detect_elixir() {
     local project_dir="$1"
     [[ -f "$project_dir/mix.exs" ]]
@@ -21,6 +24,9 @@ project_build_elixir() {
     if [[ -z "$mix_env" || "$mix_env" == "default" ]]; then
         mix_env="prod"
     fi
+    PROJECT_BUILD_PROFILE="$mix_env"
+    local build_env=( )
+    project_environment build_env elixir || return $?
 
     # Resolve mix command (host SDK only)
     local mix_cmd="${GLB_SDK_HOST_DIR}/usr/bin/mix"
@@ -30,29 +36,20 @@ project_build_elixir() {
 
     # Ensure UTF-8 VM and pass target ERTS location for projects that use it
     (
-        cd "$project_dir"
+        cd "$project_dir" || exit 1
         # Use host OTP for Mix/Hex (unset ERL_* that point to target libs)
-        env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
-            -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-            ELIXIR_ERL_OPTIONS=+fnu \
-            MIX_ENV="$mix_env" \
-            "$mix_cmd" deps.get --only "$mix_env"
+        env MIX_ENV="$mix_env" \
+            "${build_env[@]}" "$mix_cmd" deps.get --only "$mix_env"
 
-        env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
-            -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-            ELIXIR_ERL_OPTIONS=+fnu \
-            MIX_ENV="$mix_env" \
-            "$mix_cmd" compile
+        env MIX_ENV="$mix_env" \
+            "${build_env[@]}" "$mix_cmd" compile
 
         # For release assembly, point include_erts at target ERTS
-        env -u ERL_LIBS -u ERL_FLAGS -u ERL_AFLAGS -u ERL_ZFLAGS \
-            -u MIX_TARGET LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-            ELIXIR_ERL_OPTIONS=+fnu \
-            ERTS_DIR="$target_erts_dir" \
+        env ERTS_DIR="$target_erts_dir" \
             ERL_LIB_DIR="$target_erlang" \
             ERL_SYSTEM_LIB_DIR="$target_erlang/lib" \
             MIX_ENV="$mix_env" \
-            "$mix_cmd" release --overwrite
+            "${build_env[@]}" "$mix_cmd" release --overwrite
     )
 
     # Locate release directory
@@ -127,4 +124,11 @@ project_metadata_elixir() {
     else
         app_version_ref=""
     fi
+}
+
+project_runtime_elixir() {
+    local -n beam_runtime="$1"
+    local -n beam_entrypoint="$2"
+    beam_runtime=beam
+    beam_entrypoint=""
 }
